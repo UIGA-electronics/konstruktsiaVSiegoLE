@@ -761,9 +761,44 @@ var Figures = (function () {
       var mixer = null, clips = {}, current = null;
       var info = frame.querySelector('#m3-info');
 
+      /* «Оболочка» — обшивка, фонарь, остекление. Её можно спрятать кнопкой,
+         а из кликов она исключена всегда: иначе до механизма не добраться.
+         Список задаётся в opts.shell, иначе узнаём по имени. */
+      var SHELL_RE = /fuselage|canopy|cowl|skin|shell|glass|window|fairing|^fin$|^wing|^stabilizer/i;
+      var shellSet = null;
+      function isShell(o) {
+        while (o) {
+          if (shellSet && shellSet[o.name]) return true;
+          if (!shellSet && o.name && SHELL_RE.test(o.name)) return true;
+          o = o.parent;
+        }
+        return false;
+      }
+      if (opts.shell && opts.shell.length) {
+        shellSet = {};
+        opts.shell.forEach(function (n) { shellSet[n] = 1; });
+      }
+
       new THREE.GLTFLoader().load(opts.src, function (gltf) {
         var root = gltf.scene;
         scene.add(root);
+
+        /* Кнопка «Оболочка» — показать или убрать обшивку */
+        var shells = [];
+        root.traverse(function (o) { if (o.isMesh && isShell(o)) shells.push(o); });
+        if (shells.length) {
+          var sb = document.createElement('button');
+          sb.type = 'button';
+          sb.className = 'fig-btn is-on';
+          sb.textContent = 'Оболочка';
+          sb.addEventListener('click', function () {
+            var on = !sb.classList.contains('is-on');
+            sb.classList.toggle('is-on', on);
+            shells.forEach(function (o) { o.visible = on; });
+            renderer.render(scene, camera);
+          });
+          bar.appendChild(sb);
+        }
 
         /* Кадрируем модель: камера сама встаёт так, чтобы она влезла целиком */
         var bb = new THREE.Box3().setFromObject(root);
@@ -808,10 +843,21 @@ var Figures = (function () {
           pt.x = ((e.clientX - b.left) / b.width) * 2 - 1;
           pt.y = -((e.clientY - b.top) / b.height) * 2 + 1;
           ray.setFromCamera(pt, camera);
-          var hit = ray.intersectObject(root, true)[0];
+          /* Оболочка перехватывает каждый луч — кликать надо по механизму
+             внутри, поэтому из выборки она исключена всегда. */
+          var all = ray.intersectObject(root, true), hit = null;
+          for (var i = 0; i < all.length; i++) {
+            if (!isShell(all[i].object)) { hit = all[i]; break; }
+          }
           if (!hit) return;
-          var name = hit.object.name;
-          info.textContent = (opts.labels && opts.labels[name]) || name || '—';
+          /* Кликнуть можно по вложенному мешу, у которого своего имени в словаре
+             нет, — поднимаемся по родителям до первого известного узла. */
+          var n = hit.object, label = null, name = n.name;
+          while (n && n !== root) {
+            if (opts.labels && opts.labels[n.name]) { label = opts.labels[n.name]; break; }
+            n = n.parent;
+          }
+          info.textContent = label || name || '—';
         });
 
         info.textContent = opts.hint || 'Вращайте модель, нажимайте на детали';
@@ -835,12 +881,21 @@ var Figures = (function () {
         renderer.render(scene, camera);
       });
 
-      window.addEventListener('resize', function () {
-        var nw = box.clientWidth || w;
-        renderer.setSize(nw, Math.round(nw * 0.62));
-        camera.aspect = 1 / 0.62;
+      /* Размер берём у самого элемента, а не у окна: схема может смонтироваться,
+         пока страница ещё не разложена (скрытая вкладка, свёрнутая панель,
+         поворот телефона) — тогда ширина нулевая и canvas залипает крошечным. */
+      function fit() {
+        var nw = Math.round(box.clientWidth);
+        if (nw < 40) return;              /* ещё нет раскладки — ждём */
+        var nh = Math.round(nw * 0.62);
+        renderer.setSize(nw, nh);
+        camera.aspect = nw / nh;
         camera.updateProjectionMatrix();
-      });
+        renderer.render(scene, camera);
+      }
+      if (window.ResizeObserver) new ResizeObserver(fit).observe(box);
+      window.addEventListener('resize', fit);
+      fit();
     }).catch(function (e) {
       box.innerHTML = '<div class="model3d-note">Не удалось загрузить Three.js. ' +
         'Проверьте подключение к сети.</div>';
