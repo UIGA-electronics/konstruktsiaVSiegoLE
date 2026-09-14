@@ -18,8 +18,12 @@ var Figures = (function () {
   /* Схемы широкие: на узком экране они не сжимаются до нечитаемости,
      а прокручиваются вбок внутри своей рамки. */
   function svg(vb, inner) {
+    /* Минимальная ширина = ширине viewBox: схема никогда не сжимается
+       до нечитаемых подписей, вместо этого появляется прокрутка вбок. */
+    var w = parseFloat(vb.split(/\s+/)[2]) || 520;
     return '<div class="figure-svg"><svg viewBox="' + vb +
-      '" role="img" preserveAspectRatio="xMidYMid meet">' + inner + '</svg></div>';
+      '" style="min-width:' + Math.round(w) + 'px" ' +
+      'role="img" preserveAspectRatio="xMidYMid meet">' + inner + '</svg></div>';
   }
 
   function controls(frame, html) {
@@ -167,6 +171,167 @@ var Figures = (function () {
         (150 * (1 - 1 / (0.3 + f * 1.6))) + ')');
       force.style.opacity = 0.25 + f * 0.75;
       out.textContent = 'элерон ' + (v * 20).toFixed(0) + '°';
+    }
+    input.addEventListener('input', paint);
+    paint();
+  };
+
+  /* ═══════════════════════════════════════════════════════
+     2б. Способы компенсации аэродинамической нагрузки
+     ═══════════════════════════════════════════════════════ */
+  reg.comp = function (frame) {
+    var PX = 168, PY = 108;   /* ось вращения руля */
+
+    var inner =
+      '<path class="f-body" d="M16 86h136q14 0 14 22t-14 22H16z" fill="#eef0f2"/>' +
+      '<text class="t-sm" x="86" y="113" text-anchor="middle">неподвижная часть</text>' +
+
+      '<g id="c-surf">' +
+      '<path id="c-main" class="f-body" fill="#e4eaf1" d="M168 93l112 15-112 15z"/>' +
+      '<path id="c-nose" class="f-body" fill="#cfdae7" d="M168 93l-21 15 21 15z"/>' +
+      '<path id="c-horn" class="f-body" fill="#cfdae7" d="M168 93l-20 8 20 6z"/>' +
+      '<g id="c-tab"></g>' +
+      '</g>' +
+      '<circle id="c-pivot" class="f-metal" cx="168" cy="108" r="6"/>' +
+      '<text class="t-sm" id="c-pivlbl" x="168" y="82" text-anchor="middle">ось вращения</text>' +
+
+      /* индикатор усилия на рычаге */
+      '<path class="f-dim" d="M352 40v132"/>' +
+      '<rect id="c-bar" fill="#a92920" stroke="none" x="344" y="162" width="16" height="10" rx="3"/>' +
+      '<text class="t-sm" x="352" y="32" text-anchor="middle">усилие</text>' +
+      '<text class="t-sm" id="c-note" x="186" y="192" text-anchor="middle"></text>';
+
+    frame.innerHTML = svg('0 0 380 204', inner);
+    controls(frame,
+      '<button class="fig-btn is-on" data-c="axis" type="button">Осевая</button>' +
+      '<button class="fig-btn" data-c="horn" type="button">Роговая</button>' +
+      '<button class="fig-btn" data-c="servo" type="button">Сервокомп.</button>' +
+      '<button class="fig-btn" data-c="anti" type="button">Антисерво</button>' +
+      '<button class="fig-btn" data-c="trim" type="button">Триммер</button>' +
+      '<span class="fig-label">Отклонение</span>' +
+      '<input class="fig-range" id="c-in" type="range" min="-100" max="100" value="40" ' +
+      'aria-label="Отклонение руля">');
+
+    var surf = frame.querySelector('#c-surf');
+    var nose = frame.querySelector('#c-nose');
+    var horn = frame.querySelector('#c-horn');
+    var tabG = frame.querySelector('#c-tab');
+    var pivot = frame.querySelector('#c-pivot');
+    var pivlbl = frame.querySelector('#c-pivlbl');
+    var bar = frame.querySelector('#c-bar');
+    var note = frame.querySelector('#c-note');
+    var input = frame.querySelector('#c-in');
+
+    var MODES = {
+      axis:  { nose: 1, horn: 0, tab: 0, k: 0.45,
+        note: 'часть площади вынесена вперёд от оси — поток помогает отклонять руль' },
+      horn:  { nose: 0, horn: 1, tab: 0, k: 0.55,
+        note: 'рог выходит в поток на большом отклонении: помогает, но растит сопротивление' },
+      servo: { nose: 0, horn: 0, tab: -1, k: 0.35,
+        note: 'отклоняется против руля — шарнирный момент уменьшается' },
+      anti:  { nose: 0, horn: 0, tab: 1, k: 1.35,
+        note: 'отклоняется вместе с рулём — специально утяжеляет управление' },
+      trim:  { nose: 0, horn: 0, tab: -1, k: 0,
+        note: 'отдельная команда: снимает усилие полностью, руль остаётся отклонённым' }
+    };
+    var mode = 'axis';
+
+    function paint() {
+      var v = +input.value / 100;
+      var m = MODES[mode];
+      var ang = v * 22;
+
+      surf.setAttribute('transform', 'rotate(' + ang + ' ' + PX + ' ' + PY + ')');
+      nose.style.display = m.nose ? '' : 'none';
+      horn.style.display = m.horn ? '' : 'none';
+
+      /* ось при осевой компенсации сдвинута назад — показываем это явно */
+      var px = m.nose ? PX : PX - 11;
+      pivot.setAttribute('cx', px);
+      pivlbl.setAttribute('x', px);
+
+      if (m.tab) {
+        tabG.style.display = '';
+        tabG.innerHTML = '<path class="f-body" fill="' +
+          (m.tab > 0 ? '#efdcc9' : '#d9e6dd') + '" d="M276 102l40 6-40 6z"/>';
+        tabG.setAttribute('transform',
+          'rotate(' + (m.tab * ang * 0.9) + ' 276 108)');
+      } else {
+        tabG.style.display = 'none';
+      }
+
+      var f = Math.min(1, Math.abs(v) * m.k + (mode === 'trim' ? 0 : 0.06));
+      var h = 4 + f * 124;
+      bar.setAttribute('height', h);
+      bar.setAttribute('y', 172 - h);
+      note.textContent = m.note;
+    }
+
+    frame.querySelectorAll('[data-c]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        frame.querySelectorAll('[data-c]').forEach(function (x) { x.classList.remove('is-on'); });
+        b.classList.add('is-on');
+        mode = b.dataset.c;
+        paint();
+      });
+    });
+    input.addEventListener('input', paint);
+    paint();
+  };
+
+  /* ═══════════════════════════════════════════════════════
+     2в. Закрылок Фаулера
+     ═══════════════════════════════════════════════════════ */
+  reg.flap = function (frame) {
+    var HX = 258, HY = 84;   /* точка, вокруг которой поворачивается закрылок */
+
+    var inner =
+      /* траектория движения закрылка «назад и вниз» */
+      '<path class="f-dim" stroke-dasharray="3 5" d="M262 88q30 5 46 22"/>' +
+
+      /* основная часть крыла */
+      '<path class="f-body" fill="#e9edf2" ' +
+      'd="M34 80C96 58 176 56 258 72L258 96C176 108 96 104 34 80Z"/>' +
+      '<text class="t-sm" x="132" y="86" text-anchor="middle">профиль крыла</text>' +
+
+      /* закрылок */
+      '<g id="fl-flap">' +
+      '<path class="f-body" fill="#cfdce9" d="M256 70L332 86L256 98Z"/>' +
+      '</g>' +
+
+      /* щель */
+      '<path id="fl-slot" class="f-blue" stroke-width="2.5" stroke-dasharray="4 4" ' +
+      'd="M244 100q16 4 26 -6"/>' +
+
+      '<text class="t-sm" id="fl-lbl" x="180" y="172" text-anchor="middle">' +
+      'закрылок убран — профиль крыла целый</text>';
+
+    frame.innerHTML = svg('0 0 380 184', inner);
+    controls(frame,
+      '<span class="fig-label">Выпуск</span>' +
+      '<input class="fig-range" id="fl-in" type="range" min="0" max="100" value="0" ' +
+      'aria-label="Выпуск закрылка">' +
+      '<span class="fig-readout" id="fl-out">0 %</span>');
+
+    var flap = frame.querySelector('#fl-flap');
+    var slot = frame.querySelector('#fl-slot');
+    var lbl = frame.querySelector('#fl-lbl');
+    var out = frame.querySelector('#fl-out');
+    var input = frame.querySelector('#fl-in');
+
+    function paint() {
+      var v = +input.value / 100;
+      /* движение «назад и вниз» по дуге + поворот */
+      flap.setAttribute('transform',
+        'translate(' + (v * 20) + ' ' + (v * v * 16) + ') rotate(' + (v * 28) +
+        ' ' + HX + ' ' + HY + ')');
+      slot.style.opacity = v < 0.08 ? 0 : Math.min(1, v * 2.2);
+      out.textContent = Math.round(v * 100) + ' %';
+      lbl.textContent = v < 0.08
+        ? 'закрылок убран — профиль крыла целый'
+        : v < 0.55
+          ? 'сначала растёт площадь крыла, щель открывается'
+          : 'затем растёт кривизна профиля — максимум подъёмной силы';
     }
     input.addEventListener('input', paint);
     paint();
@@ -372,13 +537,13 @@ var Figures = (function () {
       '<text x="62" y="96" text-anchor="middle">Side Stick</text>' +
       '<text class="t-sm" x="62" y="114" text-anchor="middle">датчики положения</text>' +
 
-      '<rect id="w-pfcu" class="f-body" x="164" y="16" width="120" height="52" rx="8"/>' +
-      '<text x="224" y="38" text-anchor="middle">PFCU × 3</text>' +
-      '<text class="t-sm" x="224" y="56" text-anchor="middle">законы управления</text>' +
+      '<rect id="w-pfcu" class="f-body" x="160" y="16" width="128" height="52" rx="8"/>' +
+      '<text x="224" y="38" text-anchor="middle">Законы и защиты</text>' +
+      '<text class="t-sm" x="224" y="56" text-anchor="middle">угол атаки, перегрузка, крен</text>' +
 
-      '<rect class="f-body" x="164" y="132" width="120" height="52" rx="8"/>' +
-      '<text x="224" y="154" text-anchor="middle">ACE × 14</text>' +
-      '<text class="t-sm" x="224" y="172" text-anchor="middle">управление приводами</text>' +
+      '<rect class="f-body" x="160" y="132" width="128" height="52" rx="8"/>' +
+      '<text x="224" y="154" text-anchor="middle">Вычислители</text>' +
+      '<text class="t-sm" x="224" y="172" text-anchor="middle">ELAC / SEC · управление приводами</text>' +
 
       '<rect class="f-body" x="336" y="72" width="118" height="56" rx="8"/>' +
       '<text x="395" y="96" text-anchor="middle">Привод</text>' +
@@ -388,10 +553,10 @@ var Figures = (function () {
       '<text x="545" y="96" text-anchor="middle">Руль</text>' +
       '<text class="t-sm" x="545" y="114" text-anchor="middle">поверхность</text>' +
 
-      '<path id="w-p1" class="f-dim" stroke-width="3" d="M114 92H140V42H160"/>' +
-      '<path id="w-p2" class="f-dim" stroke-width="3" d="M284 42H310V100H332"/>' +
-      '<path id="w-p3" class="f-dim" stroke-width="3" d="M114 108H140V158H160"/>' +
-      '<path id="w-p4" class="f-dim" stroke-width="3" d="M284 158H310V100"/>' +
+      '<path id="w-p1" class="f-dim" stroke-width="3" d="M114 92H140V42H156"/>' +
+      '<path id="w-p2" class="f-dim" stroke-width="3" d="M288 42H310V100H332"/>' +
+      '<path id="w-p3" class="f-dim" stroke-width="3" d="M114 108H140V158H156"/>' +
+      '<path id="w-p4" class="f-dim" stroke-width="3" d="M288 158H310V100"/>' +
       '<path class="f-dim" stroke-width="3" d="M454 100h42"/>' +
 
       '<path class="f-green" stroke-width="2.5" stroke-dasharray="5 4" ' +
@@ -400,14 +565,14 @@ var Figures = (function () {
       'обратная связь по положению штока — тот же принцип, что в бустере</text>' +
 
       '<text class="t-sm" x="300" y="8" text-anchor="middle" id="w-mode">' +
-      'NORMAL MODE — сигнал проходит через вычислители</text>';
+      'Normal Law — сигнал проходит через законы и защиты</text>';
 
     frame.innerHTML = svg('0 0 600 222', inner);
     controls(frame,
       '<span class="fig-label">Режим</span>' +
-      '<button class="fig-btn is-on" data-m="0" type="button">NORMAL</button>' +
-      '<button class="fig-btn" data-m="1" type="button">DEGRADED</button>' +
-      '<button class="fig-btn" data-m="2" type="button">DIRECT</button>');
+      '<button class="fig-btn is-on" data-m="0" type="button">Normal</button>' +
+      '<button class="fig-btn" data-m="1" type="button">Alternate</button>' +
+      '<button class="fig-btn" data-m="2" type="button">Direct</button>');
 
     var p1 = frame.querySelector('#w-p1'), p2 = frame.querySelector('#w-p2');
     var p3 = frame.querySelector('#w-p3'), p4 = frame.querySelector('#w-p4');
@@ -415,9 +580,9 @@ var Figures = (function () {
     var label = frame.querySelector('#w-mode');
 
     var MODES = [
-      { via: true, text: 'NORMAL MODE — сигнал идёт через PFCU: работают все ограничительные функции' },
-      { via: true, text: 'DEGRADED MODE — алгоритмы те же, но часть входных сигналов заменена' },
-      { via: false, text: 'DIRECT MODE — сигнал идёт от ручки прямо в ACE, минуя PFCU' }
+      { via: true,  text: 'Normal Law — работают все защиты: угол атаки, перегрузка, скорость, крен' },
+      { via: true,  text: 'Alternate Law — часть защит отключена, управление ближе к классическому' },
+      { via: false, text: 'Direct Law — сигнал идёт от ручки прямо на приводы, защиты не активны' }
     ];
 
     function setMode(i) {

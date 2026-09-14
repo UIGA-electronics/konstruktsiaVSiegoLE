@@ -104,6 +104,44 @@ var Render = (function () {
     return node;
   }
 
+  function blockStats(b) {
+    var node = el('div', 'stats');
+    b.items.forEach(function (s) {
+      node.appendChild(el('div', 'stat',
+        '<b>' + esc(s[0]) + '</b><span>' + esc(s[1]) + '</span>'));
+    });
+    return node;
+  }
+
+  function blockTerms(b) {
+    var node = el('div', 'terms');
+    b.items.forEach(function (t) {
+      node.appendChild(el('div', 'term',
+        '<b>' + inline(t.term) + '</b>' +
+        (t.en ? '<i>' + esc(t.en) + '</i>' : '') +
+        '<p>' + inline(t.text) + '</p>'));
+    });
+    return node;
+  }
+
+  /* Слот под будущую визуализацию: пока схемы нет, читатель видит,
+     что именно тут появится, а не пустое место. Спецификация для
+     подготовки материалов лежит в VISUALS.md. */
+  function blockVisual(b) {
+    var node = el('div', 'visual');
+    node.innerHTML =
+      '<div class="visual-h">' +
+      '<span class="visual-ic"><svg viewBox="0 0 24 24" aria-hidden="true">' +
+      '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>' +
+      '</svg></span>' +
+      '<b>' + esc(b.title) + '</b>' +
+      '<span class="visual-kind">' + esc(b.kind || 'схема') + '</span>' +
+      '</div>' +
+      '<p>' + inline(b.brief) + '</p>' +
+      (b.id ? '<span class="visual-id">' + esc(b.id) + '</span>' : '');
+    return node;
+  }
+
   function blockCompare(b) {
     var node = el('div', 'compare');
     var sw = el('div', 'compare-switch');
@@ -219,6 +257,9 @@ var Render = (function () {
       case 'key':    return blockBox(b);
       case 'steps':  return blockSteps(b);
       case 'table':  return blockTable(b);
+      case 'stats':  return blockStats(b);
+      case 'terms':  return blockTerms(b);
+      case 'visual': return blockVisual(b);
       case 'figure': return blockFigure(b);
       case 'compare':return blockCompare(b);
       case 'quiz':   return blockQuiz(b);
