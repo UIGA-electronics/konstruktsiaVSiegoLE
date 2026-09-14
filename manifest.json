@@ -1,0 +1,14 @@
+{
+  "name": "КиОЭ ЛА — интерактивная методичка",
+  "short_name": "КиОЭ ЛА",
+  "description": "Учебное пособие по конструкции и основам эксплуатации летательных аппаратов. Тема «Сервоприводы».",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7f7f4",
+  "theme_color": "#f7f7f4",
+  "lang": "ru",
+  "icons": [
+    { "src": "assets/img/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

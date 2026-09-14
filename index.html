@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f7f7f4">
+<meta name="description" content="Интерактивное учебное пособие по конструкции и основам эксплуатации летательных аппаратов. Тема «Сервоприводы»: от тяг DA 40 NG до ЭДСУ SSJ-100.">
+<title>КиОЭ ЛА — интерактивная методичка</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="assets/img/icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<a class="skip-link" href="#main">К содержимому</a>
+
+<header class="topbar" id="topbar">
+  <a class="topbar-back" href="#home" id="btn-back" aria-label="Назад к оглавлению" hidden>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+  </a>
+  <a class="topbar-brand" href="#home">
+    <span class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 32 32"><path d="M16 3l3.4 9.2L29 16l-9.6 3.8L16 29l-3.4-9.2L3 16l9.6-3.8z"/></svg>
+    </span>
+    <span class="brand-text">
+      <b>КиОЭ ЛА</b>
+      <small>интерактивная методичка</small>
+    </span>
+  </a>
+  <div class="topbar-spacer"></div>
+  <button class="topbar-btn" id="btn-toc" aria-label="Оглавление" aria-expanded="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+  </button>
+</header>
+
+<div class="reading-progress" id="reading-progress"><i></i></div>
+
+<nav class="toc-drawer" id="toc-drawer" aria-hidden="true">
+  <div class="toc-panel" role="dialog" aria-label="Оглавление">
+    <div class="toc-head">
+      <b>Оглавление</b>
+      <button class="toc-close" id="btn-toc-close" aria-label="Закрыть">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="toc-body" id="toc-body"></div>
+  </div>
+  <div class="toc-scrim" id="toc-scrim"></div>
+</nav>
+
+<main id="main" class="main" tabindex="-1"></main>
+
+<footer class="sitefoot">
+  <p>Проект по дисциплине «Конструкция и основы эксплуатации летательных аппаратов», УИ ГА.</p>
+  <p class="muted">Материал изложен своими словами. Первоисточники указаны ссылками на разделы и в самом тексте не воспроизводятся.</p>
+</footer>
+
+<script src="assets/js/figures.js"></script>
+<script src="assets/js/render.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>
