@@ -97,7 +97,11 @@ var Render = (function () {
     frame.dataset.figure = b.name;
     if (b.opts) frame.dataset.opts = JSON.stringify(b.opts);
     node.appendChild(frame);
-    node.appendChild(el('div', 'figure-hint', 'Схему можно листать вбок →'));
+    /* Подсказка про горизонтальную прокрутку — только для широких SVG-схем.
+       У 3D-модели свои правила управления, там она сбивает с толку. */
+    if (b.name !== 'model3d') {
+      node.appendChild(el('div', 'figure-hint', 'Схему можно листать вбок →'));
+    }
     if (b.caption) {
       node.appendChild(el('figcaption', 'figure-cap', inline(b.caption)));
     }

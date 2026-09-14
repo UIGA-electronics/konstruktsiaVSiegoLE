@@ -316,7 +316,7 @@
       '<h2>Страница не найдена</h2>' +
       '<p>Адрес <code>#' + Render.esc(id) + '</code> не соответствует ни одному разделу.</p>' +
       '<p><a href="#home">Вернуться к оглавлению</a></p></div>'),
-      'Не найдено — КиОЭ ЛА');
+      'Не найдено — КиЛЭ ВС');
     if (err) console.warn(err);
   }
 
@@ -329,7 +329,7 @@
 
     var topic = findTopic(id);
     if (topic && topic.status !== 'ready') {
-      show(viewSoon(topic), topic.title + ' — КиОЭ ЛА');
+      show(viewSoon(topic), topic.title + ' — КиЛЭ ВС');
       return;
     }
 
@@ -339,7 +339,7 @@
     getJSON('content/' + id + '.json').then(function (data) {
       if (routeId() !== id) return;
       markToc(id);
-      show(viewPage(data), data.title + ' — КиОЭ ЛА');
+      show(viewPage(data), data.title + ' — КиЛЭ ВС');
     }).catch(function (e) {
       delete cache['content/' + id + '.json'];
       if (routeId() === id) fail(id, e);

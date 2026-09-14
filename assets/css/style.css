@@ -398,9 +398,12 @@ td:first-child{ font-weight:700; }
 
 /* Просмотр 3D-модели */
 .model3d{ position:relative; border-radius:var(--r-sm); overflow:hidden;
-  background:linear-gradient(180deg,#fdfdfc,#f2f3f1); min-height:180px;
-  touch-action:pan-y; }
-.model3d canvas{ display:block; width:100%; height:auto; }
+  background:linear-gradient(180deg,#fdfdfc,#f2f3f1); min-height:180px; }
+/* Все касания достаются модели: иначе на телефоне вертикальный жест
+   уходит в прокрутку страницы и сцену нельзя ни повернуть, ни подвинуть.
+   Страница листается за пределами самого холста. */
+.model3d canvas{ display:block; width:100%; height:auto; touch-action:none; }
+.fig-zoom{ min-width:40px; font-size:17px; line-height:1; padding:6px 12px; }
 .model3d-note{ padding:60px 20px; text-align:center; font-family:var(--ui);
   font-size:13.5px; color:var(--ink-3); }
 .model3d-note code{ font-family:var(--mono); font-size:.9em; }

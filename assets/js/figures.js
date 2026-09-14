@@ -724,8 +724,7 @@ var Figures = (function () {
     box.innerHTML = '<div class="model3d-note">Загрузка модели…</div>';
     frame.appendChild(box);
 
-    var bar = controls(frame, '<span class="fig-label">Сценарий</span>' +
-      '<span class="fig-readout" id="m3-info">—</span>');
+    var bar = controls(frame, '<span class="fig-readout" id="m3-info">—</span>');
 
     ensureThree().then(function () {
       var THREE = window.THREE;
@@ -813,12 +812,12 @@ var Figures = (function () {
         var mid = bb.getCenter(new THREE.Vector3());
         var r = Math.max(size.x, size.y, size.z) || 1;
         root.position.sub(mid);
-        camera.position.set(r * 1.2, r * 0.7, r * 1.6);
+        camera.position.set(r * 0.85, r * 0.5, r * 1.15);
         camera.near = r / 100;
         camera.far = r * 40;
         camera.updateProjectionMatrix();
-        ctrl.minDistance = r * 0.08;    /* можно подойти вплотную к узлу */
-        ctrl.maxDistance = r * 6;
+        ctrl.minDistance = r * 0.012;   /* можно подойти вплотную к отдельному болту */
+        ctrl.maxDistance = r * 9;
         ctrl.target.set(0, 0, 0);
         ctrl.update();
 
@@ -841,6 +840,26 @@ var Figures = (function () {
         });
         bar.appendChild(pb);
 
+        /* Приближение кнопками: на телефоне колеса нет, а щипок двумя
+           пальцами попадает не всем. Кнопка работает одним касанием. */
+        function dolly(k) {
+          var v = camera.position.clone().sub(ctrl.target);
+          var len = clamp(v.length() * k, ctrl.minDistance, ctrl.maxDistance);
+          camera.position.copy(ctrl.target).add(v.setLength(len));
+          ctrl.update();
+          renderer.render(scene, camera);
+        }
+        ['+', '–'].forEach(function (sign, i) {
+          var zb = document.createElement('button');
+          zb.type = 'button';
+          zb.className = 'fig-btn fig-zoom';
+          zb.textContent = sign;
+          zb.setAttribute('aria-label', i ? 'Отдалить' : 'Приблизить');
+          var step = i ? 1.35 : 0.74;
+          zb.addEventListener('click', function () { dolly(step); });
+          bar.appendChild(zb);
+        });
+
         /* Запоминаем исходный вид, чтобы из любого положения вернуться */
         var home = { pos: camera.position.clone(), tgt: ctrl.target.clone() };
         var rb = document.createElement('button');
@@ -861,7 +880,7 @@ var Figures = (function () {
           var names = opts.scenarios || gltf.animations.map(function (c) {
             return { clip: c.name, title: c.name };
           });
-          var html = '';
+          var html = '<span class="fig-label">Сценарий</span>';
           names.forEach(function (s, i) {
             html += '<button class="fig-btn' + (i ? '' : ' is-on') +
               '" data-clip="' + s.clip + '" type="button">' + Render.esc(s.title) + '</button>';
