@@ -531,3 +531,12 @@ td:first-child{ font-weight:700; }
 }
 .figure-frame .sf-fix{ fill:#e6ebf1; stroke:#9aa7b6; }
 .figure-frame .sf-fix:hover{ fill:#d3dce6; }
+
+/* Полноэкранный 3D-кадр: кнопки остаются внизу, модель занимает всё остальное.
+   В полноэкранном режиме у элемента нет внешнего фона страницы — задаём свой. */
+.figure-frame:fullscreen{ background:var(--card); border:0; border-radius:0;
+  display:flex; flex-direction:column; justify-content:center;
+  padding:10px 12px; margin:0; }
+.figure-frame:fullscreen .model3d{ flex:0 0 auto; }
+.figure-frame:-webkit-full-screen{ background:var(--card); border:0; border-radius:0;
+  display:flex; flex-direction:column; justify-content:center; padding:10px 12px; }

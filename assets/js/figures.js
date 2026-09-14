@@ -985,6 +985,12 @@ var Figures = (function () {
     return threeReady;
   }
 
+  /* Подсказка по управлению зависит от того, чем читатель управляет:
+     на телефоне нет ни колеса, ни правой кнопки, и старый текст врал. */
+  var M3_HINT = (window.matchMedia && window.matchMedia('(hover: none)').matches)
+    ? 'палец — поворот · два пальца — сдвиг и приближение'
+    : 'перетащить — поворот · правая кнопка — сдвиг · колесо — приближение';
+
   reg.model3d = function (frame, opts) {
     if (!opts || !opts.src) { console.warn('model3d без opts.src'); return; }
 
@@ -997,7 +1003,11 @@ var Figures = (function () {
 
     ensureThree().then(function () {
       var THREE = window.THREE;
-      var w = box.clientWidth || 600, h = Math.round(w * 0.62);
+      /* На телефоне кадр 16:10 делает модель крошечной: ширина 343 px даёт
+         высоту 213 px, и механизм не разглядеть. На узком экране берём почти
+         квадрат, на широком оставляем привычную пропорцию. */
+      function ratio(cw) { return cw < 520 ? 0.95 : 0.62; }
+      var w = box.clientWidth || 600, h = Math.round(w * ratio(w));
 
       var renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -1105,7 +1115,7 @@ var Figures = (function () {
           ctrl.touches.ONE = on ? THREE.TOUCH.PAN : THREE.TOUCH.ROTATE;
           info.textContent = on
             ? 'режим сдвига: перетащите, чтобы подвинуть сцену'
-            : 'перетащить — поворот · двумя пальцами — сдвиг · колесо — приближение';
+            : M3_HINT;
         });
         bar.appendChild(pb);
 
@@ -1142,6 +1152,32 @@ var Figures = (function () {
           renderer.render(scene, camera);
         });
         bar.appendChild(rb);
+
+        /* Во весь экран. В ленте страницы модель всегда мелкая, особенно
+           на телефоне; разворачиваем кадр целиком — вместе с кнопками,
+           иначе в полноэкранном режиме нечем переключать сценарии. */
+        var rfs = frame.requestFullscreen || frame.webkitRequestFullscreen;
+        if (rfs) {
+          var fsb = document.createElement('button');
+          fsb.type = 'button';
+          fsb.className = 'fig-btn';
+          fsb.textContent = 'Во весь экран';
+          fsb.addEventListener('click', function () {
+            if (document.fullscreenElement === frame) {
+              (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+            } else {
+              rfs.call(frame);
+            }
+          });
+          bar.appendChild(fsb);
+          document.addEventListener('fullscreenchange', function () {
+            var on = document.fullscreenElement === frame;
+            fsb.textContent = on ? 'Свернуть' : 'Во весь экран';
+            fsb.classList.toggle('is-on', on);
+            /* Размеры приходят не сразу — даём браузеру разложить кадр. */
+            setTimeout(fit, 60);
+          });
+        }
 
         if (gltf.animations && gltf.animations.length) {
           mixer = new THREE.AnimationMixer(root);
@@ -1191,8 +1227,7 @@ var Figures = (function () {
           info.textContent = label || name || '—';
         });
 
-        info.textContent = opts.hint ||
-          'перетащить — поворот · двумя пальцами — сдвиг · колесо — приближение';
+        info.textContent = opts.hint || M3_HINT;
       }, null, function (err) {
         box.innerHTML = '<div class="model3d-note">Не удалось загрузить модель ' +
           '<code>' + Render.esc(opts.src) + '</code></div>';
@@ -1219,7 +1254,9 @@ var Figures = (function () {
       function fit() {
         var nw = Math.round(box.clientWidth);
         if (nw < 40) return;              /* ещё нет раскладки — ждём */
-        var nh = Math.round(nw * 0.62);
+        var nh = document.fullscreenElement === frame
+          ? Math.max(200, frame.clientHeight - bar.offsetHeight - 26)
+          : Math.round(nw * ratio(nw));
         renderer.setSize(nw, nh);
         camera.aspect = nw / nh;
         camera.updateProjectionMatrix();
