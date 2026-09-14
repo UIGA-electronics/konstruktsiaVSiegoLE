@@ -753,7 +753,14 @@ var Figures = (function () {
 
       var ctrl = new THREE.OrbitControls(camera, renderer.domElement);
       ctrl.enableDamping = true;
-      ctrl.enablePan = false;
+      /* Свободное перемещение по сцене: одним пальцем (или ЛКМ) вращаем,
+         двумя пальцами (ПКМ, Shift+ЛКМ) — двигаем точку обзора.
+         Без этого камера намертво привязана к центру модели. */
+      ctrl.enablePan = true;
+      ctrl.screenSpacePanning = true;
+      ctrl.panSpeed = 0.9;
+      ctrl.zoomSpeed = 0.9;
+      ctrl.rotateSpeed = 0.85;
       /* Чтобы модель отзывалась на вращение и когда постоянный цикл
          отключён (prefers-reduced-motion или схема ушла с экрана). */
       ctrl.addEventListener('change', function () { renderer.render(scene, camera); });
@@ -810,7 +817,43 @@ var Figures = (function () {
         camera.near = r / 100;
         camera.far = r * 40;
         camera.updateProjectionMatrix();
+        ctrl.minDistance = r * 0.08;    /* можно подойти вплотную к узлу */
+        ctrl.maxDistance = r * 6;
+        ctrl.target.set(0, 0, 0);
         ctrl.update();
+
+        /* Правая кнопка и Shift+ЛКМ двигают сцену и без этого, но про них
+           никто не догадается — тем более на телефоне. Явный режим «Сдвиг»
+           переводит обычное перетаскивание и одно касание в перемещение. */
+        var pb = document.createElement('button');
+        pb.type = 'button';
+        pb.className = 'fig-btn';
+        pb.textContent = 'Сдвиг';
+        pb.title = 'Перетаскивание двигает сцену вместо поворота';
+        pb.addEventListener('click', function () {
+          var on = !pb.classList.contains('is-on');
+          pb.classList.toggle('is-on', on);
+          ctrl.mouseButtons.LEFT = on ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
+          ctrl.touches.ONE = on ? THREE.TOUCH.PAN : THREE.TOUCH.ROTATE;
+          info.textContent = on
+            ? 'режим сдвига: перетащите, чтобы подвинуть сцену'
+            : 'перетащить — поворот · двумя пальцами — сдвиг · колесо — приближение';
+        });
+        bar.appendChild(pb);
+
+        /* Запоминаем исходный вид, чтобы из любого положения вернуться */
+        var home = { pos: camera.position.clone(), tgt: ctrl.target.clone() };
+        var rb = document.createElement('button');
+        rb.type = 'button';
+        rb.className = 'fig-btn';
+        rb.textContent = 'Сброс вида';
+        rb.addEventListener('click', function () {
+          camera.position.copy(home.pos);
+          ctrl.target.copy(home.tgt);
+          ctrl.update();
+          renderer.render(scene, camera);
+        });
+        bar.appendChild(rb);
 
         if (gltf.animations && gltf.animations.length) {
           mixer = new THREE.AnimationMixer(root);
@@ -860,7 +903,8 @@ var Figures = (function () {
           info.textContent = label || name || '—';
         });
 
-        info.textContent = opts.hint || 'Вращайте модель, нажимайте на детали';
+        info.textContent = opts.hint ||
+          'перетащить — поворот · двумя пальцами — сдвиг · колесо — приближение';
       }, null, function (err) {
         box.innerHTML = '<div class="model3d-note">Не удалось загрузить модель ' +
           '<code>' + Render.esc(opts.src) + '</code></div>';
