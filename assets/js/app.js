@@ -23,7 +23,8 @@
     check:  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5"/></svg>',
     clock:  '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
     book:   '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/></svg>',
-    spark:  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2 6.5L20.5 12 14 14l-2 6.5L10 14 3.5 12 10 9.5z"/></svg>'
+    spark:  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2 6.5L20.5 12 14 14l-2 6.5L10 14 3.5 12 10 9.5z"/></svg>',
+    up:     '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg>'
   };
 
   /* ── Утилиты ───────────────────────────────────────────── */
@@ -151,6 +152,23 @@
   window.addEventListener('scroll', updateProgress, { passive: true });
   window.addEventListener('resize', updateProgress);
 
+  /* «Наверх». Раздел 6.2 читается двенадцать минут, и с телефона возврат
+     к оглавлению — это десятки свайпов. Кнопка появляется, только когда
+     уходить наверх действительно далеко. */
+  var toTop = el('button', 'to-top', ICON.up);
+  toTop.type = 'button';
+  toTop.setAttribute('aria-label', 'Вернуться к началу раздела');
+  toTop.hidden = true;
+  toTop.addEventListener('click', function () {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+  document.body.appendChild(toTop);
+
+  function updateToTop() {
+    toTop.hidden = window.scrollY < 900;
+  }
+  window.addEventListener('scroll', updateToTop, { passive: true });
+
   /* ── Экран: главная ────────────────────────────────────── */
 
   function viewHome() {
@@ -183,12 +201,17 @@
       wrap.appendChild(cta);
 
       var box = el('div', 'screens');
+      /* Суммарное время по теме: читателю с телефона полезно знать заранее,
+         на что он подписывается, — за один присест или в несколько. */
+      var total = topic.screens.reduce(function (a, s) { return a + (s.min || 0); }, 0);
       var html = '<div class="screens-h"><b>Разделы темы ' + topic.num + '</b>' +
-        '<span>' + done + ' / ' + topic.screens.length + '</span></div>';
+        '<span>' + done + ' / ' + topic.screens.length +
+        (total ? ' · ' + total + '\u00a0мин' : '') + '</span></div>';
       topic.screens.forEach(function (s, i) {
         html += '<a href="#' + s.id + '"' + (isRead(s.id) ? ' class="is-read"' : '') + '>' +
           '<span class="n">' + (i + 1) + '</span>' +
           '<span style="flex:1;min-width:0">' + (s.short || s.title) + '</span>' +
+          (s.min ? '<span class="mins">' + s.min + '\u00a0мин</span>' : '') +
           '<span class="tick">' + ICON.check + '</span></a>';
       });
       box.innerHTML = html;
@@ -307,6 +330,7 @@
     Figures.mountAll(main);
     window.scrollTo(0, 0);
     updateProgress();
+    updateToTop();
   }
 
   function fail(id, err) {
