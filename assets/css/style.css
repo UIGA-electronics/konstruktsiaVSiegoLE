@@ -395,6 +395,12 @@ td:first-child{ font-weight:700; }
   font-size:12px; font-weight:700; }
 .figure-frame text.t-sm{ font-size:10.5px; font-weight:600; fill:var(--ink-3); }
 .figure-frame text.t-mono{ font-family:var(--mono); font-size:11px; font-weight:500; }
+/* Кликабельные поверхности на схеме «вид сверху» */
+.figure-frame .sf{ fill:#cfdce9; stroke:#7e97b3; stroke-width:1.2; cursor:pointer;
+  transition:fill .15s; }
+.figure-frame .sf:hover{ fill:#a9c6e4; }
+.figure-frame .sf.is-on{ fill:var(--blue); stroke:var(--navy); }
+.fig-readout b{ font-family:var(--ui); color:var(--ink); font-weight:800; }
 
 /* Просмотр 3D-модели */
 .model3d{ position:relative; border-radius:var(--r-sm); overflow:hidden;
@@ -523,3 +529,5 @@ td:first-child{ font-weight:700; }
   .pager{ flex-direction:row; }
   .pager a{ flex:1; }
 }
+.figure-frame .sf-fix{ fill:#e6ebf1; stroke:#9aa7b6; }
+.figure-frame .sf-fix:hover{ fill:#d3dce6; }

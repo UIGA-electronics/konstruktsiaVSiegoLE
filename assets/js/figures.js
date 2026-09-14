@@ -105,6 +105,275 @@ var Figures = (function () {
   };
 
   /* ═══════════════════════════════════════════════════════
+     1б. Поверхности управления — вид сверху, по клику подпись
+     ═══════════════════════════════════════════════════════ */
+  reg.surfaces = function (frame) {
+    /* Вид сверху, половина крыла зеркалится. group: 0 — основная
+       система управления, 1 — вспомогательная. */
+    /* Вид сверху, нос слева. Крыло и стабилизатор рисуются в верхней
+       половине и зеркалятся вниз. Киль в проекции сверху не виден,
+       поэтому он «отогнут» вверх — обычная условность для таких схем. */
+    var PARTS = [
+      { id: 'ail',  n: 'Элерон',
+        t: 'Основная система. Управление по крену.',
+        d: 'M243 49L256 34L261 39L248 54Z', m: 1 },
+      { id: 'flap', n: 'Закрылок',
+        t: 'Вспомогательная. Увеличивает подъёмную силу на взлёте и посадке.',
+        d: 'M213 85L241 51L246 56L218 90Z', m: 1 },
+      { id: 'slat', n: 'Предкрылок',
+        t: 'Вспомогательная. Увеличивает критический угол атаки, не даёт потоку сорваться.',
+        d: 'M189 61L236 30L240 36L193 67Z', m: 1 },
+      { id: 'krug', n: 'Щиток Крюгера',
+        t: 'Вспомогательная. Пластинчатый предкрылок в корневой части крыла.',
+        d: 'M150 84L187 62L191 68L154 89Z', m: 1 },
+      { id: 'spl',  n: 'Спойлер (интерцептор)',
+        t: 'Вспомогательная. Гасит подъёмную силу, тормозит, помогает элеронам по крену.',
+        d: 'M207 77L219 63L225 67L213 81ZM222 61L234 47L240 51L228 65Z', m: 1 },
+      { id: 'brk',  n: 'Тормозной щиток',
+        t: 'Вспомогательная. Работает только на земле: сокращает пробег после посадки.',
+        d: 'M193 81L203 69L209 73L199 85Z', m: 1 },
+      { id: 'elev', n: 'Руль высоты',
+        t: 'Основная система. Управление по тангажу.',
+        d: 'M317 89L352 62L357 67L322 94Z', m: 1 },
+      { id: 'rud',  n: 'Руль направления',
+        t: 'Основная система. Управление по курсу.',
+        d: 'M330 52L356 26L362 31L336 57Z', m: 0 }
+    ];
+
+    /* Неподвижные части — тоже кликабельны, но отдельным классом */
+    var FIXED = [
+      { id: 'stab', n: 'Стабилизатор',
+        t: 'Триммируемый горизонтальный стабилизатор: продольная балансировка самолёта.',
+        d: 'M302 86L340 56L352 61L316 89Z', m: 1 },
+      { id: 'fin',  n: 'Киль',
+        t: 'Неподвижная часть вертикального оперения. Здесь показан отогнутым вверх.',
+        d: 'M310 55L348 22L356 26L330 53Z', m: 0 }
+    ];
+
+    function mirror(d) {
+      return '<g transform="translate(0 192) scale(1 -1)">' + d + '</g>';
+    }
+
+    var inner =
+      /* фюзеляж */
+      '<path class="f-body" fill="#eceff2" d="M28 96Q36 84 80 84H332Q352 87 362 96' +
+      'Q352 105 332 108H80Q36 108 28 96Z"/>' +
+      /* крыло */
+      '<path class="f-body" fill="#f4f6f8" d="M146 84L236 30L256 34L212 84Z"/>' +
+      mirror('<path class="f-body" fill="#f4f6f8" d="M146 84L236 30L256 34L212 84Z"/>') +
+      /* линия сгиба киля */
+      '<path class="f-dim" stroke-dasharray="4 4" d="M306 84h56"/>' +
+      '<path class="f-dim" stroke-dasharray="5 5" d="M24 96h344"/>';
+
+    FIXED.concat(PARTS).forEach(function (p) {
+      var cls = PARTS.indexOf(p) >= 0 ? 'sf' : 'sf sf-fix';
+      var g = '<path class="' + cls + '" data-p="' + p.id + '" d="' + p.d + '"/>';
+      inner += g + (p.m ? mirror(g) : '');
+    });
+    PARTS = FIXED.concat(PARTS);
+
+    inner += '<text class="t-sm" x="366" y="14" text-anchor="end">' +
+      'киль отогнут вверх</text>' +
+      '<text class="t-sm" x="34" y="126">вид сверху, нос слева</text>';
+
+    frame.innerHTML = svg('0 0 380 192', inner);
+    controls(frame,
+      '<span class="fig-label">Нажмите на поверхность</span>' +
+      '<span class="fig-readout" id="sf-out">—</span>');
+
+    var out = frame.querySelector('#sf-out');
+    frame.querySelectorAll('.sf').forEach(function (el) {
+      el.addEventListener('click', function () {
+        var p = null;
+        PARTS.forEach(function (x) { if (x.id === el.dataset.p) p = x; });
+        if (!p) return;
+        frame.querySelectorAll('.sf').forEach(function (x) {
+          x.classList.toggle('is-on', x.dataset.p === p.id);
+        });
+        out.innerHTML = '<b>' + p.n + '</b> — ' + p.t;
+      });
+    });
+  };
+
+  /* ═══════════════════════════════════════════════════════
+     1в. Три вида проводки в разрезе
+     ═══════════════════════════════════════════════════════ */
+  reg.wiring = function (frame) {
+    var VIEWS = {
+      rod: function () {
+        var s =
+          '<path class="f-metal" fill="#dfe3e8" d="M96 86h188v24H96z"/>' +
+          '<text class="t-sm" x="190" y="80" text-anchor="middle">труба тяги</text>' +
+          /* регулируемый ушковый наконечник слева */
+          '<circle class="f-metal" cx="46" cy="98" r="18" fill="#d5dae0"/>' +
+          '<circle class="f-body" cx="46" cy="98" r="8" fill="#fff"/>' +
+          '<path class="f-metal" fill="#cfd5dc" d="M64 92h32v12H64z"/>' +
+          '<path class="f-ink" stroke-width="2" d="M70 92v12M76 92v12M82 92v12"/>' +
+          '<text class="t-sm" x="46" y="132" text-anchor="middle">ушковый</text>' +
+          '<text class="t-sm" x="46" y="144" text-anchor="middle">наконечник</text>' +
+          '<path class="f-metal" fill="#c8ced5" d="M88 86h10v24H88z"/>' +
+          '<text class="t-sm" x="104" y="62">зажимная гайка</text>' +
+          '<path class="f-dim" d="M100 66v16"/>' +
+          /* контрольное отверстие */
+          '<circle class="f-red" fill="#fff" cx="112" cy="98" r="4"/>' +
+          '<path class="f-red" d="M112 122v-18"/>' +
+          '<text class="t-sm" x="112" y="136" text-anchor="middle">контрольное</text>' +
+          '<text class="t-sm" x="112" y="148" text-anchor="middle">отверстие</text>' +
+          /* вильчатый наконечник справа */
+          '<path class="f-metal" fill="#d5dae0" d="M284 88h22v8h-22zM284 100h22v8h-22z"/>' +
+          '<circle class="f-metal" cx="316" cy="98" r="14" fill="#d5dae0"/>' +
+          '<circle class="f-body" cx="316" cy="98" r="6" fill="#fff"/>' +
+          '<text class="t-sm" x="316" y="132" text-anchor="middle">вильчатый</text>';
+        return s;
+      },
+      cable: function () {
+        /* Сечение 7x19: семь прядей, в каждой 19 проволок */
+        var s = '<circle class="f-dim" cx="110" cy="98" r="58" fill="#f4f6f8"/>';
+        var R = 36, r19 = 18;
+        var centres = [[0, 0]];
+        for (var i = 0; i < 6; i++) {
+          centres.push([R * Math.cos(i * Math.PI / 3), R * Math.sin(i * Math.PI / 3)]);
+        }
+        centres.forEach(function (c) {
+          s += '<circle class="f-metal" fill="#dfe4ea" cx="' + (110 + c[0]) +
+            '" cy="' + (98 + c[1]) + '" r="' + r19 + '"/>';
+          /* 19 проволок: центральная + 6 + 12 */
+          var rings = [[0, 0]];
+          for (var k = 0; k < 6; k++) {
+            rings.push([5.6 * Math.cos(k * Math.PI / 3), 5.6 * Math.sin(k * Math.PI / 3)]);
+          }
+          for (var k2 = 0; k2 < 12; k2++) {
+            rings.push([11.4 * Math.cos(k2 * Math.PI / 6), 11.4 * Math.sin(k2 * Math.PI / 6)]);
+          }
+          rings.forEach(function (w) {
+            s += '<circle fill="#aeb7c1" stroke="#8d97a3" stroke-width=".6" cx="' +
+              (110 + c[0] + w[0]) + '" cy="' + (98 + c[1] + w[1]) + '" r="2.5"/>';
+          });
+        });
+        s += '<text class="t-sm" x="24" y="178">' +
+          'сечение троса 7×19: 7 прядей по 19 проволок</text>' +
+          /* тандер справа */
+          '<path class="f-ink" stroke-width="3" d="M212 98h36M318 98h36"/>' +
+          '<path class="f-metal" fill="#d5dae0" d="M248 88h70v20h-70z"/>' +
+          '<path class="f-ink" stroke-width="1.6" d="M258 88v20M268 88v20M278 88v20' +
+          'M288 88v20M298 88v20M308 88v20"/>' +
+          '<text class="t-sm" x="283" y="78" text-anchor="middle">тандер</text>' +
+          '<text class="t-sm" x="283" y="130" text-anchor="middle">' +
+          'винтовая стяжная муфта:</text>' +
+          '<text class="t-sm" x="283" y="142" text-anchor="middle">' +
+          'натяжение и компенсация вытяжки</text>';
+        return s;
+      },
+      bowden: function () {
+        return '<path class="f-metal" fill="#dfe3e8" ' +
+          'd="M40 72q90 0 130 40t170 40v18q-140 0-180-40T40 90z"/>' +
+          '<path class="f-blue" stroke-width="4" ' +
+          'd="M52 81q84 0 124 40t164 40"/>' +
+          '<text class="t-sm" x="70" y="62">жёсткая оболочка</text>' +
+          '<text class="t-sm" x="196" y="172" text-anchor="middle">' +
+          'трос ходит внутри вперёд-назад без бокового смещения,</text>' +
+          '<text class="t-sm" x="196" y="184" text-anchor="middle">' +
+          'а оболочку можно плавно изогнуть вокруг препятствия</text>' +
+          '<circle class="f-blue-fill" cx="340" cy="161" r="5"/>';
+      }
+    };
+
+    frame.innerHTML = svg('0 0 400 196', VIEWS.rod());
+    controls(frame,
+      '<button class="fig-btn is-on" data-w="rod" type="button">Жёсткая тяга</button>' +
+      '<button class="fig-btn" data-w="cable" type="button">Трос 7×19</button>' +
+      '<button class="fig-btn" data-w="bowden" type="button">Боуден</button>' +
+      '<span class="fig-readout" id="wr-out">жёсткая: передаёт «тяни-толкай»</span>');
+
+    var NOTE = {
+      rod: 'жёсткая: передаёт «тяни-толкай», основная в авиации',
+      cable: 'гибкая: только на растяжение, нужны две ветви и натяжение',
+      bowden: 'смешанная: гибкость троса при жёсткости оболочки'
+    };
+    var out = frame.querySelector('#wr-out');
+    frame.querySelectorAll('[data-w]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        frame.querySelectorAll('[data-w]').forEach(function (x) { x.classList.remove('is-on'); });
+        b.classList.add('is-on');
+        frame.querySelector('.figure-svg svg').innerHTML = VIEWS[b.dataset.w]();
+        out.textContent = NOTE[b.dataset.w];
+      });
+    });
+  };
+
+  /* ═══════════════════════════════════════════════════════
+     1г. Три способа стопорения рулей
+     ═══════════════════════════════════════════════════════ */
+  reg.locks = function (frame) {
+    var VIEWS = {
+      clamp:
+        '<path class="f-body" fill="#eef0f3" d="M30 96h250l40 14-40 14H30z"/>' +
+        '<path class="f-dim" d="M232 96v28"/>' +
+        '<text class="t-sm" x="150" y="90">крыло</text>' +
+        '<text class="t-sm" x="300" y="80">элерон</text>' +
+        '<path fill="#c0392b" stroke="#a92920" stroke-width="2" ' +
+        'd="M244 84h16v52h-16zM236 84h32v10h-32zM236 126h32v10h-32z"/>' +
+        '<path class="f-red" stroke-width="2.5" d="M252 136v26"/>' +
+        '<path fill="#c0392b" stroke="none" d="M252 162l34 8-34 8z"/>' +
+        '<text class="t-sm" x="292" y="176">вымпел</text>' +
+        '<text class="t-sm" x="24" y="40">струбцина ставится на саму поверхность</text>' +
+        '<text class="t-sm" x="24" y="54">и окрашена в красный — её трудно не заметить</text>',
+      gust:
+        '<path class="f-body" fill="#f2f4f6" d="M40 52h320v120H40z"/>' +
+        '<text class="t-sm" x="200" y="44" text-anchor="middle">кабина, вид спереди</text>' +
+        '<circle class="f-metal" cx="120" cy="150" r="10"/>' +
+        '<circle class="f-metal" cx="280" cy="150" r="10"/>' +
+        '<path class="f-ink" stroke-width="6" d="M120 150v-46M280 150v-46"/>' +
+        '<circle class="f-ink" cx="120" cy="98" r="9" fill="#fff"/>' +
+        '<circle class="f-ink" cx="280" cy="98" r="9" fill="#fff"/>' +
+        '<text class="t-sm" x="120" y="168" text-anchor="middle">ручка</text>' +
+        '<text class="t-sm" x="280" y="168" text-anchor="middle">ручка</text>' +
+        '<path stroke="#c0392b" stroke-width="9" stroke-linecap="round" d="M112 108l176-18"/>' +
+        '<text class="t-sm" x="200" y="70" text-anchor="middle">' +
+        'упор Gust Lock фиксирует рычаги,</text>' +
+        '<text class="t-sm" x="200" y="84" text-anchor="middle">' +
+        'а через жёсткую проводку — и сами поверхности</text>',
+      electro:
+        '<path class="f-body" fill="#eef0f3" d="M250 40h44v130h-44z"/>' +
+        '<text class="t-sm" x="272" y="32" text-anchor="middle">руль</text>' +
+        '<path class="f-dim" d="M250 40v130"/>' +
+        '<path class="f-body" fill="#e3e7ec" d="M212 88h38v34h-38z"/>' +
+        '<text class="t-sm" x="196" y="82" text-anchor="end">нервюра</text>' +
+        '<circle class="f-metal" cx="262" cy="105" r="9" fill="#fff"/>' +
+        '<path class="f-ink" stroke-width="7" d="M180 105h74"/>' +
+        '<path class="f-body" fill="#dfe3e8" d="M132 90h50v30h-50z"/>' +
+        '<text class="t-sm" x="157" y="136" text-anchor="middle">электромеханизм</text>' +
+        '<path class="f-blue" stroke-width="2.5" stroke-dasharray="5 4" d="M132 105H60V60"/>' +
+        '<path class="f-body" fill="#fff" d="M30 36h60v24H30z"/>' +
+        '<text class="t-sm" x="60" y="52" text-anchor="middle">панель в кабине</text>' +
+        '<text class="t-sm" x="200" y="176" text-anchor="middle">' +
+        'стопор заходит в отверстие нервюры по команде пилота</text>'
+    };
+
+    frame.innerHTML = svg('0 0 400 190', VIEWS.clamp);
+    controls(frame,
+      '<button class="fig-btn is-on" data-l="clamp" type="button">Струбцина</button>' +
+      '<button class="fig-btn" data-l="gust" type="button">Gust Lock</button>' +
+      '<button class="fig-btn" data-l="electro" type="button">Электромеханическое</button>' +
+      '<span class="fig-readout" id="lk-out">лёгкие ВС · ставит техник после полёта</span>');
+
+    var NOTE = {
+      clamp: 'лёгкие ВС · ставит техник после полёта, снимает перед полётом',
+      gust: 'лёгкие ВС · ставит экипаж в кабине, видно с места пилота',
+      electro: 'магистральные ВС · положение близко к крайнему — против заклинивания'
+    };
+    var out = frame.querySelector('#lk-out');
+    frame.querySelectorAll('[data-l]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        frame.querySelectorAll('[data-l]').forEach(function (x) { x.classList.remove('is-on'); });
+        b.classList.add('is-on');
+        frame.querySelector('.figure-svg svg').innerHTML = VIEWS[b.dataset.l];
+        out.textContent = NOTE[b.dataset.l];
+      });
+    });
+  };
+
+  /* ═══════════════════════════════════════════════════════
      2. Прямое механическое управление (DA 40 NG)
      ═══════════════════════════════════════════════════════ */
   reg.direct = function (frame) {
