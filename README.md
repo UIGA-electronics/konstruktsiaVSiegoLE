@@ -121,17 +121,19 @@ python tools/make_qr.py https://uiga-electronics.github.io/konstruktsiaVSiegoLE/
 
 Репозиторий: `UIGA-electronics/konstruktsiaVSiegoLE`.
 
+Remote уже настроен, ветка `main`, история выровнена по `origin/main`.
+Для отправки достаточно:
+
 ```bash
-git remote add origin https://github.com/UIGA-electronics/konstruktsiaVSiegoLE.git
-git fetch origin
-git rebase origin/main
 git push -u origin main
 ```
 
+При первом пуше GitHub попросит авторизоваться — откроется окно входа
+или запрос логина и токена.
+
 Затем в репозитории: **Settings → Pages → Source: Deploy from a branch →
-Branch: `main`, папка `/ (root)` → Save**. Репозиторий приватный — для работы
-Pages его нужно сделать публичным (**Settings → General → Danger Zone →
-Change visibility**), иначе страница будет доступна только владельцу.
+Branch: `main`, папка `/ (root)` → Save**. Через минуту-две сайт будет
+по адресу <https://uiga-electronics.github.io/konstruktsiaVSiegoLE/>.
 
 Файл `.nojekyll` в корне уже лежит — он нужен, чтобы GitHub Pages отдавал
 файлы как есть.
