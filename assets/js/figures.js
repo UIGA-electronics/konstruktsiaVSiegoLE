@@ -687,6 +687,168 @@ var Figures = (function () {
   };
 
   /* ═══════════════════════════════════════════════════════
+     7. Просмотр 3D-модели (.glb) — Three.js подгружается лениво,
+        только если на странице реально есть такая схема.
+     ═══════════════════════════════════════════════════════ */
+
+  var THREE_BASE = 'https://cdn.jsdelivr.net/npm/three@0.128.0/';
+  var threeReady = null;
+
+  function loadScript(src) {
+    return new Promise(function (res, rej) {
+      var s = document.createElement('script');
+      s.src = src;
+      s.onload = res;
+      s.onerror = function () { rej(new Error('не загрузился ' + src)); };
+      document.head.appendChild(s);
+    });
+  }
+
+  function ensureThree() {
+    if (threeReady) return threeReady;
+    threeReady = loadScript(THREE_BASE + 'build/three.min.js')
+      .then(function () {
+        return Promise.all([
+          loadScript(THREE_BASE + 'examples/js/loaders/GLTFLoader.js'),
+          loadScript(THREE_BASE + 'examples/js/controls/OrbitControls.js')
+        ]);
+      });
+    return threeReady;
+  }
+
+  reg.model3d = function (frame, opts) {
+    if (!opts || !opts.src) { console.warn('model3d без opts.src'); return; }
+
+    var box = document.createElement('div');
+    box.className = 'model3d';
+    box.innerHTML = '<div class="model3d-note">Загрузка модели…</div>';
+    frame.appendChild(box);
+
+    var bar = controls(frame, '<span class="fig-label">Сценарий</span>' +
+      '<span class="fig-readout" id="m3-info">—</span>');
+
+    ensureThree().then(function () {
+      var THREE = window.THREE;
+      var w = box.clientWidth || 600, h = Math.round(w * 0.62);
+
+      var renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      renderer.setSize(w, h);
+      renderer.outputEncoding = THREE.sRGBEncoding;
+
+      var scene = new THREE.Scene();
+      var camera = new THREE.PerspectiveCamera(42, w / h, 0.01, 200);
+
+      /* Свет ставит сайт — модель приходит без запечённого освещения */
+      scene.add(new THREE.HemisphereLight(0xffffff, 0xb8bcc2, 1.1));
+      var key = new THREE.DirectionalLight(0xffffff, 1.5);
+      key.position.set(3, 5, 4);
+      scene.add(key);
+      var fill = new THREE.DirectionalLight(0xffffff, 0.5);
+      fill.position.set(-4, 2, -3);
+      scene.add(fill);
+
+      box.textContent = '';
+      box.appendChild(renderer.domElement);
+
+      var ctrl = new THREE.OrbitControls(camera, renderer.domElement);
+      ctrl.enableDamping = true;
+      ctrl.enablePan = false;
+      /* Чтобы модель отзывалась на вращение и когда постоянный цикл
+         отключён (prefers-reduced-motion или схема ушла с экрана). */
+      ctrl.addEventListener('change', function () { renderer.render(scene, camera); });
+
+      var mixer = null, clips = {}, current = null;
+      var info = frame.querySelector('#m3-info');
+
+      new THREE.GLTFLoader().load(opts.src, function (gltf) {
+        var root = gltf.scene;
+        scene.add(root);
+
+        /* Кадрируем модель: камера сама встаёт так, чтобы она влезла целиком */
+        var bb = new THREE.Box3().setFromObject(root);
+        var size = bb.getSize(new THREE.Vector3());
+        var mid = bb.getCenter(new THREE.Vector3());
+        var r = Math.max(size.x, size.y, size.z) || 1;
+        root.position.sub(mid);
+        camera.position.set(r * 1.2, r * 0.7, r * 1.6);
+        camera.near = r / 100;
+        camera.far = r * 40;
+        camera.updateProjectionMatrix();
+        ctrl.update();
+
+        if (gltf.animations && gltf.animations.length) {
+          mixer = new THREE.AnimationMixer(root);
+          gltf.animations.forEach(function (c) { clips[c.name] = c; });
+          var names = opts.scenarios || gltf.animations.map(function (c) {
+            return { clip: c.name, title: c.name };
+          });
+          var html = '';
+          names.forEach(function (s, i) {
+            html += '<button class="fig-btn' + (i ? '' : ' is-on') +
+              '" data-clip="' + s.clip + '" type="button">' + Render.esc(s.title) + '</button>';
+          });
+          bar.insertAdjacentHTML('afterbegin', html);
+          bar.querySelectorAll('[data-clip]').forEach(function (b) {
+            b.addEventListener('click', function () {
+              bar.querySelectorAll('[data-clip]').forEach(function (x) {
+                x.classList.remove('is-on');
+              });
+              b.classList.add('is-on');
+              play(b.dataset.clip);
+            });
+          });
+          play(names[0].clip);
+        }
+
+        /* Клик по узлу — подпись из opts.labels по имени меша */
+        var ray = new THREE.Raycaster(), pt = new THREE.Vector2();
+        renderer.domElement.addEventListener('click', function (e) {
+          var b = renderer.domElement.getBoundingClientRect();
+          pt.x = ((e.clientX - b.left) / b.width) * 2 - 1;
+          pt.y = -((e.clientY - b.top) / b.height) * 2 + 1;
+          ray.setFromCamera(pt, camera);
+          var hit = ray.intersectObject(root, true)[0];
+          if (!hit) return;
+          var name = hit.object.name;
+          info.textContent = (opts.labels && opts.labels[name]) || name || '—';
+        });
+
+        info.textContent = opts.hint || 'Вращайте модель, нажимайте на детали';
+      }, null, function (err) {
+        box.innerHTML = '<div class="model3d-note">Не удалось загрузить модель ' +
+          '<code>' + Render.esc(opts.src) + '</code></div>';
+        console.error(err);
+      });
+
+      function play(name) {
+        if (!mixer || !clips[name]) return;
+        if (current) current.fadeOut(0.25);
+        current = mixer.clipAction(clips[name]);
+        current.reset().fadeIn(0.25).play();
+      }
+
+      var clock = new THREE.Clock();
+      loop(frame, function () {
+        if (mixer) mixer.update(clock.getDelta());
+        ctrl.update();
+        renderer.render(scene, camera);
+      });
+
+      window.addEventListener('resize', function () {
+        var nw = box.clientWidth || w;
+        renderer.setSize(nw, Math.round(nw * 0.62));
+        camera.aspect = 1 / 0.62;
+        camera.updateProjectionMatrix();
+      });
+    }).catch(function (e) {
+      box.innerHTML = '<div class="model3d-note">Не удалось загрузить Three.js. ' +
+        'Проверьте подключение к сети.</div>';
+      console.error(e);
+    });
+  };
+
+  /* ═══════════════════════════════════════════════════════
      Монтаж
      ═══════════════════════════════════════════════════════ */
   function mountAll(root) {
