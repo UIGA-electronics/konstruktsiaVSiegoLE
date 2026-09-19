@@ -9,7 +9,8 @@
         "http.server",
         "5178"
       ],
-      "port": 5178
+      "port": 5178,
+      "autoPort": false
     }
   ]
 }
