@@ -4,8 +4,12 @@
     {
       "name": "servo-lab",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "5177"],
-      "port": 5177
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "5178"
+      ],
+      "port": 5178
     }
   ]
 }

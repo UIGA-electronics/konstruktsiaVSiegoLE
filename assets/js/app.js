@@ -65,10 +65,15 @@
     } catch (e) { /* приватный режим — просто не сохраняем */ }
   }
 
+  /* Главная кнопка ведёт в ПЕРВУЮ готовую тему. Раньше побеждала последняя,
+     и с появлением «Практикума» герой на главной стал звать в 3D-разбор
+     вместо главы 6. */
   function readyTopic() {
     var found = null;
     MENU.parts.forEach(function (p) {
-      p.topics.forEach(function (t) { if (t.status === 'ready') found = t; });
+      p.topics.forEach(function (t) {
+        if (t.status === 'ready' && !found) found = t;
+      });
     });
     return found;
   }
@@ -354,6 +359,14 @@
     var topic = findTopic(id);
     if (topic && topic.status !== 'ready') {
       show(viewSoon(topic), topic.title + ' — КиЛЭ ВС');
+      return;
+    }
+    /* Адрес темы (#t06, #t3d) — под этим кодом тема напечатана в методичке
+       целиком. Своей страницы у темы нет, поэтому отправляем на первый
+       экран. Без этого QR на всю главу вёл в «страница не найдена».
+       replace, а не присваивание: иначе кнопка «назад» упирается в редирект. */
+    if (topic && topic.screens && topic.screens.length) {
+      location.replace('#' + topic.screens[0].id);
       return;
     }
 
