@@ -1173,9 +1173,18 @@ var Figures = (function () {
           meshes.push(o);
         });
 
+        /* Трассы, которые в общем виде только мешают: тонкие шланги и провода
+           через всю кабину. Прячем по умолчанию, показываем вместе с системой. */
+        var quietRe = opts.quiet ? new RegExp(opts.quiet, 'i') : null;
+        function isQuiet(o) {
+          if (!quietRe || !o.material || Array.isArray(o.material)) return false;
+          return quietRe.test(o.material.__baseName || o.material.name || '');
+        }
+
         var shells = [], parts = [];
         meshes.forEach(function (o) {
           (isShellMesh(o) ? shells : parts).push(o);
+          o.__quiet = isQuiet(o);
           o.__op = o.material && o.material.opacity != null ? o.material.opacity : 1;
           o.__tr = !!(o.material && o.material.transparent);
           o.__em = o.material && o.material.emissive ? o.material.emissive.getHex() : null;
@@ -1232,6 +1241,12 @@ var Figures = (function () {
         function applySystem(re) {
           parts.forEach(function (o) {
             var on = !re || re.test(chainName(o));
+            /* Тихая трасса видна только когда выбрана её система. */
+            if (o.__quiet) {
+              o.visible = !!(re && on);
+              o.__dim = !o.visible;
+              if (!o.visible) return;
+            }
             o.__dim = !on;
             if (!o.material) return;
             if (on) {
@@ -1281,6 +1296,8 @@ var Figures = (function () {
             });
           });
         }
+
+        applySystem(null);
 
         /* Кадрируем модель: камера сама встаёт так, чтобы она влезла целиком */
         var bb = new THREE.Box3().setFromObject(root);
@@ -1398,6 +1415,14 @@ var Figures = (function () {
                 x.classList.remove('is-on');
               });
               b.classList.add('is-on');
+              /* Механизм внутри: если обшивка ещё непрозрачная, убавляем её,
+                 иначе сценарий не видно. Дальше читатель волен вернуть. */
+              if (level === 0 && shells.length) {
+                level = 2;
+                sb.textContent = LEVELS[level].t;
+                sb.classList.remove('is-on');
+                applyShell();
+              }
               play(b.dataset.clip);
             });
           });
@@ -1449,6 +1474,11 @@ var Figures = (function () {
         if (!mixer || !clips[name]) return;
         if (current) current.fadeOut(0.25);
         current = mixer.clipAction(clips[name]);
+        /* Туда и обратно. Обычное зацикливание отыгрывает клип вперёд
+           и прыжком возвращает в начало: закрылки выпускаются плавно,
+           а убираются мгновенно — движение выглядит рваным. */
+        current.setLoop(THREE.LoopPingPong, Infinity);
+        current.clampWhenFinished = false;
         current.reset().fadeIn(0.25).play();
       }
 
