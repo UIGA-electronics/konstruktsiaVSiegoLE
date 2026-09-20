@@ -2,7 +2,7 @@
    Стратегия «сеть впереди, кеш в запасе» — чтобы правки сайта
    доезжали до читателя сразу, а без связи страница всё равно открылась. */
 
-var CACHE = 'kioe-la-v1';
+var CACHE = 'kioe-la-v2';
 var CORE = [
   './',
   './index.html',
@@ -45,7 +45,12 @@ self.addEventListener('fetch', function (e) {
       return res;
     }).catch(function () {
       return caches.match(req).then(function (hit) {
-        return hit || caches.match('./index.html');
+        if (hit) return hit;
+        /* Запасная страница — только для переходов по адресу. Отдать HTML
+           вместо скрипта или JSON нельзя: страница падает с «Unexpected
+           token '<'», и это держится, пока воркер не снесут вручную. */
+        if (req.mode === 'navigate') return caches.match('./index.html');
+        return Response.error();
       });
     })
   );

@@ -979,7 +979,8 @@ var Figures = (function () {
       .then(function () {
         return Promise.all([
           loadScript(THREE_BASE + 'examples/js/loaders/GLTFLoader.js'),
-          loadScript(THREE_BASE + 'examples/js/controls/OrbitControls.js')
+          loadScript(THREE_BASE + 'examples/js/controls/OrbitControls.js'),
+          loadScript(THREE_BASE + 'examples/js/environments/RoomEnvironment.js')
         ]);
       });
     return threeReady;
@@ -1016,16 +1017,30 @@ var Figures = (function () {
       renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
       renderer.setSize(w, h);
       renderer.outputEncoding = THREE.sRGBEncoding;
+      /* Самолёт белый, и при линейной кривой светлые борта выбивает в лист
+         бумаги — форма пропадает. ACES держит светлые тона в тоне. */
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.05;
 
       var scene = new THREE.Scene();
       var camera = new THREE.PerspectiveCamera(42, w / h, 0.01, 200);
 
+      /* Окружение для отражений. Без него металлу и стеклу отражать нечего:
+         полированный шток выглядит серой краской, а фонарь — мутной плёнкой.
+         Карта считается один раз и затем отдаётся сцене. */
+      if (THREE.RoomEnvironment && THREE.PMREMGenerator) {
+        var pmrem = new THREE.PMREMGenerator(renderer);
+        pmrem.compileEquirectangularShader();
+        scene.environment = pmrem.fromScene(new THREE.RoomEnvironment(), 0.04).texture;
+        pmrem.dispose();
+      }
+
       /* Свет ставит сайт — модель приходит без запечённого освещения */
-      scene.add(new THREE.HemisphereLight(0xffffff, 0xb8bcc2, 1.1));
-      var key = new THREE.DirectionalLight(0xffffff, 1.5);
+      scene.add(new THREE.HemisphereLight(0xffffff, 0xb8bcc2, 0.55));
+      var key = new THREE.DirectionalLight(0xffffff, 1.15);
       key.position.set(3, 5, 4);
       scene.add(key);
-      var fill = new THREE.DirectionalLight(0xffffff, 0.5);
+      var fill = new THREE.DirectionalLight(0xffffff, 0.35);
       fill.position.set(-4, 2, -3);
       scene.add(fill);
 
@@ -1123,6 +1138,20 @@ var Figures = (function () {
           }
         }
         return isShell(o);
+      }
+
+      /* Процент загрузки. Сервер не всегда отдаёт Content-Length (сжатие
+         на лету), поэтому при неизвестном размере показываем мегабайты. */
+      var noteEl = box.querySelector('.model3d-note');
+      function onProgress(e) {
+        if (!noteEl || !noteEl.isConnected) return;
+        if (e.lengthComputable && e.total) {
+          noteEl.textContent = 'Загрузка модели… ' +
+            Math.round((e.loaded / e.total) * 100) + '\u00a0%';
+        } else {
+          noteEl.textContent = 'Загрузка модели… ' +
+            (e.loaded / 1048576).toFixed(1) + '\u00a0МБ';
+        }
       }
 
       new THREE.GLTFLoader().load(opts.src, function (gltf) {
@@ -1410,7 +1439,7 @@ var Figures = (function () {
         });
 
         info.textContent = opts.hint || M3_HINT;
-      }, null, function (err) {
+      }, onProgress, function (err) {
         box.innerHTML = '<div class="model3d-note">Не удалось загрузить модель ' +
           '<code>' + Render.esc(opts.src) + '</code></div>';
         console.error(err);
