@@ -13,10 +13,10 @@
 `content/*.json`. Нужен любой локальный сервер:
 
 ```bash
-python -m http.server 5177
+python -m http.server 5178
 ```
 
-Затем открыть <http://127.0.0.1:5177/index.html>.
+Затем открыть <http://127.0.0.1:5178/index.html>.
 
 ## Структура
 
