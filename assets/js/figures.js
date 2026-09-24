@@ -979,6 +979,9 @@ var Figures = (function () {
       .then(function () {
         return Promise.all([
           loadScript(THREE_BASE + 'examples/js/loaders/GLTFLoader.js'),
+          /* Декодер сжатой геометрии EXT_meshopt_compression: так сжаты
+             файлы систем DA 40 NG в models/da40 (tools/split-da40.js). */
+          loadScript(THREE_BASE + 'examples/js/libs/meshopt_decoder.js'),
           loadScript(THREE_BASE + 'examples/js/controls/OrbitControls.js'),
           loadScript(THREE_BASE + 'examples/js/environments/RoomEnvironment.js')
         ]);
@@ -1154,7 +1157,9 @@ var Figures = (function () {
         }
       }
 
-      new THREE.GLTFLoader().load(opts.src, function (gltf) {
+      var gltfLoader = new THREE.GLTFLoader();
+      if (window.MeshoptDecoder) gltfLoader.setMeshoptDecoder(window.MeshoptDecoder);
+      gltfLoader.load(opts.src, function (gltf) {
         var root = gltf.scene;
         scene.add(root);
 
