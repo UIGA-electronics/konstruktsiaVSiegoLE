@@ -995,15 +995,34 @@ var Figures = (function () {
     ? 'палец — поворот · два пальца — сдвиг и приближение'
     : 'перетащить — поворот · правая кнопка — сдвиг · колесо — приближение';
 
+  /* Сцена собирается из одного или нескольких .glb.
+
+       opts.src     — файл или список файлов, которые грузятся сразу (основа);
+       opts.layers  — слои с кнопками: [{ src, title, on, hint }]. Слой
+                      грузится только при первом включении — телефон не
+                      тянет лишние мегабайты;
+       opts.labelsSrc — общий словарь подписей (JSON: labels, rules,
+                      materials, strip), чтобы не повторять его на каждой
+                      странице.
+
+     Все файлы одной модели лежат в общей системе координат (так режет
+     tools/split-da40.js), поэтому просто складываются в одну группу.
+     Клип с одним именем может быть разрезан по файлам — тяги в одном,
+     поверхность в другом. Такие куски запускаются вместе и с нуля. */
   reg.model3d = function (frame, opts) {
-    if (!opts || !opts.src) { console.warn('model3d без opts.src'); return; }
+    opts = opts || {};
+    var baseSrc = [].concat(opts.src || []);
+    var layerDefs = opts.layers || [];
+    if (!baseSrc.length && !layerDefs.length) { console.warn('model3d без opts.src'); return; }
+    var multi = baseSrc.length + layerDefs.length > 1;
 
     var box = document.createElement('div');
     box.className = 'model3d';
     box.innerHTML = '<div class="model3d-note">Загрузка модели…</div>';
     frame.appendChild(box);
 
-    var bar = controls(frame, '<span class="fig-readout" id="m3-info">—</span>');
+    var bar = controls(frame, '<span class="fig-readout m3-info">—</span>');
+    var info = bar.querySelector('.m3-info');
 
     ensureThree().then(function () {
       var THREE = window.THREE;
@@ -1047,59 +1066,16 @@ var Figures = (function () {
       fill.position.set(-4, 2, -3);
       scene.add(fill);
 
-      box.textContent = '';
-      box.appendChild(renderer.domElement);
+      /* Общая группа всех файлов. Её сдвигаем при кадрировании, поэтому
+         слои, подгруженные позже, встают туда же, куда и основа. */
+      var root = new THREE.Group();
+      scene.add(root);
 
-      var ctrl = new THREE.OrbitControls(camera, renderer.domElement);
-      ctrl.enableDamping = true;
-      /* Свободное перемещение по сцене: одним пальцем (или ЛКМ) вращаем,
-         двумя пальцами (ПКМ, Shift+ЛКМ) — двигаем точку обзора.
-         Без этого камера намертво привязана к центру модели. */
-      ctrl.enablePan = true;
-      ctrl.screenSpacePanning = true;
-      ctrl.panSpeed = 0.9;
-      ctrl.zoomSpeed = 0.9;
-      ctrl.rotateSpeed = 0.85;
-      /* Чтобы модель отзывалась на вращение и когда постоянный цикл
-         отключён (prefers-reduced-motion или схема ушла с экрана). */
-      ctrl.addEventListener('change', function () { renderer.render(scene, camera); });
+      var ctrl = null;
+      function render() { renderer.render(scene, camera); }
 
-      var mixer = null, clips = {}, current = null;
-      var info = frame.querySelector('#m3-info');
+      /* ── Подписи ─────────────────────────────────────────── */
 
-      /* «Оболочка» — обшивка, фонарь, остекление. Её можно спрятать кнопкой,
-         а из кликов она исключена всегда: иначе до механизма не добраться.
-         Список задаётся в opts.shell, иначе узнаём по имени. */
-      var SHELL_RE = /fuselage|canopy|cowl|skin|shell|glass|window|fairing|^fin$|^wing|^stabilizer/i;
-      var shellSet = null;
-      function isShell(o) {
-        while (o) {
-          if (shellSet && shellSet[o.name]) return true;
-          if (!shellSet && o.name && SHELL_RE.test(o.name)) return true;
-          o = o.parent;
-        }
-        return false;
-      }
-      if (opts.shell && opts.shell.length) {
-        shellSet = {};
-        opts.shell.forEach(function (n) { shellSet[n] = 1; });
-      }
-
-      /* На больших моделях из Blender у обшивки имена вида Cube.014, зато
-         материалы названы по делу: Fuselage, Wings, DA40 Glass. Поэтому
-         обшивку можно задать и списком материалов. */
-      var shellMat = null;
-      if (opts.shellMaterials && opts.shellMaterials.length) {
-        shellMat = {};
-        opts.shellMaterials.forEach(function (n) { shellMat[n] = 1; });
-      }
-      /* Имя узла вместе с именами родителей: сами меши часто безымянные
-         (Cube.014), а осмысленное имя висит на группе выше. */
-      function chainName(o) {
-        var s = '';
-        while (o) { if (o.name) s += o.name + ' | '; o = o.parent; }
-        return s;
-      }
       /* GLTFLoader прогоняет имена через sanitizeNodeName: пробелы
          становятся подчёркиваниями, символы [ ] . : / пропадают, одинаковые
          имена получают хвост _1, инстансы — _instance_0. Сравнивать и искать
@@ -1119,20 +1095,88 @@ var Figures = (function () {
           .replace(/_/g, ' ')
           .trim();
       }
-      var labelMap = null;
-      if (opts.labels) {
-        labelMap = {};
-        Object.keys(opts.labels).forEach(function (k) {
-          labelMap[norm(k)] = opts.labels[k];
-        });
+
+      var dict = { labels: {}, rules: [], materials: {}, strip: [], hide: null };
+      function addDict(d) {
+        if (!d) return;
+        if (d.materialsHide) dict.hide = new RegExp(d.materialsHide, 'i');
+        Object.keys(d.labels || {}).forEach(function (k) { dict.labels[norm(k)] = d.labels[k]; });
+        Object.keys(d.materials || {}).forEach(function (k) { dict.materials[norm(k)] = d.materials[k]; });
+        (d.rules || []).forEach(function (r) { dict.rules.push([new RegExp(r[0], 'i'), r[1]]); });
+        (d.strip || []).forEach(function (s) { dict.strip.push(new RegExp(s, 'ig')); });
       }
-      /* Хвост _1 у одноимённых узлов словарю не мешает: пробуем и без него. */
-      function labelFor(v) {
-        if (!labelMap) return null;
-        var n = norm(v);
-        return labelMap[n] || labelMap[n.replace(/ \d+$/, '')] || null;
+      addDict({ labels: opts.labels, rules: opts.labelRules, materials: opts.materialLabels });
+      var dictReady = opts.labelsSrc
+        ? fetch(opts.labelsSrc).then(function (r) { return r.json(); })
+          .then(addDict).catch(function (e) { console.warn('подписи:', e); })
+        : Promise.resolve();
+
+      /* Хвосты, которые к детали отношения не имеют: _1 у одноимённых узлов,
+         «.001» от Blender (после чистки имени — просто «001» в конце слова)
+         и служебные пометки из словаря. */
+      function clean(n) {
+        dict.strip.forEach(function (re) { n = n.replace(re, ''); });
+        return n.replace(/\s+/g, ' ').trim();
+      }
+      function lookup(n) {
+        return dict.labels[n] || dict.labels[n.replace(/ \d+$/, '')] ||
+          dict.labels[n.replace(/([a-zа-я)])\d{3}$/, '$1')] || null;
+      }
+      /* Правило: регулярное выражение по приведённому имени и шаблон.
+         {1} — подпись для первой скобки (ищется тем же словарём, так что
+         «контргайка наконечника» собирается из подписи самой тяги),
+         $1 — скобка как есть, $^1 — она же заглавными (имена приведены
+         к строчным, а «наконечник A» пишется с заглавной). */
+      function labelFor(v, depth) {
+        var n = clean(norm(v));
+        var hit = lookup(n);
+        if (hit || (depth || 0) > 3) return hit;
+        for (var i = 0; i < dict.rules.length; i++) {
+          var m = n.match(dict.rules[i][0]);
+          if (!m) continue;
+          return dict.rules[i][1].replace(/\{(\d)\}/g, function (_, k) {
+            return labelFor(m[+k] || '', (depth || 0) + 1) || m[+k] || '';
+          }).replace(/\$\^(\d)/g, function (_, k) { return (m[+k] || '').toUpperCase(); })
+            .replace(/\$(\d)/g, function (_, k) { return m[+k] || ''; });
+        }
+        return null;
+      }
+      /* Материал показываем по-русски; служебные имена из исходника
+         (Material.018, Screw) читателю ничего не говорят — прячем. */
+      function materialName(mt) {
+        var n = mt ? (mt.__baseName || mt.name || '') : '';
+        var k = norm(n);
+        if (dict.materials[k]) return dict.materials[k];
+        return dict.hide && dict.hide.test(k) ? '' : n;
       }
 
+      /* ── Файлы и слои ────────────────────────────────────── */
+
+      /* «Оболочка» — обшивка, фонарь, остекление. Её можно спрятать кнопкой,
+         а из кликов она исключена всегда: иначе до механизма не добраться.
+         Список задаётся в opts.shell, иначе узнаём по имени. */
+      var SHELL_RE = /fuselage|canopy|cowl|skin|shell|glass|window|fairing|^fin$|^wing|^stabilizer/i;
+      var shellSet = null;
+      if (opts.shell && opts.shell.length) {
+        shellSet = {};
+        opts.shell.forEach(function (n) { shellSet[n] = 1; });
+      }
+      function isShell(o) {
+        while (o && o !== root) {
+          if (shellSet && shellSet[o.name]) return true;
+          if (!shellSet && o.name && SHELL_RE.test(o.name)) return true;
+          o = o.parent;
+        }
+        return false;
+      }
+      /* На больших моделях из Blender у обшивки имена вида Cube.014, зато
+         материалы названы по делу: Fuselage, Wings, DA40 Glass. Поэтому
+         обшивку можно задать и списком материалов. */
+      var shellMat = null;
+      if (opts.shellMaterials && opts.shellMaterials.length) {
+        shellMat = {};
+        opts.shellMaterials.forEach(function (n) { shellMat[n] = 1; });
+      }
       function isShellMesh(o) {
         if (shellMat && o.material) {
           var mm = Array.isArray(o.material) ? o.material : [o.material];
@@ -1142,186 +1186,366 @@ var Figures = (function () {
         }
         return isShell(o);
       }
+      /* Имя узла вместе с именами родителей: сами меши часто безымянные
+         (Cube.014), а осмысленное имя висит на группе выше. */
+      function chainName(o) {
+        var s = '';
+        while (o && o !== root) { if (o.name) s += o.name + ' | '; o = o.parent; }
+        return s;
+      }
+      /* Трассы, которые в общем виде только мешают: тонкие шланги и провода
+         через всю кабину. Прячем по умолчанию, показываем вместе с системой. */
+      var quietRe = opts.quiet ? new RegExp(opts.quiet, 'i') : null;
+      var GENERIC = /^(cube|plane|cylinder|circle|sphere|torus|beziercurve|nurbspath|mesh|object|empty)\b[\s\d_]*/i;
 
-      /* Процент загрузки. Сервер не всегда отдаёт Content-Length (сжатие
-         на лету), поэтому при неизвестном размере показываем мегабайты. */
-      var noteEl = box.querySelector('.model3d-note');
-      function onProgress(e) {
-        if (!noteEl || !noteEl.isConnected) return;
-        if (e.lengthComputable && e.total) {
-          noteEl.textContent = 'Загрузка модели… ' +
-            Math.round((e.loaded / e.total) * 100) + '\u00a0%';
-        } else {
-          noteEl.textContent = 'Загрузка модели… ' +
-            (e.loaded / 1048576).toFixed(1) + '\u00a0МБ';
-        }
+      var files = [];
+      baseSrc.forEach(function (s) { files.push({ src: s, layer: false, on: true, title: opts.srcTitle }); });
+      layerDefs.forEach(function (d) {
+        files.push({ src: d.src, layer: true, on: !!d.on, title: d.title, hint: d.hint,
+          plain: !!d.plain });
+      });
+
+      var shells = [], parts = [];
+      var loader = new THREE.GLTFLoader();
+      if (window.MeshoptDecoder) loader.setMeshoptDecoder(window.MeshoptDecoder);
+
+      /* Свой материал каждому мешу: иначе приглушить один узел нельзя —
+         материалы в модели общие, «стальная тяга» одна на всю проводку,
+         и вместе с элеронной погаснет и рулевая. Текстуры при клонировании
+         не копируются, а переиспользуются по ссылке. */
+      /* Сжатые координаты (KHR_mesh_quantization: целые 8/16 бит с флагом
+         normalized) видеокарта разворачивает сама, а Raycaster в r128 читает
+         массив как есть — и промахивается мимо всего. Для кликов держим
+         обычную копию во float; видимых отличий нет. */
+      var NORM = { Int8Array: 127, Uint8Array: 255, Int16Array: 32767, Uint16Array: 65535 };
+      function dequantize(g) {
+        var a = g && g.attributes && g.attributes.position;
+        if (!a || !a.normalized || a.isInterleavedBufferAttribute) return;
+        var k = NORM[a.array.constructor.name];
+        if (!k) return;
+        var src = a.array, dst = new Float32Array(src.length);
+        for (var i = 0; i < src.length; i++) dst[i] = Math.max(src[i] / k, -1);
+        g.setAttribute('position', new THREE.BufferAttribute(dst, a.itemSize));
       }
 
-      var gltfLoader = new THREE.GLTFLoader();
-      if (window.MeshoptDecoder) gltfLoader.setMeshoptDecoder(window.MeshoptDecoder);
-      gltfLoader.load(opts.src, function (gltf) {
-        var root = gltf.scene;
-        scene.add(root);
-
-        /* Свой материал каждому мешу: иначе приглушить один узел нельзя —
-           материалы в модели общие, «стальная тяга» одна на всю проводку,
-           и вместе с элеронной погаснет и рулевая. Текстуры при клонировании
-           не копируются, а переиспользуются по ссылке. */
-        var meshes = [];
-        root.traverse(function (o) {
+      function adopt(f, sceneNode) {
+        sceneNode.traverse(function (o) {
           if (!o.isMesh) return;
+          dequantize(o.geometry);
           if (o.material && !Array.isArray(o.material)) {
             var base = o.material;
             o.material = base.clone();
             o.material.__baseName = base.name;
           }
-          meshes.push(o);
-        });
-
-        /* Трассы, которые в общем виде только мешают: тонкие шланги и провода
-           через всю кабину. Прячем по умолчанию, показываем вместе с системой. */
-        var quietRe = opts.quiet ? new RegExp(opts.quiet, 'i') : null;
-        function isQuiet(o) {
-          if (!quietRe || !o.material || Array.isArray(o.material)) return false;
-          return quietRe.test(o.material.__baseName || o.material.name || '');
-        }
-
-        var shells = [], parts = [];
-        meshes.forEach(function (o) {
-          (isShellMesh(o) ? shells : parts).push(o);
-          o.__quiet = isQuiet(o);
+          o.__file = f;
+          o.__quiet = !!(quietRe && o.material && !Array.isArray(o.material) &&
+            quietRe.test(o.material.__baseName || o.material.name || ''));
           o.__op = o.material && o.material.opacity != null ? o.material.opacity : 1;
           o.__tr = !!(o.material && o.material.transparent);
           o.__em = o.material && o.material.emissive ? o.material.emissive.getHex() : null;
           o.__ei = o.material && o.material.emissiveIntensity != null
             ? o.material.emissiveIntensity : 1;
+          o.__env = o.material && o.material.envMapIntensity != null
+            ? o.material.envMapIntensity : 1;
+          (isShellMesh(o) ? shells : parts).push(o);
         });
+      }
 
-        /* Уровень прозрачности обшивки: от непрозрачной до снятой.
-           Полупрозрачная обшивка — главный приём разбора: механизм видно
-           внутри, но понятно, где он стоит. */
-        var LEVELS = opts.shellLevels || [
-          { t: 'Обшивка: видна',   o: 1 },
-          { t: 'Обшивка: 40\u00a0%',  o: 0.4 },
-          { t: 'Обшивка: 15\u00a0%',  o: 0.15 },
-          { t: 'Обшивка: снята',   o: 0 }
-        ];
-        var level = 0;
-        function applyShell() {
-          var lv = LEVELS[level];
-          shells.forEach(function (o) {
-            o.visible = lv.o > 0;
-            if (!o.material) return;
-            if (lv.o >= 1) {
-              o.material.transparent = o.__tr;
-              o.material.opacity = o.__op;
-              o.material.depthWrite = true;
-            } else {
-              o.material.transparent = true;
-              o.material.opacity = lv.o * o.__op;
-              /* Без этого сквозь стекло не видно то, что за ним. */
-              o.material.depthWrite = false;
+      /* Процент загрузки по всем файлам сразу. Сервер не всегда отдаёт
+         Content-Length (сжатие на лету) — тогда показываем мегабайты. */
+      var noteEl = box.querySelector('.model3d-note');
+      var prog = {};
+      function onProgress(src, e) {
+        prog[src] = { l: e.loaded, t: e.lengthComputable ? e.total : 0 };
+        if (!noteEl || !noteEl.isConnected) return;
+        var l = 0, t = 0, known = true;
+        Object.keys(prog).forEach(function (k) {
+          l += prog[k].l; t += prog[k].t; if (!prog[k].t) known = false;
+        });
+        noteEl.textContent = 'Загрузка модели… ' + (known && t
+          ? Math.round((l / t) * 100) + ' %'
+          : (l / 1048576).toFixed(1) + ' МБ');
+      }
+
+      function loadFile(f) {
+        if (f.promise) return f.promise;
+        f.promise = new Promise(function (res, rej) {
+          loader.load(f.src, function (gltf) {
+            f.scene = gltf.scene;
+            f.scene.visible = f.on;
+            root.add(f.scene);
+            adopt(f, f.scene);
+            f.clips = {};
+            (gltf.animations || []).forEach(function (c) { f.clips[c.name] = c; });
+            if (gltf.animations && gltf.animations.length) {
+              f.mixer = new THREE.AnimationMixer(f.scene);
             }
-          });
-          renderer.render(scene, camera);
-        }
-        if (shells.length) {
-          var sb = document.createElement('button');
-          sb.type = 'button';
-          sb.className = 'fig-btn is-on';
-          sb.textContent = LEVELS[0].t;
-          sb.title = 'Прозрачность планера по кругу';
-          sb.addEventListener('click', function () {
-            level = (level + 1) % LEVELS.length;
-            sb.textContent = LEVELS[level].t;
-            sb.classList.toggle('is-on', level === 0);
-            applyShell();
-          });
-          bar.appendChild(sb);
-        }
+            f.animations = gltf.animations || [];
+            res(f);
+          }, function (e) { onProgress(f.src, e); }, rej);
+        });
+        return f.promise;
+      }
 
-        /* Разбор по системам: выбранная остаётся в цвете, остальные гаснут
-           до призрака — так видно, где система проходит относительно других,
-           а не просто «всё кроме неё исчезло». */
-        function applySystem(re) {
-          parts.forEach(function (o) {
-            var on = !re || re.test(chainName(o));
-            /* Тихая трасса видна только когда выбрана её система. */
-            if (o.__quiet) {
-              o.visible = !!(re && on);
-              o.__dim = !o.visible;
-              if (!o.visible) return;
+      var first = files.filter(function (f) { return f.on; });
+      Promise.all(first.map(loadFile).concat([dictReady])).then(function () {
+        box.textContent = '';
+        box.appendChild(renderer.domElement);
+        build();
+      }).catch(function (err) {
+        box.innerHTML = '<div class="model3d-note">Не удалось загрузить модель ' +
+          '<code>' + Render.esc(first.map(function (f) { return f.src; }).join(', ')) +
+          '</code></div>';
+        console.error(err);
+      });
+
+      /* ── Состояние сцены ─────────────────────────────────── */
+
+      /* Уровень прозрачности обшивки: от непрозрачной до снятой.
+         Полупрозрачная обшивка — главный приём разбора: механизм видно
+         внутри, но понятно, где он стоит. */
+      var LEVELS = opts.shellLevels || [
+        { t: 'Обшивка: видна',   o: 1 },
+        { t: 'Обшивка: 40 %',  o: 0.4 },
+        { t: 'Обшивка: 15 %',  o: 0.15 },
+        { t: 'Обшивка: снята',   o: 0 }
+      ];
+      var level = Math.max(0, Math.min(LEVELS.length - 1, opts.shellLevel || 0));
+      var sysRe = null, glow = opts.glow === 'on', sb = null;
+
+      function applyShell() {
+        var lv = LEVELS[level];
+        shells.forEach(function (o) {
+          o.visible = lv.o > 0;
+          if (!o.material) return;
+          if (lv.o >= 1) {
+            o.material.transparent = o.__tr;
+            o.material.opacity = o.__op;
+            o.material.depthWrite = true;
+          } else {
+            o.material.transparent = true;
+            o.material.opacity = lv.o * o.__op;
+            /* Без этого сквозь стекло не видно то, что за ним. */
+            o.material.depthWrite = false;
+          }
+        });
+      }
+      function setLevel(n) {
+        level = n;
+        if (sb) {
+          sb.textContent = LEVELS[level].t;
+          sb.classList.toggle('is-on', level === 0);
+        }
+        applyShell();
+        render();
+      }
+
+      /* Разбор по системам (opts.systems — регулярные выражения по именам):
+         выбранная остаётся в цвете, остальные гаснут до призрака — так видно,
+         где система проходит относительно других.
+         Подсветка (glow) красит детали слоёв: тяга в крыле — труба в два
+         сантиметра на одиннадцать метров размаха, в общем виде это меньше
+         пикселя, на светлом фоне её не найти. */
+      function applyParts() {
+        parts.forEach(function (o) {
+          var on = !sysRe || sysRe.test(chainName(o));
+          /* Тихая трасса видна только когда выбрана её система. */
+          if (o.__quiet) {
+            o.visible = !!(sysRe && on);
+            o.__dim = !o.visible;
+            if (!o.visible) return;
+          }
+          o.__dim = !on;
+          if (!o.material) return;
+          /* plain — слой-окружение (колёса, фотоскан двигателя): его не
+             красим, иначе шина или двигатель превращаются в синее пятно. */
+          var lit = (sysRe && on) || (glow && o.__file && o.__file.layer && !o.__file.plain);
+          if (on) {
+            o.material.transparent = o.__tr;
+            o.material.opacity = o.__op;
+            o.material.depthWrite = true;
+          } else {
+            o.material.transparent = true;
+            o.material.opacity = 0.05;
+            o.material.depthWrite = false;
+          }
+          if (o.material.emissive) {
+            if (lit) {
+              o.material.emissive.setHex(0x1f4ea8);
+              o.material.emissiveIntensity = 0.85;
+            } else if (o.__em !== null) {
+              o.material.emissive.setHex(o.__em);
+              o.material.emissiveIntensity = o.__ei;
             }
-            o.__dim = !on;
-            if (!o.material) return;
-            if (on) {
-              o.material.transparent = o.__tr;
-              o.material.opacity = o.__op;
-              o.material.depthWrite = true;
-              /* Тяга в крыле — труба диаметром два сантиметра на одиннадцать
-                 метров размаха: в общем виде это меньше пикселя. Пока система
-                 выбрана, подсвечиваем её, иначе на светлом фоне её не найти. */
-              if (o.material.emissive) {
-                if (re) {
-                  o.material.emissive.setHex(0x1f4ea8);
-                  o.material.emissiveIntensity = 0.85;
-                } else if (o.__em !== null) {
-                  o.material.emissive.setHex(o.__em);
-                  o.material.emissiveIntensity = o.__ei;
-                }
-              }
-            } else {
-              o.material.transparent = true;
-              o.material.opacity = 0.05;
-              o.material.depthWrite = false;
-              if (o.material.emissive && o.__em !== null) {
-                o.material.emissive.setHex(o.__em);
-                o.material.emissiveIntensity = o.__ei;
-              }
-            }
-          });
-          renderer.render(scene, camera);
-        }
-        if (opts.systems && opts.systems.length) {
-          var html = '<span class="fig-label">Система</span>';
-          opts.systems.forEach(function (sysDef, i) {
-            html += '<button class="fig-btn' + (i ? '' : ' is-on') +
-              '" data-sys="' + i + '" type="button">' + Render.esc(sysDef.title) + '</button>';
-          });
-          bar.insertAdjacentHTML('afterbegin', html);
-          bar.querySelectorAll('[data-sys]').forEach(function (b) {
-            b.addEventListener('click', function () {
-              bar.querySelectorAll('[data-sys]').forEach(function (x) {
-                x.classList.remove('is-on');
-              });
-              b.classList.add('is-on');
-              var def = opts.systems[+b.dataset.sys];
-              applySystem(def.match ? new RegExp(def.match, 'i') : null);
-              info.textContent = def.hint || def.title;
-            });
-          });
-        }
+          }
+          /* Полированный алюминий (баки, трубки) отражает белую студию
+             и сливается с белой обшивкой — на время подсветки гасим блики. */
+          if (o.material.envMapIntensity != null) {
+            o.material.envMapIntensity = lit ? 0.2 : o.__env;
+          }
+        });
+      }
 
-        applySystem(null);
+      /* ── Анимация ────────────────────────────────────────── */
 
-        /* Кадрируем модель: камера сама встаёт так, чтобы она влезла целиком */
+      var current = null;
+      function play(name) {
+        current = name;
+        files.forEach(function (f) {
+          if (!f.mixer) return;
+          f.mixer.stopAllAction();
+          var c = f.clips[name];
+          if (!c) return;
+          var a = f.mixer.clipAction(c);
+          /* Туда и обратно. Обычное зацикливание отыгрывает клип вперёд
+             и прыжком возвращает в начало: закрылки выпускаются плавно,
+             а убираются мгновенно — движение выглядит рваным. */
+          a.setLoop(THREE.LoopPingPong, Infinity);
+          a.clampWhenFinished = false;
+          a.reset().play();
+        });
+      }
+
+      function build() {
+        /* Кадрируем по тому, что загружено сразу: камера встаёт так, чтобы
+           модель влезла целиком. Слои потом добавляются в ту же группу. */
         var bb = new THREE.Box3().setFromObject(root);
         var size = bb.getSize(new THREE.Vector3());
         var mid = bb.getCenter(new THREE.Vector3());
         var r = Math.max(size.x, size.y, size.z) || 1;
         root.position.sub(mid);
+
+        ctrl = new THREE.OrbitControls(camera, renderer.domElement);
+        ctrl.enableDamping = true;
+        /* Свободное перемещение по сцене: одним пальцем (или ЛКМ) вращаем,
+           двумя пальцами (ПКМ, Shift+ЛКМ) — двигаем точку обзора.
+           Без этого камера намертво привязана к центру модели. */
+        ctrl.enablePan = true;
+        ctrl.screenSpacePanning = true;
+        ctrl.panSpeed = 0.9;
+        ctrl.zoomSpeed = 0.9;
+        ctrl.rotateSpeed = 0.85;
+        /* Чтобы модель отзывалась на вращение и когда постоянный цикл
+           отключён (prefers-reduced-motion или схема ушла с экрана). */
+        ctrl.addEventListener('change', render);
+
         /* Стартовый ракурс в долях габарита. Размах у самолёта втрое больше
            высоты, и в высоком кадре модель встаёт далеко — такому случаю
            ракурс задаётся из JSON. */
         var vm = opts.view || [0.85, 0.5, 1.15];
-        camera.position.set(r * vm[0], r * vm[1], r * vm[2]);
+        /* Точка, куда смотрит камера, — в долях габарита от центра: на
+           странице двигателя незачем целиться в середину крыла.
+           zoom < 1 подводит камеру ближе. */
+        var fc = opts.focus || [0, 0, 0], zm = opts.zoom || 1;
+        var tgt = new THREE.Vector3(size.x * fc[0], size.y * fc[1], size.z * fc[2]);
+        camera.position.set(tgt.x + r * vm[0] * zm, tgt.y + r * vm[1] * zm, tgt.z + r * vm[2] * zm);
         camera.near = r / 100;
         camera.far = r * 40;
         camera.updateProjectionMatrix();
         ctrl.minDistance = r * 0.012;   /* можно подойти вплотную к отдельному болту */
         ctrl.maxDistance = r * 9;
-        ctrl.target.set(0, 0, 0);
+        ctrl.target.copy(tgt);
         ctrl.update();
+
+        /* Сценарии. В одиночном файле кнопки строятся из его клипов, в сборке
+           из нескольких — только из opts.scenarios: у планера свои клипы
+           закрылков, и на странице топлива они ни к чему. */
+        var names = opts.scenarios;
+        if (!names && !multi && files[0].animations.length) {
+          names = files[0].animations.map(function (c) { return { clip: c.name, title: c.name }; });
+        }
+
+        if (layerDefs.length) {
+          var lh = '<span class="fig-label">' + Render.esc(opts.layersLabel || 'Системы') + '</span>';
+          files.forEach(function (f, i) {
+            if (!f.layer) return;
+            lh += '<button class="fig-btn' + (f.on ? ' is-on' : '') + '" data-layer="' + i +
+              '" type="button" aria-pressed="' + (f.on ? 'true' : 'false') + '">' +
+              Render.esc(f.title) + '</button>';
+          });
+          bar.insertAdjacentHTML('afterbegin', '<div class="fig-row">' + lh + '</div>');
+          bar.querySelectorAll('[data-layer]').forEach(function (b) {
+            b.addEventListener('click', function () { toggleLayer(files[+b.dataset.layer], b); });
+          });
+        }
+
+        if (opts.systems && opts.systems.length) {
+          var sh = '<span class="fig-label">Система</span>';
+          opts.systems.forEach(function (sysDef, i) {
+            sh += '<button class="fig-btn' + (i ? '' : ' is-on') +
+              '" data-sys="' + i + '" type="button">' + Render.esc(sysDef.title) + '</button>';
+          });
+          bar.insertAdjacentHTML('afterbegin', '<div class="fig-row">' + sh + '</div>');
+          bar.querySelectorAll('[data-sys]').forEach(function (b) {
+            b.addEventListener('click', function () {
+              bar.querySelectorAll('[data-sys]').forEach(function (x) { x.classList.remove('is-on'); });
+              b.classList.add('is-on');
+              var def = opts.systems[+b.dataset.sys];
+              sysRe = def.match ? new RegExp(def.match, 'i') : null;
+              applyParts();
+              render();
+              info.textContent = def.hint || def.title;
+            });
+          });
+        }
+
+        if (names && names.length) {
+          var ch = '<span class="fig-label">Сценарий</span>';
+          names.forEach(function (s, i) {
+            ch += '<button class="fig-btn' + (i || multi ? '' : ' is-on') +
+              '" data-clip="' + Render.esc(s.clip) + '" type="button">' + Render.esc(s.title) + '</button>';
+          });
+          bar.insertAdjacentHTML('afterbegin', '<div class="fig-row">' + ch + '</div>');
+          bar.querySelectorAll('[data-clip]').forEach(function (b) {
+            b.addEventListener('click', function () {
+              var again = b.classList.contains('is-on');
+              bar.querySelectorAll('[data-clip]').forEach(function (x) { x.classList.remove('is-on'); });
+              /* В сборке повторное нажатие останавливает сценарий: иначе
+                 закрылки качаются всё время, пока читаешь про топливо. */
+              if (again && multi) {
+                current = null;
+                files.forEach(function (f) { if (f.mixer) f.mixer.stopAllAction(); });
+                render();
+                return;
+              }
+              b.classList.add('is-on');
+              /* Механизм внутри: если обшивка ещё непрозрачная, убавляем её,
+                 иначе сценарий не видно. Дальше читатель волен вернуть. */
+              if (level === 0 && shells.length) setLevel(2);
+              play(b.dataset.clip);
+            });
+          });
+          /* Одиночная модель — сразу показываем первый сценарий, как раньше.
+             Сборку не трогаем, пока читатель сам не попросит. */
+          if (!multi) play(names[0].clip);
+        }
+
+        if (shells.length) {
+          sb = document.createElement('button');
+          sb.type = 'button';
+          sb.className = 'fig-btn' + (level === 0 ? ' is-on' : '');
+          sb.textContent = LEVELS[level].t;
+          sb.title = 'Прозрачность планера по кругу';
+          sb.addEventListener('click', function () { setLevel((level + 1) % LEVELS.length); });
+          bar.appendChild(sb);
+        }
+
+        if (layerDefs.length && opts.glow !== false) {
+          var gb = document.createElement('button');
+          gb.type = 'button';
+          gb.className = 'fig-btn' + (glow ? ' is-on' : '');
+          gb.textContent = 'Подсветка';
+          gb.title = 'Подсветить детали включённых систем';
+          gb.setAttribute('aria-pressed', glow ? 'true' : 'false');
+          gb.addEventListener('click', function () {
+            glow = !glow;
+            gb.classList.toggle('is-on', glow);
+            gb.setAttribute('aria-pressed', glow ? 'true' : 'false');
+            applyParts();
+            render();
+          });
+          bar.appendChild(gb);
+        }
 
         /* Правая кнопка и Shift+ЛКМ двигают сцену и без этого, но про них
            никто не догадается — тем более на телефоне. Явный режим «Сдвиг»
@@ -1349,7 +1573,7 @@ var Figures = (function () {
           var len = clamp(v.length() * k, ctrl.minDistance, ctrl.maxDistance);
           camera.position.copy(ctrl.target).add(v.setLength(len));
           ctrl.update();
-          renderer.render(scene, camera);
+          render();
         }
         ['+', '–'].forEach(function (sign, i) {
           var zb = document.createElement('button');
@@ -1372,7 +1596,7 @@ var Figures = (function () {
           camera.position.copy(home.pos);
           ctrl.target.copy(home.tgt);
           ctrl.update();
-          renderer.render(scene, camera);
+          render();
         });
         bar.appendChild(rb);
 
@@ -1402,58 +1626,38 @@ var Figures = (function () {
           });
         }
 
-        if (gltf.animations && gltf.animations.length) {
-          mixer = new THREE.AnimationMixer(root);
-          gltf.animations.forEach(function (c) { clips[c.name] = c; });
-          var names = opts.scenarios || gltf.animations.map(function (c) {
-            return { clip: c.name, title: c.name };
-          });
-          var html = '<span class="fig-label">Сценарий</span>';
-          names.forEach(function (s, i) {
-            html += '<button class="fig-btn' + (i ? '' : ' is-on') +
-              '" data-clip="' + s.clip + '" type="button">' + Render.esc(s.title) + '</button>';
-          });
-          bar.insertAdjacentHTML('afterbegin', html);
-          bar.querySelectorAll('[data-clip]').forEach(function (b) {
-            b.addEventListener('click', function () {
-              bar.querySelectorAll('[data-clip]').forEach(function (x) {
-                x.classList.remove('is-on');
-              });
-              b.classList.add('is-on');
-              /* Механизм внутри: если обшивка ещё непрозрачная, убавляем её,
-                 иначе сценарий не видно. Дальше читатель волен вернуть. */
-              if (level === 0 && shells.length) {
-                level = 2;
-                sb.textContent = LEVELS[level].t;
-                sb.classList.remove('is-on');
-                applyShell();
-              }
-              play(b.dataset.clip);
-            });
-          });
-          play(names[0].clip);
-        }
+        applyShell();
+        applyParts();
 
-        /* Клик по узлу — подпись из opts.labels по имени меша */
+        /* Клик по детали — подпись по словарю, иначе имя из модели. */
         var ray = new THREE.Raycaster(), pt = new THREE.Vector2();
+        function shown(o) {
+          while (o) { if (!o.visible) return false; o = o.parent; }
+          return true;
+        }
         renderer.domElement.addEventListener('click', function (e) {
           var b = renderer.domElement.getBoundingClientRect();
           pt.x = ((e.clientX - b.left) / b.width) * 2 - 1;
           pt.y = -((e.clientY - b.top) / b.height) * 2 + 1;
           ray.setFromCamera(pt, camera);
           /* Оболочка перехватывает каждый луч — кликать надо по механизму
-             внутри, поэтому из выборки она исключена всегда. */
+             внутри, поэтому из выборки она исключена всегда. Приглушённые
+             и выключенные узлы тоже пропускаем: иначе выбранную систему
+             не ткнуть сквозь висящий перед ней призрак. */
           var all = ray.intersectObject(root, true), hit = null;
           for (var i = 0; i < all.length; i++) {
             var o = all[i].object;
-            /* Приглушённые узлы соседних систем тоже пропускаем: иначе
-               выбранную систему не ткнуть сквозь висящий перед ней призрак. */
-            if (!isShellMesh(o) && !o.__dim) { hit = all[i]; break; }
+            if (!isShellMesh(o) && !o.__dim && shown(o)) { hit = all[i]; break; }
           }
           if (!hit) return;
           /* Кликнуть можно по вложенному мешу, у которого своего имени в словаре
              нет, — поднимаемся по родителям до первого известного узла. */
-          var n = hit.object, label = null, name = pretty(n.name);
+          var n = hit.object, label = null;
+          var name = clean(pretty(hit.object.name).replace(/(\D)\d{3}$/, '$1'));
+          /* Безымянные детали исходника («Cube 014», «Plane») называем
+             по файлу, из которого они пришли: «Планер», «Кабина». */
+          var from = hit.object.__file || {};
+          if (GENERIC.test(name)) name = from.title || opts.srcTitle || 'Деталь';
           while (n && n !== root) {
             var got = labelFor(n.name);
             if (got) { label = got; break; }
@@ -1463,35 +1667,57 @@ var Figures = (function () {
              7x19», «turnbuckle (brass)»), поэтому показываем и их: читатель
              сразу видит, из чего деталь. */
           var mt = hit.object.material;
-          var mtn = mt && !Array.isArray(mt) ? (mt.__baseName || mt.name) : '';
+          var mtn = mt && !Array.isArray(mt) ? materialName(mt) : '';
+          var layer = from.title && from.title !== (label || name) ? from.title : '';
           info.innerHTML = Render.esc(label || name || '—') +
-            (mtn ? ' <i>· ' + Render.esc(mtn) + '</i>' : '');
+            (mtn ? ' <i>· ' + Render.esc(mtn) + '</i>' : '') +
+            (layer && multi ? ' <i>· ' + Render.esc(layer) + '</i>' : '');
         });
 
         info.textContent = opts.hint || M3_HINT;
-      }, onProgress, function (err) {
-        box.innerHTML = '<div class="model3d-note">Не удалось загрузить модель ' +
-          '<code>' + Render.esc(opts.src) + '</code></div>';
-        console.error(err);
-      });
+        render();
+      }
 
-      function play(name) {
-        if (!mixer || !clips[name]) return;
-        if (current) current.fadeOut(0.25);
-        current = mixer.clipAction(clips[name]);
-        /* Туда и обратно. Обычное зацикливание отыгрывает клип вперёд
-           и прыжком возвращает в начало: закрылки выпускаются плавно,
-           а убираются мгновенно — движение выглядит рваным. */
-        current.setLoop(THREE.LoopPingPong, Infinity);
-        current.clampWhenFinished = false;
-        current.reset().fadeIn(0.25).play();
+      /* Слой по кнопке. Первое включение грузит файл; пока он идёт, кнопка
+         это показывает — на телефоне пара мегабайт занимает секунды. */
+      function toggleLayer(f, btn) {
+        f.on = !f.on;
+        btn.classList.toggle('is-on', f.on);
+        btn.setAttribute('aria-pressed', f.on ? 'true' : 'false');
+        if (f.scene) {
+          f.scene.visible = f.on;
+          render();
+          return;
+        }
+        if (!f.on) return;
+        btn.classList.add('is-busy');
+        info.textContent = 'Загрузка: ' + f.title + '…';
+        loadFile(f).then(function () {
+          btn.classList.remove('is-busy');
+          f.scene.visible = f.on;
+          applyShell();
+          applyParts();
+          /* Новый кусок идущего сценария: перезапускаем всё с нуля, иначе
+             он отстанет от остальных. */
+          if (current) play(current);
+          info.textContent = f.hint || f.title;
+          render();
+        }).catch(function (err) {
+          btn.classList.remove('is-busy');
+          f.on = false;
+          f.promise = null;
+          btn.classList.remove('is-on');
+          info.textContent = 'Не удалось загрузить: ' + f.title;
+          console.error(err);
+        });
       }
 
       var clock = new THREE.Clock();
       loop(frame, function () {
-        if (mixer) mixer.update(clock.getDelta());
-        ctrl.update();
-        renderer.render(scene, camera);
+        var dt = clock.getDelta();
+        files.forEach(function (f) { if (f.mixer) f.mixer.update(dt); });
+        if (ctrl) ctrl.update();
+        render();
       });
 
       /* Размер берём у самого элемента, а не у окна: схема может смонтироваться,
@@ -1506,7 +1732,7 @@ var Figures = (function () {
         renderer.setSize(nw, nh);
         camera.aspect = nw / nh;
         camera.updateProjectionMatrix();
-        renderer.render(scene, camera);
+        render();
       }
       if (window.ResizeObserver) new ResizeObserver(fit).observe(box);
       window.addEventListener('resize', fit);

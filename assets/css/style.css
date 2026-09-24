@@ -413,6 +413,13 @@ td:first-child{ font-weight:700; }
    Страница листается за пределами самого холста. */
 .model3d canvas{ display:block; width:100%; height:auto; touch-action:none; }
 .fig-zoom{ min-width:40px; font-size:17px; line-height:1; padding:6px 12px; }
+/* Группа кнопок (системы, сценарии) — отдельной строкой: в сборке из
+   нескольких файлов кнопок больше десятка, и вперемешку с «Сдвигом»
+   и «+/−» их не найти. */
+.fig-row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; width:100%; }
+.fig-btn.is-busy{ opacity:.6; cursor:progress; }
+.fig-btn.is-busy::after{ content:' …'; }
+.fig-readout i{ font-style:normal; color:var(--ink-3); }
 .model3d-note{ padding:60px 20px; text-align:center; font-family:var(--ui);
   font-size:13.5px; color:var(--ink-3); }
 .model3d-note code{ font-family:var(--mono); font-size:.9em; }
