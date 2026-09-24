@@ -1,0 +1,134 @@
+[
+  {
+    "file": "da40-controls.glb",
+    "title": "Управление",
+    "parts": 210,
+    "meshes": 100,
+    "clips": [
+      "Закрылки UP → LDG",
+      "Элероны влево → вправо",
+      "Руль высоты"
+    ],
+    "mb": 0.54
+  },
+  {
+    "file": "da40-wing-structure.glb",
+    "title": "Силовой набор крыла",
+    "parts": 60,
+    "meshes": 60,
+    "clips": [],
+    "mb": 0.29
+  },
+  {
+    "file": "da40-fuel.glb",
+    "title": "Топливная система",
+    "parts": 143,
+    "meshes": 143,
+    "clips": [],
+    "mb": 0.54
+  },
+  {
+    "file": "da40-electrical.glb",
+    "title": "Электрика",
+    "parts": 36,
+    "meshes": 36,
+    "clips": [],
+    "mb": 0.37
+  },
+  {
+    "file": "da40-avionics.glb",
+    "title": "Авионика и антенны",
+    "parts": 57,
+    "meshes": 57,
+    "clips": [],
+    "mb": 0.55
+  },
+  {
+    "file": "da40-brakes.glb",
+    "title": "Тормоза",
+    "parts": 40,
+    "meshes": 29,
+    "clips": [],
+    "mb": 0.14
+  },
+  {
+    "file": "da40-air.glb",
+    "title": "Вентиляция и отопление",
+    "parts": 36,
+    "meshes": 36,
+    "clips": [],
+    "mb": 0.18
+  },
+  {
+    "file": "da40-pitot-static.glb",
+    "title": "ПВД, статика, сваливание",
+    "parts": 22,
+    "meshes": 22,
+    "clips": [],
+    "mb": 0.33
+  },
+  {
+    "file": "da40-cooling.glb",
+    "title": "Охлаждение",
+    "parts": 17,
+    "meshes": 17,
+    "clips": [],
+    "mb": 0.11
+  },
+  {
+    "file": "da40-induction.glb",
+    "title": "Наддув и выхлоп",
+    "parts": 22,
+    "meshes": 22,
+    "clips": [],
+    "mb": 0.12
+  },
+  {
+    "file": "da40-oil.glb",
+    "title": "Масляная система",
+    "parts": 16,
+    "meshes": 16,
+    "clips": [],
+    "mb": 0.1
+  },
+  {
+    "file": "da40-airframe.glb",
+    "title": "Планер",
+    "parts": 315,
+    "meshes": 237,
+    "clips": [
+      "Закрылки UP → LDG",
+      "Элероны влево → вправо",
+      "Руль высоты"
+    ],
+    "mb": 5.34
+  },
+  {
+    "file": "da40-wheels.glb",
+    "title": "Колёса Tundra",
+    "parts": 12,
+    "meshes": 12,
+    "clips": [],
+    "mb": 3.35
+  },
+  {
+    "file": "da40-engine.glb",
+    "title": "Двигатель AE300",
+    "parts": 2,
+    "meshes": 2,
+    "clips": [],
+    "mb": 1.73
+  },
+  {
+    "file": "da40-cabin.glb",
+    "title": "Кабина",
+    "parts": 653,
+    "meshes": 518,
+    "clips": [
+      "Закрылки UP → LDG",
+      "Элероны влево → вправо",
+      "Руль высоты"
+    ],
+    "mb": 8.74
+  }
+]
