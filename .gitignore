@@ -4,3 +4,4 @@ node_modules/
 qr/
 server.log
 _ref-da40/
+__pycache__/

@@ -56,8 +56,21 @@ const PARTS = [
    миллиметра на колесе, на экране не видно. */
 const SIMPLIFY_ERROR = 0.002;
 
-/* Ливрея и фотоскан двигателя видны крупно — им 2048, остальному 1024. */
-const BIG_TEX = /FUSELAGE|WINGS|ENGINE/i;
+/* Текстуры по трём размерам. Ливрея (8K в исходнике) видна крупно, на ней
+   регистрация и надписи — 4096. Карты нормалей и масок салона и остекление
+   мелкие на экране — 1024. Всё остальное, включая приборную доску, — 2048. */
+const LIVERY = '(FUSELAGE2?|WINGS)_ALBD';
+const SMALL = '(?!.*(FUSELAGE|WINGS)).*(_NORM|_COMP|GLASS)';
+const TEX = [
+  [new RegExp(LIVERY, 'i'), 4096, 88],
+  [new RegExp('^' + SMALL, 'i'), 1024, 85],
+  [new RegExp('^(?!.*' + LIVERY + ')(?!' + SMALL + ').*', 'i'), 2048, 85]
+];
+
+/* Детали MSFS, заменённые построенными по документам (tools/da40): из планера
+   вырезаются. Файлы, которые теперь собираются в Blender, нарезка не трогает. */
+const REPLACED = new Set(Object.keys(JSON.parse(fs.readFileSync(path.join(__dirname, 'da40', 'replaced.json'), 'utf8'))));
+const REBUILT = new Set(['da40-fuel.glb']);
 
 /* Два дефекта экспорта — см. fix-materials.js. */
 function fixMaterials(doc) {
@@ -102,7 +115,7 @@ function cut(doc, part, members) {
 
   for (const n of doc.getRoot().listNodes()) {
     const m = members[n.getName()];
-    if (m && inPart(m.cols, part)) { own.add(n); up(n); }
+    if (m && inPart(m.cols, part) && !REPLACED.has(n.getName())) { own.add(n); up(n); }
   }
   for (const n of own) {
     const skin = n.getSkin();
@@ -155,7 +168,15 @@ function cut(doc, part, members) {
   await MeshoptSimplifier.ready;
   await MeshoptEncoder.ready;
   const report = [];
+  const old = fs.existsSync(path.join(outDir, 'parts.json'))
+    ? JSON.parse(fs.readFileSync(path.join(outDir, 'parts.json'), 'utf8')) : [];
   for (const part of PARTS) {
+    if (REBUILT.has(part.file)) {
+      const keep = old.find((r) => r.file === part.file);
+      if (keep) report.push(keep);
+      console.log(part.file.padEnd(26), 'собирается в Blender (tools/da40) — пропуск');
+      continue;
+    }
     const doc = cloneDocument(base);
     const own = cut(doc, part, members);
     const steps = [prune({ keepAttributes: false }), dedup(), resample()];
@@ -163,9 +184,8 @@ function cut(doc, part, members) {
       steps.push(weld(), simplify({ simplifier: MeshoptSimplifier, ratio: part.simplify, error: SIMPLIFY_ERROR }));
     }
     steps.push(
-      textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [2048, 2048], pattern: BIG_TEX, quality: 85 }),
-      textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [1024, 1024],
-        pattern: new RegExp('^(?!.*(' + BIG_TEX.source + ')).*', 'i'), quality: 85 }),
+      ...TEX.map(([pattern, px, quality]) =>
+        textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [px, px], pattern, quality })),
       prune({ keepAttributes: false }),
       meshopt({ encoder: MeshoptEncoder, level: 'medium' })
     );

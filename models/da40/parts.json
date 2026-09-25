@@ -22,10 +22,11 @@
   {
     "file": "da40-fuel.glb",
     "title": "Топливная система",
-    "parts": 143,
-    "meshes": 143,
+    "parts": 109,
+    "meshes": 109,
     "clips": [],
-    "mb": 0.54
+    "mb": 0.71,
+    "built": "tools/da40/fuel.py"
   },
   {
     "file": "da40-electrical.glb",
@@ -94,14 +95,14 @@
   {
     "file": "da40-airframe.glb",
     "title": "Планер",
-    "parts": 315,
-    "meshes": 237,
+    "parts": 311,
+    "meshes": 233,
     "clips": [
       "Закрылки UP → LDG",
       "Элероны влево → вправо",
       "Руль высоты"
     ],
-    "mb": 5.34
+    "mb": 6.49
   },
   {
     "file": "da40-wheels.glb",
@@ -117,7 +118,7 @@
     "parts": 2,
     "meshes": 2,
     "clips": [],
-    "mb": 1.73
+    "mb": 2.19
   },
   {
     "file": "da40-cabin.glb",
@@ -129,6 +130,6 @@
       "Элероны влево → вправо",
       "Руль высоты"
     ],
-    "mb": 8.74
+    "mb": 11.7
   }
 ]
