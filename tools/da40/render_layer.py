@@ -113,7 +113,12 @@ for name, camp, look, lens, mode in jobs:
     t = Vector(map(float, look.split(',')))
     cam.location = p
     cam.rotation_euler = (t - p).to_track_quat('-Z', 'Y').to_euler()
-    cd.lens = float(lens)
+    if lens.startswith('o'):
+        cd.type = 'ORTHO'
+        cd.ortho_scale = float(lens[1:])
+    else:
+        cd.type = 'PERSP'
+        cd.lens = float(lens)
     d = (t - p).normalized()
     sun.rotation_euler = (d + Vector((0.3, 0.2, -0.8))).normalized().to_track_quat('-Z', 'Y').to_euler()
     fill.rotation_euler = (-(d) + Vector((0, 0, 0.6))).normalized().to_track_quat('-Z', 'Y').to_euler()
