@@ -15,7 +15,7 @@ import ref  # noqa: E402
 
 glb, prefix = sys.argv[1], sys.argv[2]
 jobs = [a.split('|') for a in sys.argv[3:]]
-drop = os.environ.get('DROP', 'Fuel system').split(',')
+drop = os.environ.get('DROP', 'Fuel system,Wing structure').split(',')
 
 ref.open_source()
 R = ref.Ref()
@@ -26,7 +26,8 @@ for n in ref.REPLACED:
     if o:
         bpy.data.objects.remove(o, do_unlink=True)
 before = set(bpy.data.objects)
-bpy.ops.import_scene.gltf(filepath=glb)
+for g in glb.split(','):
+    bpy.ops.import_scene.gltf(filepath=g)
 new = [o for o in bpy.data.objects if o not in before]
 layer = bpy.data.collections.new('LAYER')
 bpy.context.scene.collection.children.link(layer)

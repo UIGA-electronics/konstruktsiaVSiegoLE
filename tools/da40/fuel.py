@@ -19,6 +19,8 @@ from mathutils import Matrix, Vector as V  # noqa: E402
 
 import lib  # noqa: E402
 import ref  # noqa: E402
+from sections import (RC, T_SKIN, TANK_CLR, Sections, loft, resample_closed,  # noqa: E402
+                      shrink)
 from lib import (Part, an_end, an_union, basis, box, cyl, fillet, hexa, p_clamp,  # noqa: E402
                  ring_tube, screw, sphere, sweep, torus, worm_clamp)
 
@@ -50,14 +52,11 @@ M = dict(
 )
 
 SIDE = {+1: ('MAIN', 'LH', 'левого', 'левом'), -1: ('AUX', 'RH', 'правого', 'правом')}
-T_SKIN = 0.010      # сэндвич обшивки: углепластик, пенопласт, стеклопластик (AMM 57-10)
 WALL = 0.0016       # стенка сварного алюминиевого бака
 X_IN, X_OUT = 1.30, 2.47
-Y_F = 0.112         # за полкой переднего лонжерона
 TARGET_L = 56.8     # AFM 2.14.4, стандартный бак, полное количество
 FILLER = (2.79, 0.225)   # центр горловины: вырез в верхней обшивке (MSFS)
 VENT_PANEL = (3.875, 0.175)  # наружный лючок бака: ~2 м от законцовки (AFM 7.9.4)
-RC = 0.024          # радиус скругления рёбер бака
 DRAIN = (1.378, 0.189)   # сливной клапан: там же, где у MSFS (Cylinder.160/174)
 
 
@@ -67,63 +66,12 @@ def P(name, ru, m, doc=None, smooth=True):
 
 # ── Бак: сечение между лонжеронами по обводу крыла ─────────────────────────
 
-def rear_y(X):
-    X = math.copysign(max(abs(X), 1.33), X)
-    lo, up = R.wing_section(X, 0.28)
-    return R.spar_faces(X, (lo + up) / 2)[1] - 0.034
-
-
-def raw_section(X, off, K=9):
-    yr = rear_y(X)
-    ys = [Y_F + (yr - Y_F) * i / (K - 1) for i in range(K)]
-    bot = [V((X, y, R.skin(X, y, 'lower')[0].z + T_SKIN + off)) for y in ys]
-    top = [V((X, y, R.skin(X, y, 'upper')[0].z - T_SKIN - off)) for y in reversed(ys)]
-    return bot, top
+S = Sections(R)
+rear_y = S.rear_y
 
 
 def section(X, off, n=56, rc=RC):
-    bot, top = raw_section(X, off)
-    poly = bot + top
-    k = len(bot) // 2
-    loop = poly[k:] + poly[:k + 1]           # старт с середины днища, не на углу
-    f = fillet(loop + [loop[1]], rc)[:-1]
-    # равномерно по длине обвода, чтобы соседние сечения совпадали по вершинам
-    L = [0.0]
-    for i in range(1, len(f)):
-        L.append(L[-1] + (f[i] - f[i - 1]).length)
-    tot = L[-1]
-    out, j = [], 0
-    for i in range(n):
-        s = tot * i / n
-        while j < len(L) - 2 and L[j + 1] < s:
-            j += 1
-        t = 0 if L[j + 1] == L[j] else (s - L[j]) / (L[j + 1] - L[j])
-        out.append(f[j].lerp(f[j + 1], t))
-    return out
-
-
-def shrink(ring, d):
-    c = sum(ring, V()) / len(ring)
-    return [c + (p - c) * max(0.0, 1 - d / max(1e-6, (p - c).length)) for p in ring]
-
-
-def loft(p, rings, mi, caps=True):
-    bm = p.bm
-    vs = [[bm.verts.new(q) for q in r] for r in rings]
-    n = len(rings[0])
-    for a, b in zip(vs, vs[1:]):
-        for i in range(n):
-            f = bm.faces.new((a[i], a[(i + 1) % n], b[(i + 1) % n], b[i]))
-            f.material_index = mi
-            f.smooth = True
-    if caps:
-        for r, vr, flip in ((rings[0], vs[0], True), (rings[-1], vs[-1], False)):
-            c = bm.verts.new(sum(r, V()) / len(r))
-            for i in range(n):
-                tri = (c, vr[i], vr[(i + 1) % n]) if not flip else (c, vr[(i + 1) % n], vr[i])
-                f = bm.faces.new(tri)
-                f.material_index = mi
-                f.smooth = False
+    return S.ring(X, off, n, rc)
 
 
 def tank_rings(s, off, x0=X_IN, x1=X_OUT, bead=0.010):
@@ -159,6 +107,7 @@ CLR = (lo_c + hi_c) / 2
 VOL = tank_volume(CLR)
 print(f'FUEL tank clearance {CLR*1000:.1f} mm -> inner volume {VOL:.2f} l (target {TARGET_L})')
 assert abs(VOL - TARGET_L) < 0.3, VOL
+assert abs(CLR - TANK_CLR) < 0.0005, f'обнови TANK_CLR в sections.py: {CLR:.4f}'
 
 
 def zb(X, y):
@@ -183,19 +132,7 @@ def clip_level(ring, zl):
     return out
 
 
-def resample(poly, n):
-    pts = poly + [poly[0]]
-    L = [0.0]
-    for i in range(1, len(pts)):
-        L.append(L[-1] + (pts[i] - pts[i - 1]).length)
-    out, j = [], 0
-    for i in range(n):
-        s = L[-1] * i / n
-        while j < len(L) - 2 and L[j + 1] < s:
-            j += 1
-        t = 0 if L[j + 1] == L[j] else (s - L[j]) / (L[j + 1] - L[j])
-        out.append(pts[j].lerp(pts[j + 1], t))
-    return out
+resample = resample_closed
 
 
 # ── Бак, топливо, перегородки, резина ─────────────────────────────────────

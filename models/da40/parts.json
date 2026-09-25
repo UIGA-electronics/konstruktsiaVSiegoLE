@@ -14,10 +14,11 @@
   {
     "file": "da40-wing-structure.glb",
     "title": "Силовой набор крыла",
-    "parts": 60,
-    "meshes": 60,
+    "parts": 62,
+    "meshes": 62,
     "clips": [],
-    "mb": 0.29
+    "mb": 0.21,
+    "built": "tools/da40/wing.py"
   },
   {
     "file": "da40-fuel.glb",
