@@ -5,12 +5,10 @@ import math
 
 from mathutils import Vector as V
 
-from lib import fillet
-
 T_SKIN = 0.010      # сэндвич обшивки: углепластик, пенопласт, стеклопластик (AMM 57-10 2.A)
 Y_F = 0.112         # за полкой переднего лонжерона
-TANK_CLR = 0.0097   # зазор бака до обшивки: даёт 56,8 л (подбирается в fuel.py и сверяется)
-RC = 0.024          # радиус скругления рёбер бака
+TANK_CLR = 0.0083   # зазор бака до обшивки: даёт 56,8 л (подбирается в fuel.py и сверяется)
+RC = 0.045          # радиус скругления рёбер бака (сечение почти «стадион», AMM 05-25 рис. 7 вид A)
 
 
 class Sections:
@@ -37,14 +35,43 @@ class Sections:
         top = [V((X, y, self.up_in(X, y) - off)) for y in reversed(ys)]
         return bot, top
 
-    def ring(self, X, off, n=56, rc=RC, y0=None, y1=None):
-        """Замкнутый контур из n точек, старт с середины днища."""
-        bot, top = self.raw(X, off, y0, y1)
-        poly = bot + top
-        k = len(bot) // 2
-        loop = poly[k:] + poly[:k + 1]
-        f = fillet(loop + [loop[1]], rc)[:-1]
-        return resample_open(f, n)
+    def ring(self, X, off, n=56, rc=RC, y0=None, y1=None, K=12):
+        """Замкнутый контур из n точек, старт с середины днища.
+
+        Углы — честные дуги радиуса rc (не больше половины местной высоты:
+        при большом rc сечение становится «стадионом»), верх и низ идут по
+        внутренней поверхности обшивки."""
+        y0 = Y_F if y0 is None else y0
+        y1 = self.rear_y(X) if y1 is None else y1
+        zb = lambda y: self.lo_in(X, y) + off  # noqa: E731
+        zt = lambda y: self.up_in(X, y) - off  # noqa: E731
+        r = min(rc, (y1 - y0) * 0.49, (zt(y0) - zb(y0)) * 0.49, (zt(y1) - zb(y1)) * 0.49)
+        pts = []
+
+        def arc(cy, cz, a0, a1, m=8):
+            for i in range(m + 1):
+                a = math.radians(a0 + (a1 - a0) * i / m)
+                pts.append(V((X, cy + r * math.cos(a), cz + r * math.sin(a))))
+
+        ym = (y0 + y1) / 2
+        for i in range(K + 1):                      # низ: от середины назад
+            y = ym + (y1 - r - ym) * i / K
+            pts.append(V((X, y, zb(y))))
+        arc(y1 - r, zb(y1 - r) + r, -90, 0)
+        arc(y1 - r, zt(y1 - r) - r, 0, 90)
+        for i in range(2 * K + 1):                  # верх: назад → вперёд
+            y = (y1 - r) + ((y0 + r) - (y1 - r)) * i / (2 * K)
+            pts.append(V((X, y, zt(y))))
+        arc(y0 + r, zt(y0 + r) - r, 90, 180)
+        arc(y0 + r, zb(y0 + r) + r, 180, 270)
+        for i in range(K + 1):                      # низ: спереди к середине
+            y = (y0 + r) + (ym - (y0 + r)) * i / K
+            pts.append(V((X, y, zb(y))))
+        clean = [pts[0]]
+        for q in pts[1:]:
+            if (q - clean[-1]).length > 1e-6:
+                clean.append(q)
+        return resample_open(clean, n)
 
 
 def resample_open(f, n):
