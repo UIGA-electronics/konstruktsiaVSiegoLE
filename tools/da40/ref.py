@@ -43,9 +43,10 @@ with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'replaced.jso
 
 
 class Ref:
-    def __init__(self):
+    def __init__(self, exclude=()):
         ext = bpy.data.collections['DA40 Exterior']
-        shell = [o for o in ext.all_objects if o.type == 'MESH' and o.name not in REPLACED and
+        skip = set(REPLACED) | set(exclude)
+        shell = [o for o in ext.all_objects if o.type == 'MESH' and o.name not in skip and
                  any(m and m.name in SHELL_MATS for m in o.data.materials)]
         self.shell_names = [o.name for o in shell]
         self.shell = _bvh(shell)

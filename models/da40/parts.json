@@ -64,10 +64,11 @@
   {
     "file": "da40-pitot-static.glb",
     "title": "ПВД, статика, сваливание",
-    "parts": 22,
-    "meshes": 22,
+    "parts": 34,
+    "meshes": 34,
     "clips": [],
-    "mb": 0.33
+    "mb": 0.2,
+    "built": "tools/da40/pitot.py"
   },
   {
     "file": "da40-cooling.glb",
