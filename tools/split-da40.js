@@ -70,7 +70,7 @@ const TEX = [
 /* Детали MSFS, заменённые построенными по документам (tools/da40): из планера
    вырезаются. Файлы, которые теперь собираются в Blender, нарезка не трогает. */
 const REPLACED = new Set(Object.keys(JSON.parse(fs.readFileSync(path.join(__dirname, 'da40', 'replaced.json'), 'utf8'))));
-const REBUILT = new Set(['da40-fuel.glb', 'da40-wing-structure.glb', 'da40-pitot-static.glb']);
+const REBUILT = new Set(['da40-fuel.glb', 'da40-wing-structure.glb', 'da40-pitot-static.glb', 'da40-brakes.glb']);
 
 /* Два дефекта экспорта — см. fix-materials.js. */
 function fixMaterials(doc) {

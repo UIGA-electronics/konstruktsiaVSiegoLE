@@ -170,7 +170,7 @@
   "Flexible hose pilot LH -> co-pilot LH": "Гибкий шланг между левыми цилиндрами",
   "Flexible hose pilot RH -> co-pilot RH": "Гибкий шланг между правыми цилиндрами",
   "Parking brake cable (lever -> valve)": "Трос стояночного тормоза: рычаг → клапан",
-  "Parking brake valve": "Клапан стояночного тормоза",
+  "Parking brake valve": "Клапан стояночного тормоза на нижней полке пультовой переборки: два клапана запирают давление в суппортах; держит больше суток (AMM 32-40 2.C, рис. 8)",
   "Rigid brake pipe LH (along spring steel strut)": "Жёсткая тормозная трубка вдоль левой рессоры",
   "Rigid brake pipe RH (along spring steel strut)": "Жёсткая тормозная трубка вдоль правой рессоры",
   "Rigid brake pipe LH (floor)": "Жёсткая тормозная трубка под полом, левая",
@@ -615,7 +615,26 @@
   "Pitot hose (green) to standby airspeed indicator": "Полное давление к резервному указателю скорости (AMM 34-10 рис. 1)",
   "Static hose (blue) to standby altimeter and ASI": "Статика к резервному высотомеру и указателю скорости (AMM 34-10 рис. 1)",
   "Static hose (blue) to alternate static valve": "Статика к крану альтернативной статики: открыт — давление берётся из кабины (AFM 7.11)",
-  "Alternate static valve": "Кран альтернативной статики на приборной доске (AFM 7.11, 3.x)"
+  "Alternate static valve": "Кран альтернативной статики на приборной доске (AFM 7.11, 3.x)",
+  "Brake master cylinder copilot L": "Главный тормозной цилиндр левого тормоза под педалью второго пилота: давит жидкость, когда нажимают на верх педали (AMM 32-40 2.C, рис. 3)",
+  "Brake master cylinder copilot R": "Главный тормозной цилиндр правого тормоза под педалью второго пилота: давит жидкость, когда нажимают на верх педали (AMM 32-40 2.C, рис. 3)",
+  "Brake master cylinder pilot L": "Главный тормозной цилиндр левого тормоза под педалью пилота: давит жидкость, когда нажимают на верх педали (AMM 32-40 2.C, рис. 3)",
+  "Brake master cylinder pilot R": "Главный тормозной цилиндр правого тормоза под педалью пилота: давит жидкость, когда нажимают на верх педали (AMM 32-40 2.C, рис. 3)",
+  "Brake fluid reservoir L": "Бачок тормозной жидкости левого системы на цилиндре второго пилота: уровень между 12 и 25 мм от верха (AMM 32-40 2.C, рис. 2–3)",
+  "Brake fluid in reservoir L": "Тормозная жидкость в бачке (AMM 32-40)",
+  "Reservoir L to co-pilot master cylinder": "Питание цилиндра из бачка (AMM 32-40 рис. 2)",
+  "Brake fluid reservoir R": "Бачок тормозной жидкости правого системы на цилиндре второго пилота: уровень между 12 и 25 мм от верха (AMM 32-40 2.C, рис. 2–3)",
+  "Brake fluid in reservoir R": "Тормозная жидкость в бачке (AMM 32-40)",
+  "Reservoir R to co-pilot master cylinder": "Питание цилиндра из бачка (AMM 32-40 рис. 2)",
+  "Parking brake Bowden cable": "Боуденовский трос от рукоятки PARKING BRAKE к рычагу клапана; регулировочный наконечник (AMM 32-40 рис. 8)",
+  "Brake hose L co-pilot to pilot master cylinder": "Шланг левого системы: выход цилиндра второго пилота — вход цилиндра пилота (AMM 32-40 2.C, рис. 2–3)",
+  "Brake hose L pilot master cylinder to parking valve": "Шланг левого системы: выход цилиндра пилота — клапан стояночного тормоза (AMM 32-40 2.C)",
+  "Brake hose L parking valve to caliper": "Шланг левого тормоза: клапан — под полом — по задней кромке рессоры к суппорту левого колеса (AMM 32-40 рис. 2, 32-10)",
+  "Brake caliper L inlet fitting and bleeder": "Штуцер суппорта левого колеса и клапан прокачки (AMM 32-40 рис. 5)",
+  "Brake hose R co-pilot to pilot master cylinder": "Шланг правого системы: выход цилиндра второго пилота — вход цилиндра пилота (AMM 32-40 2.C, рис. 2–3)",
+  "Brake hose R pilot master cylinder to parking valve": "Шланг правого системы: выход цилиндра пилота — клапан стояночного тормоза (AMM 32-40 2.C)",
+  "Brake hose R parking valve to caliper": "Шланг правого тормоза: клапан — под полом — по задней кромке рессоры к суппорту правого колеса (AMM 32-40 рис. 2, 32-10)",
+  "Brake caliper R inlet fitting and bleeder": "Штуцер суппорта правого колеса и клапан прокачки (AMM 32-40 рис. 5)"
  },
  "rules": [
   [
@@ -843,7 +862,11 @@
   "DA40 red marking": "красная краска",
   "DA40 wire red (+)": "провод питания",
   "DA40 wire black (-)": "провод массы",
-  "DA40 relay housing": "корпус реле"
+  "DA40 relay housing": "корпус реле",
+  "DA40 brake master cylinder (anodised)": "алюминиевый сплав",
+  "DA40 brake hose (black)": "тормозной шланг высокого давления",
+  "DA40 brake reservoir (translucent)": "полупрозрачный бачок",
+  "DA40 brake fluid MIL-H-5606 (red)": "гидрожидкость MIL-PRF-5606, красная"
  },
  "materialsHide": "^(material|mat|screw|gear|canline|lights|cockpitlit|hobbs|propellor|fuselage2?|wings|\\$.*)[\\s\\d]*$"
 }

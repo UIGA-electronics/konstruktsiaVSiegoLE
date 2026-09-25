@@ -48,10 +48,11 @@
   {
     "file": "da40-brakes.glb",
     "title": "Тормоза",
-    "parts": 40,
-    "meshes": 29,
+    "parts": 20,
+    "meshes": 20,
     "clips": [],
-    "mb": 0.14
+    "mb": 0.15,
+    "built": "tools/da40/brakes.py"
   },
   {
     "file": "da40-air.glb",
@@ -97,14 +98,14 @@
   {
     "file": "da40-airframe.glb",
     "title": "Планер",
-    "parts": 311,
+    "parts": 309,
     "meshes": 233,
     "clips": [
       "Закрылки UP → LDG",
       "Элероны влево → вправо",
       "Руль высоты"
     ],
-    "mb": 6.49
+    "mb": 6.48
   },
   {
     "file": "da40-wheels.glb",
