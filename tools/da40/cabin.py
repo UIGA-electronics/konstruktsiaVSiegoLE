@@ -13,7 +13,7 @@ import ref
 from route import Router
 
 LAYERS = os.environ.get('LAYERS', '/home/user/da40src/out2')
-BUILT = ('fuel', 'brakes', 'pitot', 'engine', 'cooling', 'induction', 'oil', 'air')
+BUILT = ('fuel', 'brakes', 'pitot', 'engine', 'cooling', 'induction', 'oil', 'air', 'wing', 'controls-addon', 'electrical')
 SOURCE_SYSTEMS = ('Flight controls', 'Electrical system', 'Avionics & antennas')
 
 # глаза пилотов, камера сзади по центру, низко у колен — как заглядывают в нишу для ног на сайте
@@ -28,10 +28,11 @@ def trim_bvh():
     return ref._bvh(objs)
 
 
-def systems_bvh(R, own):
-    """BVH соседних систем; own — имя своего слоя из BUILT (его GLB не грузится)."""
+def systems_bvh(R, own, extra=()):
+    """BVH соседних систем; own — имя своего слоя из BUILT (его GLB не грузится);
+    extra — имена объектов исходника, которых на сайте уже нет (заменены)."""
     objs = [o for c in bpy.data.collections['DA40 Systems'].children if c.name in SOURCE_SYSTEMS
-            for o in c.all_objects if o.type == 'MESH']
+            for o in c.all_objects if o.type == 'MESH' and o.name not in extra]
     before = set(bpy.data.objects)
     for g in BUILT:
         f = os.path.join(LAYERS, f'da40-{g}-raw.glb')
@@ -52,8 +53,8 @@ def systems_bvh(R, own):
     return bvh
 
 
-def setup(R, own, step=0.010):
+def setup(R, own, step=0.010, extra=()):
     """(отделка, соседние системы, планировщик) для слоя own."""
     trim = trim_bvh()
-    sys_ = systems_bvh(R, own)
+    sys_ = systems_bvh(R, own, extra)
     return trim, sys_, Router([R.shell, sys_], [R.shell, trim], EYES, soft=[trim], step=step)
