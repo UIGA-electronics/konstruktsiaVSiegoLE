@@ -15,6 +15,18 @@ var Figures = (function () {
 
   var reg = {};
 
+  /* Версия ресурсов берётся из ?v= этого скрипта в index.html и дописывается
+     к адресам моделей и подписей: имя .glb при перестройке не меняется,
+     и без метки браузер показывал бы модель из своего кеша. */
+  var ASSET_V = (function () {
+    var s = document.currentScript;
+    var m = s && /[?&]v=([^&]+)/.exec(s.src);
+    return m ? m[1] : '';
+  })();
+  function withV(u) {
+    return ASSET_V ? u + (u.indexOf('?') < 0 ? '?' : '&') + 'v=' + ASSET_V : u;
+  }
+
   /* Схемы широкие: на узком экране они не сжимаются до нечитаемости,
      а прокручиваются вбок внутри своей рамки. */
   function svg(vb, inner) {
@@ -2246,7 +2258,7 @@ var Figures = (function () {
       }
       addDict({ labels: opts.labels, rules: opts.labelRules, materials: opts.materialLabels });
       var dictReady = opts.labelsSrc
-        ? fetch(opts.labelsSrc).then(function (r) { return r.json(); })
+        ? fetch(withV(opts.labelsSrc)).then(function (r) { return r.json(); })
           .then(addDict).catch(function (e) { console.warn('подписи:', e); })
         : Promise.resolve();
 
@@ -2409,7 +2421,7 @@ var Figures = (function () {
       function loadFile(f) {
         if (f.promise) return f.promise;
         f.promise = new Promise(function (res, rej) {
-          loader.load(f.src, function (gltf) {
+          loader.load(withV(f.src), function (gltf) {
             f.scene = gltf.scene;
             f.scene.visible = f.on;
             root.add(f.scene);
