@@ -6,7 +6,12 @@ AMM 6.02.15 Rev. 3: 34-10 (рис. 1), 27-39 (рис. 1), 57-10 2.B(9); AFM 7.11
 Наружные точки взяты с оболочки MSFS (её делали по реальному самолёту):
 ПВД — объект PITOT; статические порты — кольца «STATIC PORT KEEP CLEAN»
 на хвостовой части (y = 1,80 м); отверстие сигнализатора — единственное
-отверстие в передней кромке, и только на левом крыле (x = 2,461 м).
+отверстие в передней кромке, и только на левом крыле (x = 2,461 м); кран
+альтернативной статики — ALT_Static_Switch под левым краем приборной доски.
+
+В кабине шланги идут за отделкой: трассы прокладывает route.Router
+(cabin.setup) — под полом, в зазоре у борта и за передней стенкой ниши для
+ног, к разъёмам на передней стенке GDC 74A и к задним стенкам приборов.
 """
 import json
 import math
@@ -19,7 +24,8 @@ from mathutils import Matrix, Vector as V  # noqa: E402
 
 import lib  # noqa: E402
 import ref  # noqa: E402
-from lib import Part, basis, box, cyl, fillet, hexa, ring_tube, screw, sphere, sweep, torus  # noqa: E402
+from lib import Part, basis, box, cyl, fillet, ring_tube, screw, sphere, sweep  # noqa: E402
+import cabin  # noqa: E402
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else '/tmp/da40-pitot-raw.glb'
 
@@ -27,6 +33,8 @@ ref.open_source()
 R = ref.Ref(exclude={'PITOT'})
 ref.drop_collection('Pitot-static & stall warning')
 COL = lib.collection('DA40 Pitot-static and stall warning (AMM 34-10, 27-39)')
+TRIM, SYS, RT = cabin.setup(R, 'pitot')
+CHECKS = []
 
 M = dict(
     green=lib.mat('DA40 Pitot hose (green, 8 mm)', (0.10, 0.52, 0.16), 0.0, 0.45, ru='зелёный шланг 8 мм — полное давление'),
@@ -50,10 +58,10 @@ PROBE_TOP = V((4.618, 0.1925))       # стойка ПВД у обшивки (о
 STALL_HOLE = V((2.461, -0.228, 0.0312))
 STATIC_Y, STATIC_Z = 1.80, 0.222
 LH_SEAT_TRAPS = V((0.33, -0.08, -0.175))   # под креслом пилота: разъёмы и влагоотстойники (AMM 57-10 2.B(9))
-GDC = V((0.30, -0.915, 0.21))              # GDC 74A на полке приборной доски
+GDC_FRONT = V((0.30, -1.006, 0.21))        # передняя стенка GDC 74A на полке приборной доски (разъёмы)
 ASI = V((0.095, -0.74, 0.64))              # резервный указатель скорости
 ALT = V((-0.105, -0.74, 0.64))             # резервный высотомер
-ALT_STATIC = V((0.30, -0.70, 0.255))       # кран альтернативной статики
+ALT_STATIC = V((0.433, -0.791, 0.262))     # кран альтернативной статики: ALT_Static_Switch MSFS, лицом назад
 HORN = V((0.34, -0.70, 0.355))             # рупор сигнализатора в приборной доске
 
 
@@ -75,7 +83,26 @@ def hose(name, ru, pts, r, bend, mat, doc, joints=(), clamps=()):
         q, t = lib.along(path, f * L)
         lib.p_clamp(p, q, t, r, tab, p.m(M['steel']), p.m(M['black']))
     p.done()
+    CHECKS.append((name, path, r))
     return path
+
+
+def route(a, da, b, db, r, lo, hi, stub=0.02, relax=(), step=None):
+    """Скрытая трасса планировщика между двумя штуцерами (если скрытой нет — хотя бы без пересечений)."""
+    a, b, da, db = V(a), V(b), V(da).normalized(), V(db).normalized()
+    a0, b0 = a + da * stub, b - db * stub
+    old = RT.step
+    RT.step = step or old
+    try:
+        for hid in (True, False):
+            mid = RT.route(a0, b0, r, lo, hi, hidden=hid, relax=relax)
+            if mid:
+                if not hid:
+                    print(f'ROUTE visible {tuple(round(v, 3) for v in a)} → {tuple(round(v, 3) for v in b)}')
+                return [a] + mid + [b]
+    finally:
+        RT.step = old
+    raise SystemExit(f'нет трассы {tuple(round(v, 3) for v in a)} → {tuple(round(v, 3) for v in b)}')
 
 
 def tee(name, ru, c, d_run, d_branch, r, doc):
@@ -123,14 +150,19 @@ def stall_warning():
     ring_tube(p, inner, aft, 0.011, 0.0055, 0.003, 0, segs=18)
     p.done()
     start = inner + aft * 0.02
-    # в носке вдоль передней стенки лонжерона к корню, сквозь переднюю часть корневой нервюры
-    pts = [start, start + aft * 0.03, V((2.36, -0.12, 0.03)), V((1.60, -0.09, -0.03)), V((1.26, -0.08, -0.06)),
-           V((1.10, -0.10, -0.09)), V((0.62, -0.12, -0.13)), LH_SEAT_TRAPS + V((0.06, 0.02, 0.02)),
-           V((0.40, -0.30, -0.15)), V((0.40, -0.62, 0.10)), HORN + V((0.0, -0.06, -0.02)), HORN + V((0, -0.035, 0))]
+    # в носке вдоль передней стенки лонжерона к корню, сквозь переднюю часть корневой нервюры, к разъёму под креслом
+    joint = LH_SEAT_TRAPS + V((0.06, 0.02, 0.02))
+    wing = [start, start + aft * 0.03, V((2.36, -0.12, 0.03)), V((1.60, -0.09, -0.03)), V((1.26, -0.08, -0.06)),
+            V((1.10, -0.10, -0.09)), V((0.62, -0.12, -0.13)), joint]
+    back = HORN + V((0, -0.062, 0))
+    cab = route(joint, (-1, -0.3, 0), back, (0, 1, 0), 0.005, (0.0, -1.18, -0.23), (0.56, 0.05, 0.45), relax=[(back, 0.03)])
+    pts = wing + cab[1:]
+    L_w = lib.path_len(wing)
+    L = lib.path_len(pts)
     hose('Stall warning hose (10 mm transparent)',
          'Шланг сигнализатора сваливания, прозрачный 10 мм: от отверстия в кромке левого крыла к рупору в приборной доске; разъём под креслом пилота',
-         pts, 0.005, 0.05, 'clear', 'AMM 27-39, 57-10 2.B(9)', joints=(0.52,),
-         clamps=((0.12, V((0, 1, 0))), (0.25, V((0, 1, 0))), (0.36, V((0, 1, 0))), (0.8, V((1, 0, 0)))))
+         pts, 0.005, 0.05, 'clear', 'AMM 27-39, 57-10 2.B(9)', joints=(L_w / L,),
+         clamps=[(f * L_w / L, V((0, 1, 0))) for f in (0.2, 0.45, 0.7)])
     # рупор в приборной доске: корпус-раструб, фланец, шариковый клапан, шплинт
     d = V((0, 1, 0))
     p = P('Stall warning horn (instrument panel)',
@@ -216,13 +248,26 @@ def static():
              pts, 0.004, 0.04, 'blue', 'AMM 34-10 рис. 1', clamps=((0.5, V((s, 0, 0))),))
     tee('Static top loop tee', 'Тройник высокой петли статики: вода из портов не поднимется к приборам', top_t, V((1, 0, 0)), V((0, -1, 0)), 0.004,
         'AMM 34-10 рис. 1')
-    # основная линия вперёд: по левому борту вниз, под пол к креслу пилота
-    pts = [top_t + V((0, -0.014, 0)), V((0.05, STATIC_Y - 0.08, 0.60)), V((0.40, 1.62, 0.35)), V((0.46, 1.50, 0.0)),
-           V((0.46, 1.30, -0.14)), V((0.44, 0.60, -0.16)), V((0.38, 0.10, -0.17)), LH_SEAT_TRAPS + V((-0.07, 0.10, 0.0))]
+    # отвод с влагоотстойником у петли (рис. 1): короткий шланг вниз с отстойником на конце
+    wt = V((0.0, STATIC_Y + 0.02, 0.63)) + V((0, 0.02, 0))
+    tee('Static rear water trap tee', 'Тройник отвода к заднему влагоотстойнику статики', wt, V((0, 1, 0)), V((0, 0, -1)), 0.004, 'AMM 34-10 рис. 1')
+    trap_c = wt - V((0, 0, 0.11))
+    hose('Static hose (blue) to rear water trap', 'Отвод статики вниз к заднему влагоотстойнику', [wt - V((0, 0, 0.013)), trap_c + V((0, 0, 0.022))],
+         0.004, 0.01, 'blue', 'AMM 34-10 рис. 1')
+    p = P('Static line rear water trap', 'Задний влагоотстойник статической линии у петли: вода собирается внизу, сливается при обслуживании',
+          'trap', 'AMM 34-10 рис. 1')
+    cyl(p, trap_c - V((0, 0, 0.02)), trap_c + V((0, 0, 0.02)), 0.011, 0, segs=20)
+    cyl(p, trap_c - V((0, 0, 0.02)), trap_c - V((0, 0, 0.026)), 0.007, p.m(M['alu']), segs=14)
+    p.done()
+    # основная линия вперёд: от петли вниз по левому борту и под полом к влагоотстойнику под креслом пилота
+    end = LH_SEAT_TRAPS + V((-0.07, 0.10, 0.0))
+    a = top_t + V((0, -0.014, 0))
+    pts = route(a, (0, -1, 0), end, (0, -1, 0), 0.004, (-0.10, -0.25, -0.23), (0.56, STATIC_Y + 0.05, 0.66), step=0.02)
     hose('Static hose (blue) top loop to LH seat', 'Главная статическая линия: от петли вдоль левого борта под пол, к влагоотстойнику под креслом пилота',
          pts, 0.004, 0.06, 'blue', 'AMM 34-10 рис. 1',
          clamps=[(f, V((1, 0, 0))) for f in (0.3, 0.45, 0.6, 0.75)])
-    return LH_SEAT_TRAPS + V((-0.07, 0.10, 0.0))
+    RT.set_extra(ref._bvh([o for o in COL.all_objects if o.type == 'MESH']))
+    return end
 
 
 def cockpit(static_in):
@@ -236,41 +281,80 @@ def cockpit(static_in):
                         static_in + V((0, -0.14, 0.0)), (0, -1, 0), 0.004, 'blue', 'AMM 34-10 2.A')
     hose('Static hose (blue) to water trap', 'Статика: к влагоотстойнику', [static_in, static_in + V((0, -0.02, 0)), a2],
          0.004, 0.02, 'blue', 'AMM 34-10')
-    # вверх к полке приборной доски: GDC 74A и резервные приборы
-    tee_p = V((0.30, -0.62, 0.12))
-    tee_s = V((0.26, -0.64, 0.14))
-    hose('Pitot hose (green) water trap to panel tee', 'Полное давление: влагоотстойник — тройник за приборной доской',
-         [b1, b1 + V((0, -0.03, 0)), V((0.36, -0.34, -0.12)), V((0.34, -0.55, 0.02)), tee_p + V((0, 0.014, 0))],
-         0.004, 0.05, 'green', 'AMM 34-10 рис. 1', clamps=((0.5, V((1, 0, 0))),))
-    hose('Static hose (blue) water trap to panel tee', 'Статика: влагоотстойник — тройник за приборной доской',
-         [b2, b2 + V((0, -0.03, 0)), V((0.29, -0.36, -0.13)), V((0.28, -0.56, 0.03)), tee_s + V((0, 0.014, 0))],
-         0.004, 0.05, 'blue', 'AMM 34-10 рис. 1', clamps=((0.5, V((1, 0, 0))),))
-    tee('Pitot panel tee', 'Тройник полного давления: к GDC 74A и к резервному указателю скорости', tee_p, (0, 1, 0), (-1, 0, 0), 0.004, 'AMM 34-10')
-    tee('Static panel tee', 'Тройник статики: к GDC 74A, резервным приборам и крану альтернативной статики', tee_s, (0, 1, 0), (-1, 0, 0), 0.004, 'AMM 34-10')
-    gp, gs = GDC + V((0.02, -0.095, -0.02)), GDC + V((-0.02, -0.095, -0.02))
-    hose('Pitot hose (green) to GDC 74A', 'Полное давление в GDC 74A (вычислитель воздушных данных)',
-         [tee_p - V((0, 0.014, 0)), V((0.31, -0.80, 0.14)), gp + V((0, -0.04, 0)), gp], 0.004, 0.04, 'green', 'AMM 31-40 G, 34-10')
-    hose('Static hose (blue) to GDC 74A', 'Статика в GDC 74A', [tee_s - V((0, 0.014, 0)), V((0.27, -0.82, 0.15)), gs + V((0, -0.04, 0)), gs],
-         0.004, 0.04, 'blue', 'AMM 31-40 G, 34-10')
-    hose('Pitot hose (green) to standby airspeed indicator', 'Полное давление к резервному указателю скорости',
-         [tee_p - V((0.014, 0, 0)), V((0.18, -0.64, 0.30)), ASI + V((0.0, -0.06, -0.03)), ASI + V((0, -0.035, 0))],
-         0.004, 0.05, 'green', 'AMM 34-10 рис. 1')
-    hose('Static hose (blue) to standby altimeter and ASI', 'Статика к резервному высотомеру и указателю скорости',
-         [tee_s - V((0.014, 0, 0)), V((0.10, -0.66, 0.34)), V((0.0, -0.72, 0.55)), ALT + V((0.02, -0.06, -0.03)), ALT + V((0, -0.035, 0))],
-         0.004, 0.05, 'blue', 'AMM 34-10 рис. 1')
-    hose('Static hose (blue) to alternate static valve', 'Статика к крану альтернативной статики: открыт — давление берётся из кабины',
-         [tee_s + V((0, 0, 0.013)), V((0.27, -0.66, 0.2)), ALT_STATIC + V((0, -0.04, -0.02)), ALT_STATIC + V((0, -0.02, 0))],
-         0.004, 0.03, 'blue', 'AFM 7.11')
-    p = P('Alternate static valve', 'Кран альтернативной статики на приборной доске', 'black', 'AFM 7.11, 3.x')
-    cyl(p, ALT_STATIC + V((0, -0.02, 0)), ALT_STATIC + V((0, 0.01, 0)), 0.009, 0, segs=16)
-    box(p, ALT_STATIC + V((0, 0.018, 0)), (0.012, 0.008, 0.03), Matrix.Identity(3), p.m(M['red']), bevel=0.002)
+    RT.set_extra(ref._bvh([o for o in COL.all_objects if o.type == 'MESH']))
+    # тройники перед GDC 74A, за передней стенкой ниши для ног
+    gp, gs = GDC_FRONT + V((0.03, -0.004, -0.01)), GDC_FRONT + V((-0.03, -0.004, -0.01))
+    # тройники над потолком ниши для ног, перед GDC 74A: к блоку — короткие отводы вниз
+    tee_p = V((gp.x, -1.07, 0.33))
+    tee_s = V((gs.x, -1.07, 0.33))
+    for q, d in ((gp, V((0, -1, 0))), (gs, V((0, -1, 0)))):
+        p = P('GDC 74A pneumatic port' + (' Pitot' if q is gp else ' static'), 'Штуцер ' + ('полного' if q is gp else 'статического') +
+              ' давления на передней стенке GDC 74A', 'alu', 'AMM 31-40, 34-10')
+        cyl(p, q, q + d * 0.012, 0.005, 0, segs=12)
+        p.done()
+    lo, hi = (0.05, -1.18, -0.23), (0.56, 0.0, 0.66)       # по левой стороне, не через тоннель
+    pts = route(b1, (0, -1, 0), tee_p + V((0, 0, -0.014)), (0, 0, 1), 0.004, lo, hi)
+    hose('Pitot hose (green) water trap to GDC tee', 'Полное давление: влагоотстойник — под полом и за передней стенкой ниши — тройник у GDC 74A',
+         pts, 0.004, 0.05, 'green', 'AMM 34-10 рис. 1')
+    RT.set_extra(ref._bvh([o for o in COL.all_objects if o.type == 'MESH']))
+    pts = route(b2, (0, -1, 0), tee_s + V((0, 0, -0.014)), (0, 0, 1), 0.004, lo, hi)
+    hose('Static hose (blue) water trap to GDC tee', 'Статика: влагоотстойник — под полом и за передней стенкой ниши — тройник у GDC 74A',
+         pts, 0.004, 0.05, 'blue', 'AMM 34-10 рис. 1')
+    tee('Pitot tee (GDC 74A)', 'Тройник полного давления: к GDC 74A и к резервному указателю скорости', tee_p, (0, 0, 1), (0, 1, 0), 0.004, 'AMM 34-10')
+    tee('Static tee (GDC 74A)', 'Тройник статики: к GDC 74A и дальше вверх', tee_s, (0, 0, 1), (0, 1, 0), 0.004, 'AMM 34-10')
+    tee_s2 = tee_s + V((0, 0, 0.028))
+    tee('Static tee (alternate static)', 'Тройник статики: к крану альтернативной статики и к резервным приборам', tee_s2, (0, 0, 1), (1, 0, 0), 0.004, 'AMM 34-10, AFM 7.11')
+    for q, t, mat, name, ru in ((gp, tee_p, 'green', 'Pitot hose (green) to GDC 74A', 'Полное давление в GDC 74A (вычислитель воздушных данных)'),
+                                (gs, tee_s, 'blue', 'Static hose (blue) to GDC 74A', 'Статика в GDC 74A')):
+        end = q - V((0, 0.012, 0))
+        pts = route(t + V((0, 0.014, 0)), (0, 1, 0), end, (0, 1, 0), 0.004, (0.1, -1.18, 0.1), (0.5, -0.9, 0.45),
+                    relax=[(end, 0.05)])
+        hose(name, ru, pts, 0.004, 0.02, mat, 'AMM 31-40 G, 34-10')
+    RT.set_extra(ref._bvh([o for o in COL.all_objects if o.type == 'MESH']))
+    # к резервным приборам — вверх перед корпусами дисплеев и за доской к их задним стенкам
+    lo2, hi2 = (-0.30, -1.18, 0.10), (0.56, -0.66, 0.70)
+    asi, alt = ASI + V((0, -0.035, 0)), ALT + V((0, -0.035, 0))
+    pts = route(tee_p + V((0, 0, 0.014)), (0, 0, 1), asi, (0, 1, 0), 0.004, lo2, hi2, relax=[(asi, 0.03)])
+    hose('Pitot hose (green) to standby airspeed indicator', 'Полное давление к резервному указателю скорости', pts, 0.004, 0.04, 'green', 'AMM 34-10 рис. 1')
+    RT.set_extra(ref._bvh([o for o in COL.all_objects if o.type == 'MESH']))
+    pts = route(tee_s2 + V((0, 0, 0.014)), (0, 0, 1), alt, (0, 1, 0), 0.004, lo2, hi2, relax=[(alt, 0.03)])
+    hose('Static hose (blue) to standby altimeter and ASI', 'Статика к резервному высотомеру и указателю скорости', pts, 0.004, 0.04, 'blue', 'AMM 34-10 рис. 1')
+    RT.set_extra(ref._bvh([o for o in COL.all_objects if o.type == 'MESH']))
+    # кран альтернативной статики под левым краем доски, штуцер сзади (вперёд по полёту)
+    av = ALT_STATIC
+    p = P('Alternate static valve', 'Кран альтернативной статики под левым краем приборной доски: открыт — статическое давление берётся из кабины',
+          'black', 'AFM 7.11')
+    cyl(p, av + V((0, -0.035, 0)), av + V((0, -0.004, 0)), 0.011, 0, segs=18)
+    cyl(p, av + V((0, -0.047, 0)), av + V((0, -0.035, 0)), 0.004, p.m(M['alu']), segs=10)
     p.done()
+    port = av + V((0, -0.047, 0))
+    pts = route(tee_s2 + V((0.013, 0, 0)), (1, 0, 0), port, (0, 1, 0), 0.004, (0.10, -1.18, 0.0), (0.56, -0.70, 0.45),
+                relax=[(port, 0.02)])
+    hose('Static hose (blue) to alternate static valve', 'Статика к крану альтернативной статики', pts, 0.004, 0.03, 'blue', 'AFM 7.11')
+
+
+def check():
+    for name, path, r in CHECKS:
+        L = lib.path_len(path)
+        n = max(8, int(L / 0.02))
+        vis, worst = [], (9.0, None)
+        for k in range(n + 1):
+            q, _ = lib.along(path, L * k / n)
+            if RT.seen(q, r):
+                vis.append(round(L * k / n, 2))
+            for tag, bvh in (('shell', R.shell), ('trim', TRIM), ('sys', SYS)):
+                h = bvh.find_nearest(q, 0.5)
+                if h[0] is not None and h[3] - r < worst[0]:
+                    worst = (h[3] - r, (tag, tuple(round(v, 3) for v in q)))
+        print(f'CHECK {name}: {len(vis)}/{n + 1} visible {vis[:5]}; min gap {worst[0] * 1000:.1f} mm {worst[1]}')
 
 
 stall_warning()
 pitot()
 s_in = static()
 cockpit(s_in)
+if os.environ.get('CHECK'):
+    check()
 
 dup = [o.name for o in COL.all_objects if '.0' in o.name[-4:]]
 assert not dup, dup

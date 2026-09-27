@@ -48,8 +48,8 @@
   {
     "file": "da40-brakes.glb",
     "title": "Тормоза",
-    "parts": 20,
-    "meshes": 20,
+    "parts": 21,
+    "meshes": 21,
     "clips": [],
     "mb": 0.15,
     "built": "tools/da40/brakes.py"
@@ -57,19 +57,19 @@
   {
     "file": "da40-air.glb",
     "title": "Вентиляция и отопление",
-    "parts": 34,
-    "meshes": 34,
+    "parts": 38,
+    "meshes": 38,
     "clips": [],
-    "mb": 0.57,
+    "mb": 0.56,
     "built": "tools/da40/air.py"
   },
   {
     "file": "da40-pitot-static.glb",
     "title": "ПВД, статика, сваливание",
-    "parts": 34,
-    "meshes": 34,
+    "parts": 40,
+    "meshes": 40,
     "clips": [],
-    "mb": 0.2,
+    "mb": 0.21,
     "built": "tools/da40/pitot.py"
   },
   {
