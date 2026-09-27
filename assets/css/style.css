@@ -404,6 +404,30 @@ td:first-child{ font-weight:700; }
 .figure-frame .sf:hover{ fill:#a9c6e4; }
 .figure-frame .sf.is-on{ fill:var(--blue); stroke:var(--navy); }
 .fig-readout b{ font-family:var(--ui); color:var(--ink); font-weight:800; }
+.figure-frame .sf.is-grp{ fill:#a9c6e4; }
+
+/* Схемы главы 6: неподвижные части серые, подвижные синие,
+   поток воздуха, жидкости и сигнала — бегущим пунктиром. */
+.figure-frame .f-fix{ fill:#e9edf2; stroke:#9aa7b6; stroke-width:1.2; }
+.figure-frame .f-mov{ fill:#c9dbf1; stroke:var(--blue); stroke-width:1.4; }
+.figure-frame .f-mov2{ fill:#f3dcc0; stroke:var(--amber); stroke-width:1.4; }
+.figure-frame .f-air{ stroke:#9dbde3; stroke-width:1.5; }
+.figure-frame .f-sig{ stroke:#c98a1b; }
+.figure-frame .f-ret{ stroke:#9aabbd; }
+.figure-frame .f-amber{ stroke:var(--amber); }
+.figure-frame .f-red-fill{ fill:var(--red); stroke:none; }
+.figure-frame text.t-red{ fill:var(--red); }
+.figure-frame text.t-blue{ fill:var(--blue); font-size:14px; }
+.figure-frame .f-flow{ stroke-dasharray:5 9; animation:f-flow 0.9s linear infinite; }
+.figure-frame .f-air.f-flow{ stroke-dasharray:14 10; animation-duration:0.8s; }
+.figure-frame .f-flow.rev{ animation-direction:reverse; }
+@keyframes f-flow{ to{ stroke-dashoffset:-28; } }
+@keyframes f-air{ to{ stroke-dashoffset:-24; } }
+.figure-frame .f-air.f-flow{ animation-name:f-air; }
+@media (prefers-reduced-motion: reduce){
+  .figure-frame .f-flow{ animation:none; }
+}
+.fig-auto.is-on::before{ content:'● '; color:#8fd19e; }
 
 /* Просмотр 3D-модели */
 .model3d{ position:relative; border-radius:var(--r-sm); overflow:hidden;

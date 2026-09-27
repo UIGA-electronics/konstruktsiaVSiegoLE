@@ -14,18 +14,20 @@
   {
     "file": "da40-wing-structure.glb",
     "title": "Силовой набор крыла",
-    "parts": 60,
-    "meshes": 60,
+    "parts": 62,
+    "meshes": 62,
     "clips": [],
-    "mb": 0.29
+    "mb": 0.21,
+    "built": "tools/da40/wing.py"
   },
   {
     "file": "da40-fuel.glb",
     "title": "Топливная система",
-    "parts": 143,
-    "meshes": 143,
+    "parts": 109,
+    "meshes": 109,
     "clips": [],
-    "mb": 0.54
+    "mb": 0.72,
+    "built": "tools/da40/fuel.py"
   },
   {
     "file": "da40-electrical.glb",
@@ -46,62 +48,68 @@
   {
     "file": "da40-brakes.glb",
     "title": "Тормоза",
-    "parts": 40,
-    "meshes": 29,
+    "parts": 20,
+    "meshes": 20,
     "clips": [],
-    "mb": 0.14
+    "mb": 0.15,
+    "built": "tools/da40/brakes.py"
   },
   {
     "file": "da40-air.glb",
     "title": "Вентиляция и отопление",
-    "parts": 36,
-    "meshes": 36,
+    "parts": 34,
+    "meshes": 34,
     "clips": [],
-    "mb": 0.18
+    "mb": 0.57,
+    "built": "tools/da40/air.py"
   },
   {
     "file": "da40-pitot-static.glb",
     "title": "ПВД, статика, сваливание",
-    "parts": 22,
-    "meshes": 22,
+    "parts": 34,
+    "meshes": 34,
     "clips": [],
-    "mb": 0.33
+    "mb": 0.2,
+    "built": "tools/da40/pitot.py"
   },
   {
     "file": "da40-cooling.glb",
     "title": "Охлаждение",
-    "parts": 17,
-    "meshes": 17,
+    "parts": 11,
+    "meshes": 11,
     "clips": [],
-    "mb": 0.11
+    "mb": 0.09,
+    "built": "tools/da40/powerplant.py"
   },
   {
     "file": "da40-induction.glb",
     "title": "Наддув и выхлоп",
-    "parts": 22,
-    "meshes": 22,
+    "parts": 13,
+    "meshes": 13,
     "clips": [],
-    "mb": 0.12
+    "mb": 0.12,
+    "built": "tools/da40/powerplant.py"
   },
   {
     "file": "da40-oil.glb",
     "title": "Масляная система",
-    "parts": 16,
-    "meshes": 16,
+    "parts": 8,
+    "meshes": 8,
     "clips": [],
-    "mb": 0.1
+    "mb": 0.05,
+    "built": "tools/da40/powerplant.py"
   },
   {
     "file": "da40-airframe.glb",
     "title": "Планер",
-    "parts": 315,
-    "meshes": 237,
+    "parts": 309,
+    "meshes": 233,
     "clips": [
       "Закрылки UP → LDG",
       "Элероны влево → вправо",
       "Руль высоты"
     ],
-    "mb": 5.34
+    "mb": 6.48
   },
   {
     "file": "da40-wheels.glb",
@@ -114,10 +122,11 @@
   {
     "file": "da40-engine.glb",
     "title": "Двигатель AE300",
-    "parts": 2,
-    "meshes": 2,
+    "parts": 21,
+    "meshes": 21,
     "clips": [],
-    "mb": 1.73
+    "mb": 0.15,
+    "built": "tools/da40/powerplant.py"
   },
   {
     "file": "da40-cabin.glb",
@@ -129,6 +138,6 @@
       "Элероны влево → вправо",
       "Руль высоты"
     ],
-    "mb": 8.74
+    "mb": 11.7
   }
 ]
