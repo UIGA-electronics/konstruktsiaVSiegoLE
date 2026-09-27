@@ -48,8 +48,8 @@
   {
     "file": "da40-brakes.glb",
     "title": "Тормоза",
-    "parts": 20,
-    "meshes": 20,
+    "parts": 21,
+    "meshes": 21,
     "clips": [],
     "mb": 0.15,
     "built": "tools/da40/brakes.py"

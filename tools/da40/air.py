@@ -9,9 +9,7 @@ AMM 6.02.15 Rev. 3, гл. 21 (21-00-00 рис. 1–3); AFM 7.4.
 (vent_pilot.004/.006).
 
 Воздуховоды идут за отделкой: трассы ищет route.Router так, чтобы шланг не
-задевал обшивку и соседние системы (управление, электрика, авионика из
-исходника; топливо, тормоза, ПВД, силовая установка — из их GLB в LAYERS)
-и не был виден из кабины. На виду остаются только сопла и решётки.
+задевал обшивку и соседние системы (cabin.py) и не был виден из кабины. На виду остаются только сопла и решётки.
 """
 import json
 import math
@@ -25,10 +23,9 @@ from mathutils import Matrix, Vector as V  # noqa: E402
 import lib  # noqa: E402
 import ref  # noqa: E402
 from lib import Part, basis, box, cyl, fillet, ring_tube, sweep, worm_clamp  # noqa: E402
-from route import Router  # noqa: E402
+import cabin  # noqa: E402
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else '/tmp/da40-air-raw.glb'
-LAYERS = os.environ.get('LAYERS', '/home/user/da40src/out2')
 
 ref.open_source()
 R = ref.Ref()
@@ -63,41 +60,7 @@ DIST_SIZE = V((0.11, 0.05, 0.08))
 PAX_OUTLET_Y = 0.30                         # решётки обогрева ног пассажиров на стенках тоннеля
 
 
-_trim = [o for o in bpy.data.collections['DA40 Interior'].all_objects if o.type == 'MESH' and
-         not any(m and 'Glass' in m.name for m in o.data.materials)]
-GLARE = ref._bvh(_trim)
-
-
-def systems_bvh():
-    """Соседние системы: управление, электрика и авионика — из исходника, пересобранные слои — из GLB."""
-    keep = ('Flight controls', 'Electrical system', 'Avionics & antennas')
-    objs = [o for c in bpy.data.collections['DA40 Systems'].children if c.name in keep
-            for o in c.all_objects if o.type == 'MESH']
-    before = set(bpy.data.objects)
-    for g in ('fuel', 'brakes', 'pitot', 'engine', 'cooling', 'induction', 'oil'):
-        f = os.path.join(LAYERS, f'da40-{g}-raw.glb')
-        if os.path.exists(f):
-            bpy.ops.import_scene.gltf(filepath=f)
-        else:
-            print('NO LAYER', f)
-    new = [o for o in bpy.data.objects if o not in before]
-    for o in new:
-        if o.parent is None:
-            o.location.z -= R.lift
-    bpy.context.view_layer.update()
-    bvh = ref._bvh(objs + [o for o in new if o.type == 'MESH'])
-    for o in new:
-        bpy.data.objects.remove(o, do_unlink=True)
-    return bvh
-
-
-SYS = systems_bvh()
-# точки обзора в кабине: трассы за отделкой отсюда не должны просматриваться
-# (глаза пилотов, камера сзади по центру, низко у колен — как заглядывают в нишу для ног на сайте)
-EYES = [V(e) for e in ((0, 0.25, 0.78), (0.28, 0.15, 0.78), (-0.28, 0.15, 0.78), (0.3, 0.0, 0.5), (-0.3, 0.0, 0.5),
-                       (0, 0.6, 0.85), (0.15, -0.2, 0.55), (-0.15, -0.2, 0.55),
-                       (0.22, -0.52, 0.2), (-0.22, -0.52, 0.2), (0, -0.45, 0.4))]
-RT = Router([R.shell, SYS], [R.shell, GLARE], EYES, soft=[GLARE], step=0.010)
+GLARE, SYS, RT = cabin.setup(R, 'air')
 ROUTES = []
 
 

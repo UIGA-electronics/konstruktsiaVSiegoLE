@@ -627,11 +627,11 @@
   "Reservoir R to co-pilot master cylinder": "Питание цилиндра из бачка (AMM 32-40 рис. 2)",
   "Parking brake Bowden cable": "Боуденовский трос от рукоятки PARKING BRAKE к рычагу клапана; регулировочный наконечник (AMM 32-40 рис. 8)",
   "Brake hose L co-pilot to pilot master cylinder": "Шланг левого системы: выход цилиндра второго пилота — вход цилиндра пилота (AMM 32-40 2.C, рис. 2–3)",
-  "Brake hose L pilot master cylinder to parking valve": "Шланг левого системы: выход цилиндра пилота — клапан стояночного тормоза (AMM 32-40 2.C)",
+  "Brake hose L pilot master cylinder to parking valve": "Шланг левого системы: выход цилиндра пилота — клапан стояночного тормоза на пультовой переборке (AMM 32-40 2.C, рис. 8)",
   "Brake hose L parking valve to caliper": "Шланг левого тормоза: клапан — под полом — по задней кромке рессоры к суппорту левого колеса (AMM 32-40 рис. 2, 32-10)",
   "Brake caliper L inlet fitting and bleeder": "Штуцер суппорта левого колеса и клапан прокачки (AMM 32-40 рис. 5)",
   "Brake hose R co-pilot to pilot master cylinder": "Шланг правого системы: выход цилиндра второго пилота — вход цилиндра пилота (AMM 32-40 2.C, рис. 2–3)",
-  "Brake hose R pilot master cylinder to parking valve": "Шланг правого системы: выход цилиндра пилота — клапан стояночного тормоза (AMM 32-40 2.C)",
+  "Brake hose R pilot master cylinder to parking valve": "Шланг правого системы: выход цилиндра пилота — клапан стояночного тормоза на пультовой переборке (AMM 32-40 2.C, рис. 8)",
   "Brake hose R parking valve to caliper": "Шланг правого тормоза: клапан — под полом — по задней кромке рессоры к суппорту правого колеса (AMM 32-40 рис. 2, 32-10)",
   "Brake caliper R inlet fitting and bleeder": "Штуцер суппорта правого колеса и клапан прокачки (AMM 32-40 рис. 5)",
   "Pilot NACA inlet duct LH": "Короб NACA-заборника пилота на левом борту носовой части (AMM 21-00 2.B(1))",
@@ -726,7 +726,8 @@
   "Passenger floor heat tee": "Тройник в тоннеле за передними креслами: тёплый воздух на две решётки к ногам пассажиров (AMM 21-00 рис. 1)",
   "Passenger floor heat outlet LH": "Решётка обогрева ног пассажира слева на стенке тоннеля (AMM 21-00 рис. 1)",
   "Passenger floor heat outlet RH": "Решётка обогрева ног пассажира справа на стенке тоннеля (AMM 21-00 рис. 1)",
-  "Passenger floor heat duct": "Тёплый воздух к ногам пассажиров: под полом кабины к тоннелю за передними креслами (AMM 21-00 рис. 1)"
+  "Passenger floor heat duct": "Тёплый воздух к ногам пассажиров: под полом кабины к тоннелю за передними креслами (AMM 21-00 рис. 1)",
+  "Control bulkhead bottom flange (valve mount)": "Нижняя полка пультовой переборки под клапаном стояночного тормоза (AMM 32-40 рис. 8)"
  },
  "rules": [
   [
