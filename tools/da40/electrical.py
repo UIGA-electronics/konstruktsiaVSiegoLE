@@ -306,8 +306,7 @@ def build():
         lo, hi = (min(-0.50, s * 0.62), -1.0, -0.25), (max(-0.25, s * 0.62), -0.10, 0.60)   # от панели автоматов (справа) к носку центроплана
         pts = route(CB_BACK + V((0, 0, -0.03)), (0, 1, 0), root, (s, 0, 0), 0.005, lo, hi, step=0.015, relax=[(CB_BACK, 0.07)])
         nav = LIGHTS['NAV_L' if s > 0 else 'NAV_R']
-        wlo, whi = (min(s * 0.55, s * 5.9), -0.40, -0.20), (max(s * 0.55, s * 5.9), 0.45, 0.40)
-        pts2 = route(root, (s, 0, 0), nav - V((s * 0.04, 0, 0)), (s, 0, 0), 0.005, wlo, whi, step=0.025, hidden=False)
+        pts2 = wing_run(s, root, nav)
         cable(f'Wing lighting harness {tag}', f'Жгут огней {"левого" if s > 0 else "правого"} крыла: за доской — носок центроплана — носок крыла — АНО и строб на законцовке',
               pts + pts2[1:], 0.005, 'harness', 'AMM 33-40, 24-60')
         if s > 0:
@@ -317,6 +316,22 @@ def build():
                 pl = route(pts2[best], (0, 1, 0), q, (0, -1, 0), 0.0025, (4.3, -0.25, 0.0), (5.2, 0.2, 0.35), step=0.01, hidden=False,
                            relax=[(pts2[best], 0.03), (q, 0.03)])
                 cable(f'Light feed → {key}', f'Отвод жгута к {ru} в носке левого крыла', pl, 0.0025, 'thin', 'AMM 33-40', lugs=False)
+
+
+def wing_run(s, root, nav):
+    """Жгут по носку крыла: перед передним лонжероном (y ≈ 0), по середине высоты профиля, до
+    концевой нервюры и назад к огням на законцовке."""
+    pts = [root]
+    for x in [0.75, 1.0, 1.3] + [1.6 + 0.4 * k for k in range(10)]:
+        if x > 5.35:
+            break
+        lo, hi = R.wing_section(s * x, -0.005)
+        if lo is None or hi is None:
+            continue
+        pts.append(V((s * x, -0.005, (lo + hi) / 2 + 0.01)))
+    lo, hi = R.wing_section(s * 5.45, 0.25)
+    pts += [V((s * 5.45, 0.25, (lo + hi) / 2)), nav - V((s * 0.04, 0, 0))]
+    return pts
 
 
 def check():
