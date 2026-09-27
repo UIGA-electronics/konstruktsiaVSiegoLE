@@ -90,11 +90,12 @@ class Ref:
         return (f.y if f else None), (r.y if r else None)
 
 
-def export(col, path, lift):
+def export(col, path, lift, anim=False):
     """Экспорт одной коллекции в GLB в системе координат сайта.
 
     Всё вешается на пустышку «DA40 ROOT», поднятую на lift: так колёса
-    стоят на нуле, как в остальных файлах, и слои совпадают."""
+    стоят на нуле, как в остальных файлах, и слои совпадают. anim=True —
+    с анимацией (ключи объектов; время = кадр / fps, как в клипах исходника)."""
     root = bpy.data.objects.new('DA40 ROOT', None)
     col.objects.link(root)
     root.location = (0, 0, lift)
@@ -108,7 +109,9 @@ def export(col, path, lift):
         o.hide_set(False)
         o.select_set(True)
     kw = dict(filepath=path, export_format='GLB', use_selection=True, export_apply=True,
-              export_yup=True, export_materials='EXPORT', export_animations=False,
+              export_yup=True, export_materials='EXPORT', export_animations=anim,
+              export_animation_mode='ACTIONS', export_force_sampling=True, export_frame_range=False,
+              export_anim_slide_to_zero=False, export_optimize_animation_size=False,
               export_cameras=False, export_lights=False, export_extras=False)
     valid = set(bpy.ops.export_scene.gltf.get_rna_type().properties.keys())
     bpy.ops.export_scene.gltf(**{k: v for k, v in kw.items() if k in valid})
