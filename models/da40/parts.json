@@ -57,10 +57,10 @@
   {
     "file": "da40-air.glb",
     "title": "Вентиляция и отопление",
-    "parts": 34,
-    "meshes": 34,
+    "parts": 38,
+    "meshes": 38,
     "clips": [],
-    "mb": 0.57,
+    "mb": 0.56,
     "built": "tools/da40/air.py"
   },
   {

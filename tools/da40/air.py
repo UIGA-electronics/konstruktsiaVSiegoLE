@@ -1,12 +1,17 @@
 """Вентиляция и отопление кабины DA 40 NG — отдельный слой сайта.
 
-    python3 tools/da40/air.py [out.glb]
+    python3 tools/da40/air.py [out.glb]          # CHECK=1 — зазоры и видимость трасс
 
 AMM 6.02.15 Rev. 3, гл. 21 (21-00-00 рис. 1–3); AFM 7.4.
 Точки на обшивке и в кабине сняты с модели MSFS: NACA-заборники пилотов на
 бортах у перегородки, пассажирский — под передней кромкой левого центроплана,
 сопла — на приборной доске (vent_pilot.003/.005) и в дуге безопасности
 (vent_pilot.004/.006).
+
+Воздуховоды идут за отделкой: трассы ищет route.Router так, чтобы шланг не
+задевал обшивку и соседние системы (управление, электрика, авионика из
+исходника; топливо, тормоза, ПВД, силовая установка — из их GLB в LAYERS)
+и не был виден из кабины. На виду остаются только сопла и решётки.
 """
 import json
 import math
@@ -19,9 +24,11 @@ from mathutils import Matrix, Vector as V  # noqa: E402
 
 import lib  # noqa: E402
 import ref  # noqa: E402
-from lib import Part, basis, box, cyl, fillet, hexa, ring_tube, screw, sweep, worm_clamp  # noqa: E402
+from lib import Part, basis, box, cyl, fillet, ring_tube, sweep, worm_clamp  # noqa: E402
+from route import Router  # noqa: E402
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else '/tmp/da40-air-raw.glb'
+LAYERS = os.environ.get('LAYERS', '/home/user/da40src/out2')
 
 ref.open_source()
 R = ref.Ref()
@@ -42,7 +49,7 @@ M = dict(
     coolant=lib.mat('DA40 coolant hose (black rubber)', (0.04, 0.04, 0.045), 0.0, 0.6, ru='шланг охлаждающей жидкости'),
 )
 
-DEFROST_Y = -0.90   # передняя часть козырька, за его лицевой стенкой у лобового стекла
+DEFROST_Y = -0.975  # под порогом козырька у основания лобового стекла, перед корпусами PFD и MFD
 
 PANEL_VENT = {1: V((0.433, -0.656, 0.476)), -1: V((-0.435, -0.651, 0.476))}
 ROLLBAR_VENT = {1: V((0.501, 0.266, 0.317)), -1: V((-0.501, 0.266, 0.317))}
@@ -50,6 +57,10 @@ PILOT_NACA_Y, PILOT_NACA_Z = -1.0, 0.035
 PAX_NACA = V((1.0, -0.20))          # под передней кромкой левого центроплана
 INNER_RIB_X, OUTER_RIB_X = 0.745, 1.165
 CS_FRONT_SPAR_Y = 0.02
+HEAT_VALVE = V((-0.24, -1.225, 0.045))      # на перегородке со стороны двигателя
+DISTRIBUTOR = V((-0.08, -1.155, -0.02))     # на перегородке со стороны кабины, за передней стенкой ниши для ног
+DIST_SIZE = V((0.11, 0.05, 0.08))
+PAX_OUTLET_Y = 0.30                         # решётки обогрева ног пассажиров на стенках тоннеля
 
 
 _trim = [o for o in bpy.data.collections['DA40 Interior'].all_objects if o.type == 'MESH' and
@@ -57,13 +68,46 @@ _trim = [o for o in bpy.data.collections['DA40 Interior'].all_objects if o.type 
 GLARE = ref._bvh(_trim)
 
 
+def systems_bvh():
+    """Соседние системы: управление, электрика и авионика — из исходника, пересобранные слои — из GLB."""
+    keep = ('Flight controls', 'Electrical system', 'Avionics & antennas')
+    objs = [o for c in bpy.data.collections['DA40 Systems'].children if c.name in keep
+            for o in c.all_objects if o.type == 'MESH']
+    before = set(bpy.data.objects)
+    for g in ('fuel', 'brakes', 'pitot', 'engine', 'cooling', 'induction', 'oil'):
+        f = os.path.join(LAYERS, f'da40-{g}-raw.glb')
+        if os.path.exists(f):
+            bpy.ops.import_scene.gltf(filepath=f)
+        else:
+            print('NO LAYER', f)
+    new = [o for o in bpy.data.objects if o not in before]
+    for o in new:
+        if o.parent is None:
+            o.location.z -= R.lift
+    bpy.context.view_layer.update()
+    bvh = ref._bvh(objs + [o for o in new if o.type == 'MESH'])
+    for o in new:
+        bpy.data.objects.remove(o, do_unlink=True)
+    return bvh
+
+
+SYS = systems_bvh()
+# точки обзора в кабине: трассы за отделкой отсюда не должны просматриваться
+# (глаза пилотов, камера сзади по центру, низко у колен — как заглядывают в нишу для ног на сайте)
+EYES = [V(e) for e in ((0, 0.25, 0.78), (0.28, 0.15, 0.78), (-0.28, 0.15, 0.78), (0.3, 0.0, 0.5), (-0.3, 0.0, 0.5),
+                       (0, 0.6, 0.85), (0.15, -0.2, 0.55), (-0.15, -0.2, 0.55),
+                       (0.22, -0.52, 0.2), (-0.22, -0.52, 0.2), (0, -0.45, 0.4))]
+RT = Router([R.shell, SYS], [R.shell, GLARE], EYES, soft=[GLARE], step=0.010)
+ROUTES = []
+
+
 def clearance(name, path, r):
-    """Трасса не должна задевать обшивку и отделку кабины: наименьший зазор до поверхностей."""
+    """Наименьший зазор трассы до обшивки, отделки и соседних систем."""
     L = lib.path_len(path)
     worst, where = 9.0, None
     for k in range(41):
         q, _ = lib.along(path, L * k / 40)
-        for tag, bvh in (('shell', R.shell), ('trim', GLARE)):
+        for tag, bvh in (('shell', R.shell), ('trim', GLARE), ('sys', SYS)):
             hit = bvh.find_nearest(q, 1.0)
             if hit[0] is not None and hit[3] - r < worst:
                 worst, where = hit[3] - r, (tag, k, tuple(round(v, 3) for v in q))
@@ -71,11 +115,27 @@ def clearance(name, path, r):
     return worst
 
 
+def visibility(name, path, r, allow=0.0):
+    """Сколько точек трассы видно из кабины; allow — сколько метров у конца могут быть на виду."""
+    L = lib.path_len(path)
+    n = max(8, int(L / 0.02))
+    vis = []
+    for k in range(n + 1):
+        s = L * k / n
+        if s > L - allow:
+            break
+        q, _ = lib.along(path, s)
+        if RT.seen(q, r):
+            vis.append(round(s, 2))
+    print(f'VIS {name}: {len(vis)}/{n + 1} visible' + (f' at {vis[:6]}' if vis else ''))
+    return vis
+
+
 def P(name, ru, m, doc):
     return Part(name, ru, M[m], COL, True, doc)
 
 
-def scat(name, ru, pts, r, bend, mat, doc, clamp_ends=True):
+def scat(name, ru, pts, r, bend, mat, doc, clamp_ends=True, allow=0.0):
     """Гофрированный воздуховод: рукав и проволочная спираль (кольцами через 3 см)."""
     p = P(name, ru, mat, doc)
     path = fillet(pts, bend)
@@ -89,7 +149,20 @@ def scat(name, ru, pts, r, bend, mat, doc, clamp_ends=True):
         for q, t in ((Pp[0], T[0]), (Pp[-1], T[-1])):
             worm_clamp(p, q + t * (0.012 if q is Pp[0] else -0.012), t, r + 0.002, 0.008, p.m(M['steel']))
     p.done()
+    ROUTES.append((name, path, r, allow))
+    RT.set_extra(ref._bvh([o for o in COL.all_objects if o.type == 'MESH']))   # следующие шланги обходят этот
     return path
+
+
+def routed(a, da, b, db, r, lo, hi, stub=0.03, hidden=True, relax=()):
+    """Опорные точки: выход из a вдоль da, трасса планировщика, вход в b вдоль db."""
+    a, b, da, db = V(a), V(b), V(da).normalized(), V(db).normalized()
+    a0, b0 = a + da * stub, b - db * stub
+    for rr in (r, r * 0.85):
+        mid = RT.route(a0, b0, rr, lo, hi, hidden=hidden, relax=relax)
+        if mid:
+            return [a] + mid + [b]
+    raise SystemExit(f'нет трассы {tuple(round(v, 3) for v in a)} → {tuple(round(v, 3) for v in b)}')
 
 
 def nozzle(name, ru, c, d, doc, r=0.03):
@@ -101,6 +174,26 @@ def nozzle(name, ru, c, d, doc, r=0.03):
     lib.sphere(p, c + d * 0.004, r * 0.75, 0, segs=18, rings=9)
     p.done()
     return c - d * 0.05
+
+
+def grille(name, ru, c, n, doc, w=0.08, h=0.035, depth=0.035):
+    """Решётка выхода воздуха заподлицо с панелью; n — в кабину. Возвращает точку подвода сзади."""
+    n = V(n).normalized()
+    Rm = basis(n)
+    p = P(name, ru, 'plastic', doc)
+    box(p, c - n * (depth / 2), (w, h, depth), Rm, 0, bevel=0.003)
+    for k in range(5):
+        box(p, c + n * 0.001 + Rm @ V((-w * 0.4 + k * w * 0.2, 0, 0)), (0.004, h * 0.8, 0.004), Rm, 0)
+    p.done()
+    return c - n * depth
+
+
+def wall_point(org, d):
+    """Первая панель отделки по лучу из кабины: точка и нормаль в кабину."""
+    hit = GLARE.ray_cast(V(org), V(d).normalized(), 2.0)
+    assert hit[0] is not None, org
+    nrm = hit[1] if hit[1].dot(V(d)) < 0 else -hit[1]
+    return hit[0], nrm
 
 
 def naca_adapter(name, ru, skin, n, flow, doc, w=0.07, L=0.16):
@@ -119,22 +212,37 @@ def naca_adapter(name, ru, skin, n, flow, doc, w=0.07, L=0.16):
 
 
 def pilots():
+    """AMM 21-00 рис. 2: от заборника шланг сразу поднимается у борта и сзади доски подходит к соплу."""
     for s in (1, -1):
         tag = 'LH' if s > 0 else 'RH'
         skin, n = R.hit((0, PILOT_NACA_Y, PILOT_NACA_Z), (s, 0, 0))
         n = n.normalized()
-        start, d = naca_adapter(f'Pilot NACA inlet duct {tag}', f'Короб NACA-заборника пилота на {"левом" if s > 0 else "правом"} борту носовой части',
-                                skin, n, V((0, 1, 0.25)), 'AMM 21-00 2.B(1)')
+        inward = -n
+        fl = (V((0, 1, 0)) - n * n.y).normalized()
+        up = n.cross(fl).normalized()
+        up = up if up.z > 0 else -up
+        # плоский короб за заборником в зазоре между бортом и обшивкой ниши для ног; патрубок вверх на заднем конце
+        p = P(f'Pilot NACA inlet duct {tag}', f'Короб NACA-заборника пилота на {"левом" if s > 0 else "правом"} борту носовой части',
+              'gfrp', 'AMM 21-00 2.B(1)')
+        Rm = Matrix((up, fl, inward)).transposed()
+        c = skin + inward * 0.014
+        box(p, c, (0.06, 0.14, 0.024), Rm, 0, bevel=0.004)
+        base = c + fl * 0.045 + up * 0.028
+        port = base + up * 0.03
+        cyl(p, base - up * 0.006, port, 0.018, 0, segs=24)
+        p.done()
         back = nozzle(f'Instrument panel air outlet {tag}', f'Поворотное сопло на приборной доске ({"пилот" if s > 0 else "второй пилот"}): наружный воздух от NACA-заборника',
                       PANEL_VENT[s], V((0, 1, 0)), 'AMM 21-00 2.B(1), AFM 7.4.1')
-        pts = [start, start + d * 0.05, V((s * 0.44, -0.86, 0.22)), V((s * 0.435, -0.78, 0.43)), back - V((0, 0.04, 0)), back]
-        path = scat(f'Pilot air duct {tag}', 'Воздуховод от NACA-заборника к соплу на приборной доске', pts, 0.024, 0.06, 'cold', 'AMM 21-00 2.B(1)')
-        clearance(f'Pilot air duct {tag}', path[4:-6], 0.024)
+        lo, hi = (0.30, -1.18, 0.0), (0.56, -0.68, 0.56)
+        if s < 0:
+            lo, hi = (-hi[0], lo[1], lo[2]), (-lo[0], hi[1], hi[2])
+        pts = routed(port, up, back, V((0, 1, 0)), 0.016, lo, hi)
+        scat(f'Pilot air duct {tag}', 'Воздуховод от NACA-заборника к соплу на приборной доске: вверх у борта за обшивкой ниши для ног, дальше за доской',
+             pts, 0.016, 0.05, 'cold', 'AMM 21-00 2.B(1)')
 
 
 def passengers():
     # короб-коллектор: передний лонжерон центроплана и две замыкающие нервюры левого центроплана
-    ribs = {}
     for s in (1, -1):
         tag = 'LH' if s > 0 else 'RH'
         for xr, kind in ((INNER_RIB_X, 'inner'), (OUTER_RIB_X, 'outer')):
@@ -155,29 +263,29 @@ def passengers():
                         [2 * math.pi * i / len(outline) - math.pi / 2 for i in range(len(outline))]]
             plate_with_hole(p, outline, hole, (1, 0, 0), 0.004, 0)
             p.done()
-            ribs[(s, kind)] = X
     # NACA под передней кромкой левого центроплана
     skin, n = R.skin(PAX_NACA.x, PAX_NACA.y, 'lower')
     n = -n if n.z > 0 else n
     naca_adapter('Passenger NACA inlet duct (LH stub wing)', 'Короб NACA-заборника под передней кромкой левого центроплана: воздух для пассажиров',
                  skin, n, V((0, 1, 0.3)), 'AMM 21-00 2.B(2)')
-    # поперечный шланг от передней части внутренней нервюры слева к правой
+    # поперечный шланг под полом от отверстия внутренней нервюры слева к правой
     a, b = V((INNER_RIB_X - 0.01, -0.07, -0.08)), V((-INNER_RIB_X + 0.01, -0.07, -0.08))
-    scat('Passenger air crossover duct', 'Поперечный воздуховод: коллектор левого центроплана — передний отсек правого, под полом перед лонжероном',
-         [a, a - V((0.06, 0, 0.03)), V((0.3, -0.10, -0.15)), V((-0.3, -0.10, -0.15)), b + V((0.06, 0, -0.03)), b], 0.024, 0.08,
-         'cold', 'AMM 21-00 2.B(2)')
+    pts = routed(a, (-1, 0, 0), b, (-1, 0, 0), 0.024, (-0.76, -0.45, -0.26), (0.76, 0.25, 0.05))
+    scat('Passenger air crossover duct', 'Поперечный воздуховод: коллектор левого центроплана — передний отсек правого, под полом кабины',
+         pts, 0.024, 0.08, 'cold', 'AMM 21-00 2.B(2)')
     # боковые каналы в стенке фюзеляжа к дуге безопасности и сопла
     for s in (1, -1):
         tag = 'LH' if s > 0 else 'RH'
         top = V((s * (INNER_RIB_X - 0.03), -0.05, 0.0))
+        d = V((-s * 0.3, 1, 0)).normalized()
         back = nozzle(f'Roll bar air outlet {tag}', f'Поворотное сопло в дуге безопасности ({"слева" if s > 0 else "справа"}) — воздух для пассажиров',
-                      ROLLBAR_VENT[s], V((-s * 0.3, 1, 0)), 'AMM 21-00 2.B(2), AFM 7.4.1', r=0.024)
-        # канал идёт в зазоре между обшивкой фюзеляжа и панелью отделки салона (x ≈ 0,55…0,59 м)
-        pts = [top, top + V((-s * 0.05, 0.02, 0.003)), V((s * 0.563, 0.0, 0.006)), V((s * 0.563, 0.03, 0.10)),
-               V((s * 0.563, 0.19, 0.26)), V((s * 0.553, 0.235, 0.305)), back]
-        path = scat(f'Fuselage side air duct {tag}', 'Боковой канал в стенке фюзеляжа за панелью отделки: от верха внутренней замыкающей нервюры к дуге безопасности',
-                    pts, 0.015, 0.04, 'cold', 'AMM 21-00 2.B(2)')
-        clearance(f'Fuselage side air duct {tag}', path[6:-8], 0.015)
+                      ROLLBAR_VENT[s], d, 'AMM 21-00 2.B(2), AFM 7.4.1', r=0.024)
+        lo, hi = (0.40, -0.20, -0.10), (0.73, 0.32, 0.40)
+        if s < 0:
+            lo, hi = (-hi[0], lo[1], lo[2]), (-lo[0], hi[1], hi[2])
+        pts = routed(top, (-s, 0.3, 0.05), back, d, 0.015, lo, hi, relax=[(back, 0.06)])
+        scat(f'Fuselage side air duct {tag}', 'Боковой канал в стенке фюзеляжа за панелью отделки: от верха внутренней замыкающей нервюры к дуге безопасности',
+             pts, 0.015, 0.04, 'cold', 'AMM 21-00 2.B(2)', allow=0.06)
     # выход воздуха: прорези в раме багажника, дальше через хвост к щели у руля направления
     p = P('Cabin air exit slots (baggage frame)', 'Прорези в раме багажника: тёплый и холодный воздух уходит через хвост и щель у руля направления',
           'black', 'AMM 21-00 2.C')
@@ -206,57 +314,101 @@ def heating():
     p = P('Heat exchanger duct cowling seal', 'Уплотнение стыка воздуховода отопления с каналом верхнего капота', 'black', 'AMM 21-00 2.A')
     ring_tube(p, end, V((0.15, -1.0, 1.5)), 0.034, 0.024, 0.01, 0, segs=24)
     p.done()
-    # заслонка на перегородке спереди, распределитель на задней стороне
-    hv = V((-0.24, -1.225, 0.045))
+    # заслонка на перегородке спереди
+    hv = HEAT_VALVE
     p = P('Cabin heat valve (firewall)', 'Заслонка отопления на перегородке: OFF — тёплый воздух сбрасывается под капот, ON — через перегородку в кабину',
           'alu', 'AMM 21-00 2.A, рис. 3')
     box(p, hv, (0.08, 0.05, 0.08), Matrix.Identity(3), 0, bevel=0.004)
     cyl(p, hv - V((0, 0, 0.04)), hv - V((0, 0, 0.07)), 0.022, 0, segs=20)
     box(p, hv + V((0.045, 0, 0.02)), (0.004, 0.012, 0.04), Matrix.Identity(3), p.m(M['steel']))
+    cyl(p, hv + V((0, 0.025, 0)), hv + V((0, 0.06, 0)), 0.03, p.m(M['alu']), segs=24)       # фланец прохода сквозь перегородку
     p.done()
-    scat('Warm air duct heat exchanger to heat valve', 'Тёплый воздух: теплообменник — заслонка', [hx + V((0, 0.055, 0)), hx + V((0, 0.07, 0.01)), hv - V((0, 0.03, -0.0)) + V((0, 0, 0)),
-         hv - V((0, 0.025, 0))], 0.025, 0.03, 'hot', 'AMM 21-00 рис. 1', clamp_ends=False)
-    dv = V((-0.12, -1.135, 0.12))
-    p = P('Air distributor valve (DEFROST / FLOOR)', 'Распределитель на задней стороне перегородки: DEFROST — на фонарь, FLOOR — к ногам',
+    scat('Warm air duct heat exchanger to heat valve', 'Тёплый воздух: теплообменник — заслонка', [hx + V((0, 0.055, 0)), hx + V((0, 0.07, 0.01)),
+         hv - V((0, 0.03, 0)), hv - V((0, 0.025, 0))], 0.025, 0.03, 'hot', 'AMM 21-00 рис. 1', clamp_ends=False)
+    # распределитель на перегородке со стороны кабины, за передней стенкой ниши для ног
+    dv, ds = DISTRIBUTOR, DIST_SIZE
+    p = P('Air distributor valve (DEFROST / FLOOR)', 'Распределитель на перегородке со стороны кабины: DEFROST — на фонарь, FLOOR — к ногам',
           'alu', 'AMM 21-00 2.A, рис. 1')
-    box(p, dv, (0.12, 0.07, 0.09), Matrix.Identity(3), 0, bevel=0.005)
-    box(p, dv + V((0.065, 0, 0.02)), (0.004, 0.012, 0.04), Matrix.Identity(3), p.m(M['steel']))
+    box(p, dv, tuple(ds), Matrix.Identity(3), 0, bevel=0.005)
+    lever = dv + V((0.0, ds.y / 2 + 0.004, ds.z / 2 - 0.012))
+    box(p, lever, (0.012, 0.004, 0.04), Matrix.Identity(3), p.m(M['steel']))
     p.done()
-    scat('Warm air duct heat valve to distributor', 'Тёплый воздух сквозь перегородку к распределителю', [hv + V((0, 0.025, 0)), hv + V((0, 0.06, 0.02)),
-         dv + V((-0.04, -0.05, 0)), dv + V((-0.04, -0.035, 0))], 0.024, 0.04, 'hot', 'AMM 21-00 рис. 1')
+    inlet = dv - V((ds.x / 2, 0, 0))
+    wall = V((hv.x, -1.165, hv.z))
+    pts = [hv + V((0, 0.06, 0))] + routed(wall, (0, 1, 0), inlet, (1, 0, 0), 0.022,
+                                         (-0.30, -1.18, -0.10), (0.0, -1.08, 0.12), stub=0.015)
+    scat('Warm air duct heat valve to distributor', 'Тёплый воздух сквозь перегородку к распределителю', pts, 0.022, 0.03,
+         'hot', 'AMM 21-00 рис. 1')
+    # обдув фонаря: две трубы вверх за передней стенкой ниши и за доской к раструбам под щелями козырька
     for s in (1, -1):
         tag = 'LH' if s > 0 else 'RH'
-        # щель обдува — у основания лобового стекла, на передней кромке козырька
         top = GLARE.ray_cast(V((s * 0.25, DEFROST_Y, 1.2)), V((0, 0, -1)), 2.0)[0]
         noz = V((s * 0.25, DEFROST_Y, top.z - 0.024))   # под щелями в крышке козырька
         p = P(f'Defrost nozzle {tag}', 'Раструб обдува фонаря под щелями в крышке приборной доски у лобового стекла', 'black', 'AMM 21-00 рис. 1')
-        box(p, noz, (0.16, 0.05, 0.03), Matrix.Identity(3), 0, bevel=0.004)
+        box(p, noz, (0.16, 0.035, 0.03), Matrix.Identity(3), 0, bevel=0.004)
         p.done()
-        path = scat(f'Defrost duct {tag}', 'Тёплый воздух на фонарь (DEFROST): под козырьком приборной доски',
-                    [dv + V((s * 0.03, 0.035, 0.04)), dv + V((s * 0.03, 0.07, 0.10)),
-                     V((-0.10 + s * 0.03, -0.955, 0.33)), V((s * 0.20, -0.912, 0.40)), V((s * 0.235, -0.90, 0.47)),
-                     noz - V((0, 0.0, 0.07)), noz - V((0, 0.0, 0.016))],
-                    0.02, 0.05, 'hot', 'AMM 21-00 рис. 1', clamp_ends=False)
-        clearance(f'Defrost duct {tag}', path[8:-3], 0.02)
-        fl = V((s * 0.20, -0.96, -0.06))
-        scat(f'Pilot floor heat duct {tag}', 'Тёплый воздух к ногам пилотов (FLOOR)', [dv + V((s * 0.03, 0.035, -0.04)), dv + V((s * 0.04, 0.06, -0.10)),
-             V((s * 0.16, -1.02, 0.02)), fl], 0.02, 0.05, 'hot', 'AMM 21-00 рис. 1')
-        rear = V((s * 0.14, 0.42, -0.10))
-        scat(f'Passenger floor heat duct {tag}', 'Тёплый воздух к ногам пассажиров: вдоль тоннеля под передними креслами',
-             [dv + V((s * 0.05, 0.035, -0.03)), V((s * 0.09, -0.95, -0.12)), V((s * 0.10, -0.40, -0.14)), V((s * 0.12, 0.20, -0.14)), rear],
-             0.02, 0.07, 'hot', 'AMM 21-00 рис. 1')
+        port = dv + V((-s * 0.027, 0, ds.z / 2))   # трубы расходятся крест-накрест: так они не перекручиваются у распределителя
+        pts = routed(port, (0, 0, 1), noz - V((0, 0, 0.016)), (0, 0, 1), 0.018,
+                     (-0.40, -1.18, -0.05), (0.40, -0.70, 0.60), relax=[(noz, 0.05)])
+        scat(f'Defrost duct {tag}', 'Тёплый воздух на фонарь (DEFROST): вверх за передней стенкой ниши для ног и перед корпусами дисплеев',
+             pts, 0.018, 0.05, 'hot', 'AMM 21-00 рис. 1', clamp_ends=False)
+    # обогрев ног пилотов: решётки в передней стенке ниши для ног
+    for s in (1, -1):
+        tag = 'LH' if s > 0 else 'RH'
+        c, nrm = wall_point((s * 0.20, -0.80, 0.03), (0, -1, 0))
+        feed = grille(f'Pilot floor heat outlet {tag}', f'Решётка обогрева ног {"пилота" if s > 0 else "второго пилота"} в передней стенке ниши для ног',
+                      c, nrm, 'AMM 21-00 рис. 1')
+        port = dv + (V((ds.x / 2, 0, -0.01)) if s > 0 else V((-0.03, ds.y / 2, -0.02)))
+        dport = V((1, 0, 0)) if s > 0 else V((0, 1, 0))
+        pts = routed(port, dport, feed, -nrm, 0.016, (-0.45, -1.18, -0.12), (0.45, -0.70, 0.25),
+                     stub=0.015, relax=[(feed, 0.03)])
+        scat(f'Pilot floor heat duct {tag}', 'Тёплый воздух к ногам пилотов (FLOOR): за передней стенкой ниши к решётке',
+             pts, 0.016, 0.04, 'hot', 'AMM 21-00 рис. 1', allow=0.03)
+    # обогрев ног пассажиров: один шланг под полом до тоннеля за передними креслами, там тройник на две решётки
+    y = PAX_OUTLET_Y
+    walls = {s: wall_point((s * 0.25, y, -0.07), (-s, 0, 0)) for s in (1, -1)}
+    tee_a, tee_b = walls[1][0] - V((0.03, 0, 0)), walls[-1][0] + V((0.03, 0, 0))
+    p = P('Passenger floor heat tee', 'Тройник в тоннеле за передними креслами: тёплый воздух на две решётки к ногам пассажиров',
+          'alu', 'AMM 21-00 рис. 1')
+    cyl(p, tee_a, tee_b, 0.018, 0, segs=24)
+    cyl(p, (tee_a + tee_b) / 2, (tee_a + tee_b) / 2 - V((0, 0.035, 0)), 0.017, 0, segs=24)
+    p.done()
+    for s in (1, -1):
+        tag = 'LH' if s > 0 else 'RH'
+        grille(f'Passenger floor heat outlet {tag}', f'Решётка обогрева ног пассажира {"слева" if s > 0 else "справа"} на стенке тоннеля',
+               walls[s][0], walls[s][1], 'AMM 21-00 рис. 1', w=0.07, h=0.03, depth=0.03)
+    port = dv + V((0.02, 0, -ds.z / 2))
+    inlet = (tee_a + tee_b) / 2 - V((0, 0.035, 0))
+    pts = routed(port, (0, 0, -1), inlet, (0, 1, 0), 0.016, (-0.45, -1.18, -0.26), (0.45, y + 0.05, 0.10),
+                 stub=0.015, relax=[(inlet, 0.035)])
+    scat('Passenger floor heat duct', 'Тёплый воздух к ногам пассажиров: под полом кабины к тоннелю за передними креслами',
+         pts, 0.016, 0.06, 'hot', 'AMM 21-00 рис. 1', allow=0.03)
     # тросы от рычагов CABIN HEAT и DEFROST/FLOOR на центральной консоли
     lev = V((-0.025, -0.66, 0.205))
     for tgt, dx, name, ru in ((hv + V((0.045, 0, 0.04)), 0.0, 'Cabin heat Bowden cable', 'Трос рычага CABIN HEAT к заслонке отопления'),
-                              (dv + V((0.065, 0, 0.04)), 0.02, 'Defrost/floor Bowden cable', 'Трос рычага DEFROST — FLOOR к распределителю')):
+                              (lever + V((0, 0, 0.02)), 0.02, 'Defrost/floor Bowden cable', 'Трос рычага DEFROST — FLOOR к распределителю')):
+        a = lev + V((dx, 0, 0))
+        if tgt.y < -1.18:           # к заслонке — сквозь перегородку
+            wall = V((tgt.x, -1.17, tgt.z + 0.02))
+            mid = routed(a, (0, -1, -0.3), wall, (0, -1, 0), 0.004, (-0.35, -1.18, -0.10), (0.10, -0.60, 0.40),
+                         relax=[(a, 0.05)])
+            pts = mid + [tgt + V((0, 0.02, 0.02)), tgt]
+        else:
+            pts = routed(a, (0, -1, -0.3), tgt, (0, 0, -1), 0.004, (-0.35, -1.18, -0.10), (0.10, -0.60, 0.40),
+                         relax=[(a, 0.05)])
         c = P(name, ru, 'cable', 'AMM 21-00 2.A')
-        sweep(c, fillet([lev + V((dx, 0, 0)), lev + V((dx, -0.08, -0.02)), V((dx - 0.1, -1.0, 0.15)), tgt + V((0, 0.05, 0.02)), tgt], 0.05), 0.0028, 0, segs=8)
+        sweep(c, fillet(pts, 0.04), 0.0028, 0, segs=8)
         c.done()
+        ROUTES.append((name, fillet(pts, 0.04), 0.0028, 0.05))
 
 
 pilots()
 passengers()
 heating()
+if os.environ.get('CHECK'):
+    for name, path, r, allow in ROUTES:
+        clearance(name, path, r)
+        visibility(name, path, r, allow)
 dup = [o.name for o in COL.all_objects if '.0' in o.name[-4:]]
 assert not dup, dup
 size = ref.export(COL, OUT, R.lift)
