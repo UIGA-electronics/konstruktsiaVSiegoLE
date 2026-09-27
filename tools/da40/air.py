@@ -42,12 +42,33 @@ M = dict(
     coolant=lib.mat('DA40 coolant hose (black rubber)', (0.04, 0.04, 0.045), 0.0, 0.6, ru='шланг охлаждающей жидкости'),
 )
 
+DEFROST_Y = -0.90   # передняя часть козырька, за его лицевой стенкой у лобового стекла
+
 PANEL_VENT = {1: V((0.433, -0.656, 0.476)), -1: V((-0.435, -0.651, 0.476))}
 ROLLBAR_VENT = {1: V((0.501, 0.266, 0.317)), -1: V((-0.501, 0.266, 0.317))}
 PILOT_NACA_Y, PILOT_NACA_Z = -1.0, 0.035
 PAX_NACA = V((1.0, -0.20))          # под передней кромкой левого центроплана
 INNER_RIB_X, OUTER_RIB_X = 0.745, 1.165
 CS_FRONT_SPAR_Y = 0.02
+
+
+_trim = [o for o in bpy.data.collections['DA40 Interior'].all_objects if o.type == 'MESH' and
+         not any(m and 'Glass' in m.name for m in o.data.materials)]
+GLARE = ref._bvh(_trim)
+
+
+def clearance(name, path, r):
+    """Трасса не должна задевать обшивку и отделку кабины: наименьший зазор до поверхностей."""
+    L = lib.path_len(path)
+    worst, where = 9.0, None
+    for k in range(41):
+        q, _ = lib.along(path, L * k / 40)
+        for tag, bvh in (('shell', R.shell), ('trim', GLARE)):
+            hit = bvh.find_nearest(q, 1.0)
+            if hit[0] is not None and hit[3] - r < worst:
+                worst, where = hit[3] - r, (tag, k, tuple(round(v, 3) for v in q))
+    print(f'CLEAR {name}: {worst * 1000:.1f} mm at {where}')
+    return worst
 
 
 def P(name, ru, m, doc):
@@ -107,7 +128,8 @@ def pilots():
         back = nozzle(f'Instrument panel air outlet {tag}', f'Поворотное сопло на приборной доске ({"пилот" if s > 0 else "второй пилот"}): наружный воздух от NACA-заборника',
                       PANEL_VENT[s], V((0, 1, 0)), 'AMM 21-00 2.B(1), AFM 7.4.1')
         pts = [start, start + d * 0.05, V((s * 0.44, -0.86, 0.22)), V((s * 0.435, -0.78, 0.43)), back - V((0, 0.04, 0)), back]
-        scat(f'Pilot air duct {tag}', 'Воздуховод от NACA-заборника к соплу на приборной доске', pts, 0.024, 0.06, 'cold', 'AMM 21-00 2.B(1)')
+        path = scat(f'Pilot air duct {tag}', 'Воздуховод от NACA-заборника к соплу на приборной доске', pts, 0.024, 0.06, 'cold', 'AMM 21-00 2.B(1)')
+        clearance(f'Pilot air duct {tag}', path[4:-6], 0.024)
 
 
 def passengers():
@@ -150,9 +172,12 @@ def passengers():
         top = V((s * (INNER_RIB_X - 0.03), -0.05, 0.0))
         back = nozzle(f'Roll bar air outlet {tag}', f'Поворотное сопло в дуге безопасности ({"слева" if s > 0 else "справа"}) — воздух для пассажиров',
                       ROLLBAR_VENT[s], V((-s * 0.3, 1, 0)), 'AMM 21-00 2.B(2), AFM 7.4.1', r=0.024)
-        pts = [top, top + V((0, 0, 0.05)), V((s * 0.60, 0.02, 0.12)), V((s * 0.56, 0.18, 0.24)), back - V((0, 0.03, 0)), back]
-        scat(f'Fuselage side air duct {tag}', 'Боковой канал в стенке фюзеляжа: от верха внутренней замыкающей нервюры к дуге безопасности',
-             pts, 0.022, 0.06, 'cold', 'AMM 21-00 2.B(2)')
+        # канал идёт в зазоре между обшивкой фюзеляжа и панелью отделки салона (x ≈ 0,55…0,59 м)
+        pts = [top, top + V((-s * 0.05, 0.02, 0.003)), V((s * 0.563, 0.0, 0.006)), V((s * 0.563, 0.03, 0.10)),
+               V((s * 0.563, 0.19, 0.26)), V((s * 0.553, 0.235, 0.305)), back]
+        path = scat(f'Fuselage side air duct {tag}', 'Боковой канал в стенке фюзеляжа за панелью отделки: от верха внутренней замыкающей нервюры к дуге безопасности',
+                    pts, 0.015, 0.04, 'cold', 'AMM 21-00 2.B(2)')
+        clearance(f'Fuselage side air duct {tag}', path[6:-8], 0.015)
     # выход воздуха: прорези в раме багажника, дальше через хвост к щели у руля направления
     p = P('Cabin air exit slots (baggage frame)', 'Прорези в раме багажника: тёплый и холодный воздух уходит через хвост и щель у руля направления',
           'black', 'AMM 21-00 2.C')
@@ -162,26 +187,25 @@ def passengers():
 
 
 def heating():
-    hx = V((-0.24, -1.315, 0.02))
+    # теплообменник на мотораме справа сзади; шланги охлаждающей жидкости — в слое охлаждения (powerplant.py)
+    hx = V((-0.28, -1.315, 0.02))
     p = P('Cabin heat exchanger', 'Теплообменник отопления на мотораме: через соты идёт горячая охлаждающая жидкость, через них — наружный воздух',
           'core', 'AMM 21-00 2.A, 75-00')
-    box(p, hx, (0.16, 0.06, 0.13), Matrix.Identity(3), 0, bevel=0.003)
+    box(p, hx, (0.14, 0.06, 0.11), Matrix.Identity(3), 0, bevel=0.003)
     for sx in (-1, 1):
-        box(p, hx + V((sx * 0.086, 0, 0)), (0.014, 0.066, 0.14), Matrix.Identity(3), p.m(M['alu']), bevel=0.002)
-    for dz in (-0.045, 0.045):
-        q = hx + V((0.093, 0, dz))
-        cyl(p, q, q + V((0.02, 0, 0)), 0.009, p.m(M['alu']), segs=12)
-    cyl(p, hx - V((0, 0.03, 0)), hx - V((0, 0.06, 0)), 0.028, p.m(M['alu']), segs=24)
-    cyl(p, hx + V((0, 0.03, 0)), hx + V((0, 0.055, 0)), 0.028, p.m(M['alu']), segs=24)
+        box(p, hx + V((sx * 0.076, 0, 0)), (0.014, 0.066, 0.12), Matrix.Identity(3), p.m(M['alu']), bevel=0.002)
+    for q in (hx + V((0.05, -0.03, 0.035)), hx + V((-0.05, -0.03, -0.03))):
+        cyl(p, q, q - V((0, 0.02, 0)), 0.009, p.m(M['alu']), segs=12)      # штуцеры охлаждающей жидкости
+    cyl(p, hx - V((0, 0.03, 0)), hx - V((0, 0.06, 0)), 0.026, p.m(M['alu']), segs=24)
+    cyl(p, hx + V((0, 0.03, 0)), hx + V((0, 0.055, 0)), 0.026, p.m(M['alu']), segs=24)
     p.done()
-    for dz, name, ru in ((0.045, 'Coolant hose to cabin heat exchanger', 'Горячая охлаждающая жидкость от двигателя к теплообменнику'),
-                         (-0.045, 'Coolant hose from cabin heat exchanger', 'Охлаждающая жидкость от теплообменника обратно в двигатель')):
-        q = hx + V((0.113, 0, dz))
-        c = P(name, ru, 'coolant', 'AMM 21-00 2.A, 75-00')
-        sweep(c, fillet([q, q + V((0.03, 0, 0)), V((-0.08, -1.40, dz + 0.05)), V((-0.02, -1.52, dz + 0.08))], 0.03), 0.009, 0, segs=12)
-        c.done()
-    scat('Heat exchanger air intake duct', 'Воздуховод от воздухозаборника в капоте к теплообменнику',
-         [hx - V((0, 0.06, 0)), hx - V((0, 0.10, 0)), V((-0.30, -1.48, -0.06)), V((-0.33, -1.60, -0.10))], 0.026, 0.05, 'cold', 'AMM 21-00 2.A')
+    end = V((-0.33, -1.72, 0.40))
+    scat('Heat exchanger air intake duct', 'Воздуховод к теплообменнику от правого канала верхнего капота',
+         [hx - V((0, 0.06, 0)), hx - V((0, 0.105, -0.01)), V((-0.32, -1.52, 0.06)), V((-0.345, -1.62, 0.25)), end],
+         0.026, 0.05, 'cold', 'AMM 21-00 2.A')
+    p = P('Heat exchanger duct cowling seal', 'Уплотнение стыка воздуховода отопления с каналом верхнего капота', 'black', 'AMM 21-00 2.A')
+    ring_tube(p, end, V((0.15, -1.0, 1.5)), 0.034, 0.024, 0.01, 0, segs=24)
+    p.done()
     # заслонка на перегородке спереди, распределитель на задней стороне
     hv = V((-0.24, -1.225, 0.045))
     p = P('Cabin heat valve (firewall)', 'Заслонка отопления на перегородке: OFF — тёплый воздух сбрасывается под капот, ON — через перегородку в кабину',
@@ -202,12 +226,18 @@ def heating():
          dv + V((-0.04, -0.05, 0)), dv + V((-0.04, -0.035, 0))], 0.024, 0.04, 'hot', 'AMM 21-00 рис. 1')
     for s in (1, -1):
         tag = 'LH' if s > 0 else 'RH'
-        noz = V((s * 0.25, -0.72, 0.672))
-        p = P(f'Defrost nozzle {tag}', 'Щелевое сопло обдува фонаря на козырьке приборной доски', 'black', 'AMM 21-00 рис. 1')
-        box(p, noz, (0.16, 0.02, 0.012), Matrix.Identity(3), 0, bevel=0.003)
+        # щель обдува — у основания лобового стекла, на передней кромке козырька
+        top = GLARE.ray_cast(V((s * 0.25, DEFROST_Y, 1.2)), V((0, 0, -1)), 2.0)[0]
+        noz = V((s * 0.25, DEFROST_Y, top.z - 0.024))   # под щелями в крышке козырька
+        p = P(f'Defrost nozzle {tag}', 'Раструб обдува фонаря под щелями в крышке приборной доски у лобового стекла', 'black', 'AMM 21-00 рис. 1')
+        box(p, noz, (0.16, 0.05, 0.03), Matrix.Identity(3), 0, bevel=0.004)
         p.done()
-        scat(f'Defrost duct {tag}', 'Тёплый воздух на фонарь (DEFROST)', [dv + V((s * 0.03, 0.035, 0.04)), dv + V((s * 0.05, 0.05, 0.12)),
-             V((s * 0.20, -0.85, 0.50)), noz - V((0, 0.03, 0.03)), noz - V((0, 0.0, 0.006))], 0.02, 0.06, 'hot', 'AMM 21-00 рис. 1', clamp_ends=False)
+        path = scat(f'Defrost duct {tag}', 'Тёплый воздух на фонарь (DEFROST): под козырьком приборной доски',
+                    [dv + V((s * 0.03, 0.035, 0.04)), dv + V((s * 0.03, 0.07, 0.10)),
+                     V((-0.10 + s * 0.03, -0.955, 0.33)), V((s * 0.20, -0.912, 0.40)), V((s * 0.235, -0.90, 0.47)),
+                     noz - V((0, 0.0, 0.07)), noz - V((0, 0.0, 0.016))],
+                    0.02, 0.05, 'hot', 'AMM 21-00 рис. 1', clamp_ends=False)
+        clearance(f'Defrost duct {tag}', path[8:-3], 0.02)
         fl = V((s * 0.20, -0.96, -0.06))
         scat(f'Pilot floor heat duct {tag}', 'Тёплый воздух к ногам пилотов (FLOOR)', [dv + V((s * 0.03, 0.035, -0.04)), dv + V((s * 0.04, 0.06, -0.10)),
              V((s * 0.16, -1.02, 0.02)), fl], 0.02, 0.05, 'hot', 'AMM 21-00 рис. 1')

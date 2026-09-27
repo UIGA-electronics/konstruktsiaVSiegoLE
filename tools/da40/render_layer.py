@@ -67,7 +67,7 @@ for o in bpy.data.objects:
         for fc in list(ad.drivers):
             if fc.data_path.startswith('hide'):
                 ad.drivers.remove(fc)
-keep_cols = ('DA40 Exterior', 'DA40 Interior')
+keep_cols = tuple(os.environ.get('KEEP', 'DA40 Exterior,DA40 Interior').split(','))
 keep = set()
 for cn in keep_cols:
     keep |= {o.name for o in bpy.data.collections[cn].all_objects}
