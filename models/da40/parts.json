@@ -2,14 +2,14 @@
   {
     "file": "da40-controls.glb",
     "title": "Управление",
-    "parts": 210,
-    "meshes": 100,
+    "parts": 188,
+    "meshes": 113,
     "clips": [
       "Закрылки UP → LDG",
       "Элероны влево → вправо",
       "Руль высоты"
     ],
-    "mb": 0.54
+    "mb": 0.61
   },
   {
     "file": "da40-wing-structure.glb",

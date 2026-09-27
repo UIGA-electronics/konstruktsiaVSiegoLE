@@ -21,7 +21,7 @@ const path = require('path');
 const { NodeIO } = require('@gltf-transform/core');
 const { ALL_EXTENSIONS } = require('@gltf-transform/extensions');
 const {
-  cloneDocument, dedup, meshopt, prune, resample, textureCompress, simplify, weld
+  cloneDocument, dedup, meshopt, mergeDocuments, prune, resample, textureCompress, simplify, weld
 } = require('@gltf-transform/functions');
 const { MeshoptEncoder, MeshoptSimplifier } = require('meshoptimizer');
 const draco3d = require('draco3dgltf');
@@ -71,6 +71,38 @@ const TEX = [
    вырезаются. Файлы, которые теперь собираются в Blender, нарезка не трогает. */
 const REPLACED = new Set(Object.keys(JSON.parse(fs.readFileSync(path.join(__dirname, 'da40', 'replaced.json'), 'utf8'))));
 const REBUILT = new Set(['da40-fuel.glb', 'da40-wing-structure.glb', 'da40-pitot-static.glb', 'da40-brakes.glb', 'da40-air.glb', 'da40-engine.glb', 'da40-induction.glb', 'da40-cooling.glb', 'da40-oil.glb']);
+
+/* Дополнения из Blender (tools/da40): вливаются в файл части вместе с анимацией.
+   Клипы дополнения — ключи отдельных объектов с тем же именем клипа (Blender
+   дописывает .001, .002…); их каналы уходят в клип части с тем же именем. */
+const LAYERS = process.env.LAYERS || '/home/user/da40src/out2';
+const ADDONS = { 'da40-controls.glb': 'da40-controls-addon-raw.glb' };
+
+async function mergeAddon(io, doc, file) {
+  const add = await io.read(file);
+  const root = doc.getRoot();
+  const own = new Set(root.listAnimations());
+  mergeDocuments(doc, add);
+  const [buf, ...bufs] = root.listBuffers();          // GLB — один буфер
+  for (const acc of root.listAccessors()) acc.setBuffer(buf);
+  bufs.forEach((b) => b.dispose());
+  const [main, ...rest] = root.listScenes();
+  for (const sc of rest) {
+    for (const n of sc.listChildren()) main.addChild(n);
+    sc.dispose();
+  }
+  let moved = 0;
+  for (const a of root.listAnimations()) {
+    if (own.has(a)) continue;
+    const name = a.getName().replace(/\.\d{3}$/, '');
+    let target = root.listAnimations().find((x) => own.has(x) && x.getName() === name);
+    if (!target) { a.setName(name); own.add(a); continue; }
+    for (const smp of a.listSamplers()) target.addSampler(smp);
+    for (const ch of a.listChannels()) { target.addChannel(ch); moved++; }
+    a.dispose();
+  }
+  return moved;
+}
 
 /* Два дефекта экспорта — см. fix-materials.js. */
 function fixMaterials(doc) {
@@ -170,15 +202,21 @@ function cut(doc, part, members) {
   const report = [];
   const old = fs.existsSync(path.join(outDir, 'parts.json'))
     ? JSON.parse(fs.readFileSync(path.join(outDir, 'parts.json'), 'utf8')) : [];
+  const only = process.env.ONLY ? new Set(process.env.ONLY.split(',')) : null;
   for (const part of PARTS) {
-    if (REBUILT.has(part.file)) {
+    if (REBUILT.has(part.file) || (only && !only.has(part.file))) {
       const keep = old.find((r) => r.file === part.file);
       if (keep) report.push(keep);
-      console.log(part.file.padEnd(26), 'собирается в Blender (tools/da40) — пропуск');
+      console.log(part.file.padEnd(26), only && !REBUILT.has(part.file) ? 'не в ONLY — пропуск' : 'собирается в Blender (tools/da40) — пропуск');
       continue;
     }
     const doc = cloneDocument(base);
     const own = cut(doc, part, members);
+    const addon = ADDONS[part.file] && path.join(LAYERS, ADDONS[part.file]);
+    if (addon && fs.existsSync(addon)) {
+      const moved = await mergeAddon(io, doc, addon);
+      console.log(part.file.padEnd(26), 'дополнение', path.basename(addon), '— каналов анимации влито:', moved);
+    }
     const steps = [prune({ keepAttributes: false }), dedup(), resample()];
     if (part.simplify) {
       steps.push(weld(), simplify({ simplifier: MeshoptSimplifier, ratio: part.simplify, error: SIMPLIFY_ERROR }));
