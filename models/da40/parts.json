@@ -9,7 +9,8 @@
       "Элероны влево → вправо",
       "Руль высоты"
     ],
-    "mb": 0.61
+    "mb": 0.61,
+    "built": "tools/split-da40.js + tools/da40/controls.py"
   },
   {
     "file": "da40-wing-structure.glb",
@@ -32,10 +33,11 @@
   {
     "file": "da40-electrical.glb",
     "title": "Электрика",
-    "parts": 36,
-    "meshes": 36,
+    "parts": 33,
+    "meshes": 33,
     "clips": [],
-    "mb": 0.37
+    "mb": 0.41,
+    "built": "tools/da40/electrical.py"
   },
   {
     "file": "da40-avionics.glb",

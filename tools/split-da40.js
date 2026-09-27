@@ -70,7 +70,7 @@ const TEX = [
 /* Детали MSFS, заменённые построенными по документам (tools/da40): из планера
    вырезаются. Файлы, которые теперь собираются в Blender, нарезка не трогает. */
 const REPLACED = new Set(Object.keys(JSON.parse(fs.readFileSync(path.join(__dirname, 'da40', 'replaced.json'), 'utf8'))));
-const REBUILT = new Set(['da40-fuel.glb', 'da40-wing-structure.glb', 'da40-pitot-static.glb', 'da40-brakes.glb', 'da40-air.glb', 'da40-engine.glb', 'da40-induction.glb', 'da40-cooling.glb', 'da40-oil.glb']);
+const REBUILT = new Set(['da40-fuel.glb', 'da40-wing-structure.glb', 'da40-pitot-static.glb', 'da40-brakes.glb', 'da40-air.glb', 'da40-engine.glb', 'da40-induction.glb', 'da40-cooling.glb', 'da40-oil.glb', 'da40-electrical.glb']);
 
 /* Дополнения из Blender (tools/da40): вливаются в файл части вместе с анимацией.
    Клипы дополнения — ключи отдельных объектов с тем же именем клипа (Blender
