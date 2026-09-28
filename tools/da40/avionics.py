@@ -59,6 +59,9 @@ COL_R = lib.collection('DA40 Radio equipment (AMM 23, 25-60, 34-50)')
 for n in KEEP:                                    # датчик РУД — остаётся, переезжает в приборный слой
     o = bpy.data.objects.get(n)
     if o:
+        mw = o.matrix_world.copy()
+        o.parent = None                            # родитель остаётся в исходнике: без этого экспорт теряет подъём
+        o.matrix_world = mw
         for c in list(o.users_collection):
             c.objects.unlink(o)
         COL_I.objects.link(o)
@@ -73,12 +76,14 @@ def _miny(o):
 
 
 # что пересобирается после этого слоя и уступает место: шланги ПВД и статики (новые штуцеры GDC 74A
-# на торце, рупор сигнализатора ниже PFD) и кабели электрики (реле резервной батареи EECU — на полку)
+# на торце, рупор сигнализатора ниже PFD, влагоотстойники под креслом пилота — выше и вперёд, чтобы не
+# выходить под днище) и электрика (реле резервной батареи EECU — на полку; батарея и релейная коробка —
+# внутрь от борта: углами они выходили за обшивку)
 ELEC_CABLES = ('Battery (', 'External power cable', 'Starter cable', 'Main wiring harness', 'Alternator output', 'Alternator cable',
                'Alternator field', 'Alternator regulator control', 'ECU backup battery cable', 'ECU backup battery ground',
                'ECU backup relay', 'Engine harness', 'Cabin light feed', 'Wing lighting harness', 'Light feed')
-LATER = {'pitot': lambda o: 'hose' in o.name.lower() or o.name.startswith(('Stall warning horn', 'GDC 74A pneumatic port')),
-         'electrical': lambda o: o.name.startswith(ELEC_CABLES)}
+LATER = {'pitot': lambda o: 'hose' in o.name.lower() or o.name.startswith(('Stall warning horn', 'GDC 74A pneumatic port', 'Water trap', 'Pitot heat wire')),
+         'electrical': lambda o: o.name.startswith(ELEC_CABLES + ('Main battery', 'Relay junction box'))}
 TRIM, SYS, RT = cabin.setup(R, ('instruments', 'radio'), step=0.015, extra=GONE, skip=LATER)
 CHECKS = []
 
@@ -367,9 +372,13 @@ def shelf_units():
     slab(p, [(-0.24, -0.93), (0.30, -0.93), (0.37, -0.86), (0.37, -0.83), (-0.28, -0.83), (-0.28, -0.89)], SHELF_Z - 0.006, SHELF_Z)
     box(p, V((0.03, -0.928, SHELF_Z + 0.014)), (0.52, 0.004, 0.028), I3, 0)       # отбортовка вдоль передней кромки
     p.done()
-    r = Part('ECU backup relay (reserved)', None, M['black'], RESERVED)          # место реле — его ставит electrical.py
-    box(r, ECU_RELAY, (0.056, 0.046, 0.044), I3, 0)
-    r.done()
+    for name, c, sz in (('ECU backup relay', ECU_RELAY, (0.056, 0.046, 0.044)),          # места деталей, которые ставят
+                        ('main battery', V((0.125, 2.358, 0.105)), (0.145, 0.185, 0.21)),  # electrical.py и pitot.py
+                        ('relay junction box', V((0.20, 2.300, 0.235)), (0.15, 0.075, 0.14)),
+                        ('LH seat water traps', V((0.31, -0.25, -0.18)), (0.16, 0.22, 0.12))):
+        r = Part(name + ' (reserved)', None, M['black'], RESERVED)
+        box(r, c, sz, I3, 0)
+        r.done()
     # GDC 74A на стойке, поперёк полки; штуцеры на левом торце
     c = GDC_C
     p = P('GDC 74A air data computer', 'Вычислитель воздушных сигналов GDC 74A на полке приборной доски: по полному и статическому давлению и датчику температуры считает высоту, скорость, вертикальную скорость и температуру наружного воздуха',
@@ -670,7 +679,9 @@ def avionics_rack():
     # точки ввода кабелей в короб
     ports = dict(fwd=[V((ec.x + dx, ENC_Y0 - 0.002, ec.z + dz)) for dx, dz in ((0, 0), (-0.05, -0.01), (0.05, 0.0), (0.025, -0.015))],
                  rh=[V((x0 - 0.002, ENC_Y0 + 0.018 + k * 0.026, ec.z + (-0.014 if k % 2 else 0.006))) for k in range(8)],
-                 aft=[V((ec.x + dx, y_end + 0.002, ec.z)) for dx in (-0.07, -0.04, -0.01)], nav=ins, top=plate_z, x0=x0, x1=x1, y1=y_end)
+                 aft=[V((ec.x + dx, y_end + 0.002, ec.z)) for dx in (-0.07, -0.04, -0.01)],
+                 bottom=[V((x0 + 0.02 + k * 0.03, y_end - 0.02, ec.z - esz[2] / 2 - 0.002)) for k in range(2)],
+                 nav=ins, top=plate_z, x0=x0, x1=x1, y1=y_end)
     return slots, ports
 
 
@@ -701,7 +712,7 @@ def rear_units():
     # внутренняя антенна ELT на кронштейне над маяком
     base = V((c.x, c.y + 0.02, c.z + es[2] / 2 + 0.07))
     h, n = R.hit(base, (1, 0, 0))
-    wall = h - V((0.006, 0, 0)) if h is not None else base + V((0.05, 0, 0))
+    wall = h - V((0.014, 0, 0)) if h is not None else base + V((0.05, 0, 0))
     p = P('ELT antenna (inside the rear fuselage)', 'Антенна аварийного маяка на кронштейне в хвостовой части над маяком; обшивка из композита радиопрозрачна', 'whip', 'AMM 25-60 2.A', COL_R)
     tip = base + V((-0.02, 0.03, 0.26))           # штырь вверх, перед рамой багажного отсека
     lib.cyl(p, base, tip, 0.0045, 0, segs=10, r1=0.0025)
@@ -732,8 +743,8 @@ def rear_units():
         box(p, q - V((0, 0, sz[2] / 2 + 0.003)), (sz[0] + 0.012, sz[1] + 0.012, 0.004), I3, 0, bevel=0.001)
     xw = min(c.x, c2.x) - max(ra[0], kn[0]) / 2 - 0.006
     h, n = R.hit((xw, c.y, (c.z + c2.z) / 2), (-1, 0, 0))
-    if h is not None and xw - h.x > 0.004:
-        box(p, V(((xw + h.x) / 2, c.y, (c.z + c2.z) / 2)), (xw - h.x + 0.004, 0.10, c2.z - c.z + 0.04), I3, 0)
+    if h is not None and xw - h.x > 0.014:
+        box(p, V(((xw + h.x + 0.012) / 2, c.y, (c.z + c2.z) / 2)), (xw - h.x - 0.012, 0.10, c2.z - c.z + 0.04), I3, 0)
     p.done()
     return out
 
@@ -915,11 +926,14 @@ def build():
     # GRS 77 — к GIA (короткий), GMU 44 — к GRS 77
     pts = route(grs_conn, (0, -1, 0), ports['aft'][2], (0, -1, 0), 0.004, (-0.2, 2.40, -0.05), (0.2, 2.9, 0.4), step=0.01)
     cable('GRS 77 harness', 'Жгут GRS 77: ARINC 429 к GIA 63W и дисплеям, питание магнитометра', pts, 0.004, 'shield')
-    wing = [gmu_c]
-    for x in (-3.6, -3.0, -2.4, -1.8, -1.3, -0.9):
-        lo, hi = R.wing_section(x, 0.20)
-        wing.append(V((x, 0.20, (lo + hi) / 2)))
-    root = V((-0.60, 0.20, wing[-1].z))
+    # в крыле — по носку перед передним лонжероном, ниже жгута огней (между лонжеронами — бак AUX)
+    YL = -0.035
+    lo, hi = R.wing_section(-3.90, YL)
+    wing = [gmu_c, gmu_c + V((0.02, -0.06, 0.02)), V((-3.90, YL, (lo + hi) / 2 - 0.005))]
+    for x in (-3.6, -3.2, -2.8, -2.4, -2.0, -1.6, -1.3, -1.0, -0.8):
+        lo, hi = R.wing_section(x, YL)
+        wing.append(V((x, YL, (lo + hi) / 2 - 0.005)))
+    root = V((-0.60, YL, wing[-1].z))
     pts = route(root, (1, 0, 0), grs_conn + V((0.0, 0.0, -0.03)), (0, 1, 0), 0.003, (-0.62, -0.1, -0.26), (0.30, 2.6, 0.45), step=0.02)
     cable('GMU 44 cable (RS-485) → GRS 77', 'Кабель магнитометра GMU 44: по правой консоли между лонжеронами, под полом — к GRS 77', wing + pts, 0.003, 'shield')
     # рулевые машины — к стойке авионики
@@ -934,7 +948,7 @@ def build():
     cable('GTP 59 OAT probe cable → GDC 74A', 'Кабель датчика температуры наружного воздуха к GDC 74A', pts, 0.0025, 'shield')
     # EECU → GEA 71 (данные двигателя)
     eecu = V((-0.22, -1.10, 0.19))          # свободный разъём EECU (electrical.py: 1-й и 3-й заняты)
-    pts = route(eecu, (0, 1, 0), gea_conn + V((0, 0.012, 0.0)), (-1, 0, 0), 0.003, (-0.40, -1.12, 0.12), (0.30, -0.70, 0.50), step=0.01, hidden=False)
+    pts = route(eecu, (0, 1, 0), gea_conn + V((0, 0.012, 0.0)), (-1, 0, 0), 0.003, (-0.40, -1.12, 0.12), (0.30, -0.70, 0.50), step=0.01)
     cable('EECU → GEA 71 engine data', 'Кабель данных двигателя: EECU — GEA 71', pts, 0.003, 'shield')
 
     # ── коаксиальные кабели ──
@@ -949,7 +963,8 @@ def build():
         d = (dst - a).normalized()
         n_in = V((0, 0, -1)) if key in ('com1', 'gps1', 'gps2') else V((0, 0, 1))
         dd = V((1, 0, 0)) if dst in rh else V((0, 1, 0))
-        pts = route(a, n_in, dst, dd, 0.0025, *CAB, step=0.02)
+        box_ = ((-0.60, -1.12, -0.27), (0.60, 2.62, 1.00)) if key.startswith('gps') else CAB     # GPS — с крыши кабины
+        pts = route(a, n_in, dst, dd, 0.0025, *box_, step=0.02)
         cable(f'Coax: {name}', f'Коаксиальный кабель: {ru}', pts, 0.0025, mat, col=COL_R, ends='bnc')
     pts = route(ant['dme'], (0, 0, 1), rear['dme']['rf'], (0, 1, 0), 0.0025, (-0.52, -1.12, -0.26), (0.52, 3.10, 0.62), step=0.02)
     cable('Coax: DME antenna → KN 63', 'Коаксиальный кабель: антенна DME — KN 63', pts, 0.0025, 'rg142', col=COL_R, ends='bnc')
@@ -968,7 +983,7 @@ def build():
     pts = route(rear['elt']['rcs'], (0, -1, 0), rcs, (0, 1, 0), 0.0025, *CAB, step=0.02)
     cable('ELT remote switch cable', 'Кабель пульта ELT: маяк — пульт на приборной доске', pts, 0.0025, 'thin', col=COL_R)
     for key, ru in (('dme', 'KN 63'), ('adf', 'RA 3502')):
-        pts = route(rear[key]['data'], (0, -1, 0), ports['aft'][0 if key == 'dme' else 1], (0, -1, 0), 0.003, (-0.25, 2.4, -0.05), (0.2, 3.1, 0.4), step=0.01)
+        pts = route(rear[key]['data'], (0, -1, 0), ports['bottom'][0 if key == 'dme' else 1], (0, 0, 1), 0.003, (-0.25, 2.4, -0.09), (0.2, 3.1, 0.4), step=0.01)
         cable(f'{ru} data cable → GIA 63W', f'Кабель данных {ru} — GIA 63W', pts, 0.003, 'shield', col=COL_R)
     pts = route(wx_conn, (1, 0, 0), ports['fwd'][3], (0, 1, 0), 0.003, *CAB, step=0.02)
     cable('WX-500 data cable → GIA 63W', 'Кабель данных WX-500 — GIA 63W (RS-232), питание от шины авионики', pts, 0.003, 'shield', col=COL_R)

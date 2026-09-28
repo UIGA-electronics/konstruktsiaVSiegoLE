@@ -62,8 +62,16 @@ def systems_bvh(R, own, extra=(), skip=None):
     return bvh
 
 
+def hull_bvh(R):
+    """Обшивка и остекление: по ним Router проверяет, что трасса внутри планера."""
+    glass = [o for c in ('DA40 Exterior', 'DA40 Interior') for o in bpy.data.collections[c].all_objects
+             if o.type == 'MESH' and any(m and 'Glass' in m.name for m in o.data.materials)]
+    shell = [o for o in bpy.data.collections['DA40 Exterior'].all_objects if o.name in R.shell_names]
+    return ref._bvh(shell + glass)
+
+
 def setup(R, own, step=0.010, extra=(), skip=None):
     """(отделка, соседние системы, планировщик) для слоя own."""
     trim = trim_bvh()
     sys_ = systems_bvh(R, own, extra, skip)
-    return trim, sys_, Router([R.shell, sys_], [R.shell, trim], EYES, soft=[trim], step=step)
+    return trim, sys_, Router([R.shell, sys_], [R.shell, trim], EYES, soft=[trim], step=step, hull=hull_bvh(R))

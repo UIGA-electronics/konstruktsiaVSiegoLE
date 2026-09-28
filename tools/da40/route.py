@@ -23,8 +23,9 @@ AXES = ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1))
 
 
 class Router:
-    def __init__(self, solids, occluders, eyes, soft=(), step=0.012):
+    def __init__(self, solids, occluders, eyes, soft=(), step=0.012, hull=None):
         self.solids = solids          # BVH, до которых меряется зазор
+        self.hull = hull              # обшивка с остеклением: трасса только внутри планера
         self.soft = soft              # отделка: пересекать можно со штрафом, если не видно
         self.occluders = occluders    # BVH, которые закрывают вид из кабины
         self.eyes = [V(e) for e in eyes]
@@ -33,6 +34,7 @@ class Router:
         self._free = {}
         self._soft = {}
         self._seen = {}
+        self._in = {}
 
     def set_extra(self, bvh):
         """Добавить уже построенные детали слоя как препятствие (кеш зазоров сбрасывается)."""
@@ -79,15 +81,35 @@ class Router:
             self._seen[k] = vis
         return self._seen[k]
 
-    def ok(self, q, r, margin, hidden, relax):
+    def inside(self, q):
+        """Внутри планера: из шести лучей по осям хотя бы пять упираются в обшивку или
+        остекление (снаружи точка «не видна» из кабины, и без этой проверки трасса
+        могла уйти за борт)."""
+        if self.hull is None:
+            return True
+        k = (round(q.x, 3), round(q.y, 3), round(q.z, 3))
+        if k not in self._in:
+            n = sum(1 for d in AXES if self.hull.ray_cast(q, V(d), 15.0)[0] is not None)
+            self._in[k] = n >= 5
+        return self._in[k]
+
+    def ok(self, q, r, margin, hidden, relax, look=True):
         for c, rad in relax:
             if (q - c).length < rad:
                 return True
         if self.free(q) < r + margin:
             return False
-        if hidden and self.seen(q, r):
+        if not self.inside(q):
+            return False
+        if look and hidden and self.seen(q, r):
             return False
         return True
+
+    def step_ok(self, a, b, r, margin, hidden, relax):
+        """Шаг сетки без «проскока» сквозь тонкую обшивку или панель: промежуточные точки
+        не дальше 1,8 (r + margin) друг от друга."""
+        n = int(math.ceil((b - a).length / (1.8 * (r + margin))))
+        return all(self.ok(a.lerp(b, i / n), r, margin, hidden, relax, look=False) for i in range(1, n))
 
     def seg_ok(self, a, b, r, margin, hidden, relax, ds=0.005):
         n = max(1, int((b - a).length / ds))
@@ -129,6 +151,8 @@ class Router:
                     continue
                 nq = pos(nk)
                 if not inside(nq) or not self.ok(nq, r, margin, hidden, relax):
+                    continue
+                if not self.step_ok(q, nq, r, margin, hidden, relax):
                     continue
                 step_len = s * math.sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2])
                 # держаться середины прохода: штраф за клетки у самой стенки
