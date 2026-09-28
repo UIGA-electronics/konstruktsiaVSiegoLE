@@ -373,9 +373,9 @@ def shelf_units():
     box(p, V((0.03, -0.928, SHELF_Z + 0.014)), (0.52, 0.004, 0.028), I3, 0)       # отбортовка вдоль передней кромки
     p.done()
     for name, c, sz in (('ECU backup relay', ECU_RELAY, (0.056, 0.046, 0.044)),          # места деталей, которые ставят
-                        ('main battery', V((0.125, 2.358, 0.105)), (0.145, 0.185, 0.21)),  # electrical.py и pitot.py
+                        ('main battery', V((0.133, 2.408, 0.115)), (0.145, 0.185, 0.21)),  # electrical.py и pitot.py
                         ('relay junction box', V((0.20, 2.300, 0.235)), (0.15, 0.075, 0.14)),
-                        ('LH seat water traps', V((0.31, -0.25, -0.18)), (0.16, 0.22, 0.12))):
+                        ('LH seat water traps', V((0.31, -0.25, -0.16)), (0.16, 0.22, 0.12))):
         r = Part(name + ' (reserved)', None, M['black'], RESERVED)
         box(r, c, sz, I3, 0)
         r.done()
@@ -742,9 +742,11 @@ def rear_units():
     for q, sz in ((c, ra), (c2, kn)):
         box(p, q - V((0, 0, sz[2] / 2 + 0.003)), (sz[0] + 0.012, sz[1] + 0.012, 0.004), I3, 0, bevel=0.001)
     xw = min(c.x, c2.x) - max(ra[0], kn[0]) / 2 - 0.006
-    h, n = R.hit((xw, c.y, (c.z + c2.z) / 2), (-1, 0, 0))
-    if h is not None and xw - h.x > 0.014:
-        box(p, V(((xw + h.x + 0.012) / 2, c.y, (c.z + c2.z) / 2)), (xw - h.x - 0.012, 0.10, c2.z - c.z + 0.04), I3, 0)
+    z0, z1 = c.z - 0.01, c2.z + 0.01
+    hits = [R.hit((xw, c.y + dy, z), (-1, 0, 0))[0] for z in (z0, z1) for dy in (-0.05, 0.05)]
+    wx = max(h.x for h in hits if h is not None) if any(hits) else None     # ближайшая к оси точка борта
+    if wx is not None and xw - wx > 0.014:
+        box(p, V(((xw + wx + 0.010) / 2, c.y, (z0 + z1) / 2)), (xw - wx - 0.010, 0.10, z1 - z0), I3, 0)
     p.done()
     return out
 
