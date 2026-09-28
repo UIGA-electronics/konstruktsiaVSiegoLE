@@ -35,7 +35,8 @@ const PARTS = [
   { file: 'da40-wing-structure.glb', title: 'Силовой набор крыла', cols: ['DA40 Systems/Wing structure'] },
   { file: 'da40-fuel.glb',        title: 'Топливная система',      cols: ['DA40 Systems/Fuel system'] },
   { file: 'da40-electrical.glb',  title: 'Электрика',              cols: ['DA40 Systems/Electrical system'] },
-  { file: 'da40-avionics.glb',    title: 'Авионика и антенны',     cols: ['DA40 Systems/Avionics & antennas'] },
+  { file: 'da40-instruments.glb', title: 'Приборное оборудование', cols: ['DA40 Systems/Avionics & antennas'] },
+  { file: 'da40-radio.glb',       title: 'Радиооборудование',      cols: [] },
   { file: 'da40-brakes.glb',      title: 'Тормоза',                cols: ['DA40 Systems/Brakes (hydraulic)'] },
   { file: 'da40-air.glb',         title: 'Вентиляция и отопление', cols: ['DA40 Systems/Cabin ventilation & heating'] },
   { file: 'da40-pitot-static.glb', title: 'ПВД, статика, сваливание', cols: ['DA40 Systems/Pitot-static & stall warning'] },
@@ -46,8 +47,7 @@ const PARTS = [
     exclude: ['DA40 Exterior/DA40 Engine', 'DA40 Exterior/DA40 Tundra wheels'] },
   { file: 'da40-wheels.glb',      title: 'Колёса Tundra',          cols: ['DA40 Exterior/DA40 Tundra wheels'],
     simplify: 0.3 },
-  { file: 'da40-engine.glb',      title: 'Двигатель AE300',        cols: ['DA40 Exterior/DA40 Engine'],
-    simplify: 0.2 },
+  { file: 'da40-engine.glb',      title: 'Двигатель AE300',        cols: ['DA40 Exterior/DA40 Engine'] },
   { file: 'da40-cabin.glb',       title: 'Кабина',                 cols: ['DA40 Interior'] }
 ];
 
@@ -63,14 +63,16 @@ const LIVERY = '(FUSELAGE2?|WINGS)_ALBD';
 const SMALL = '(?!.*(FUSELAGE|WINGS)).*(_NORM|_COMP|GLASS)';
 const TEX = [
   [new RegExp(LIVERY, 'i'), 4096, 88],
+  [/^ENGINE_/i, 4096, 90],                      // фотоскан двигателя: в исходнике 8K
   [new RegExp('^' + SMALL, 'i'), 1024, 85],
-  [new RegExp('^(?!.*' + LIVERY + ')(?!' + SMALL + ').*', 'i'), 2048, 85]
+  [new RegExp('^(?!.*' + LIVERY + ')(?!' + SMALL + ')(?!ENGINE_).*', 'i'), 2048, 85]
 ];
 
 /* Детали MSFS, заменённые построенными по документам (tools/da40): из планера
    вырезаются. Файлы, которые теперь собираются в Blender, нарезка не трогает. */
 const REPLACED = new Set(Object.keys(JSON.parse(fs.readFileSync(path.join(__dirname, 'da40', 'replaced.json'), 'utf8'))));
-const REBUILT = new Set(['da40-fuel.glb', 'da40-wing-structure.glb', 'da40-pitot-static.glb', 'da40-brakes.glb', 'da40-air.glb', 'da40-engine.glb', 'da40-induction.glb', 'da40-cooling.glb', 'da40-oil.glb', 'da40-electrical.glb']);
+const REBUILT = new Set(['da40-fuel.glb', 'da40-wing-structure.glb', 'da40-pitot-static.glb', 'da40-brakes.glb', 'da40-air.glb', 'da40-induction.glb', 'da40-cooling.glb', 'da40-oil.glb', 'da40-electrical.glb',
+  'da40-instruments.glb', 'da40-radio.glb']);
 
 /* Дополнения из Blender (tools/da40): вливаются в файл части вместе с анимацией.
    Клипы дополнения — ключи отдельных объектов с тем же именем клипа (Blender

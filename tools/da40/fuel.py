@@ -469,9 +469,13 @@ def build_vents(s, vent, a0):
     # два шланга от бака к горловине (под крышкой)
     for k, (t0, key) in enumerate(zip(tops, ('in_f', 'in_r'))):
         tip, d = vent[key]
-        pts = [t0, t0 + V((0, 0, 0.012)), tip + d * 0.03 + V((0, 0, -0.004)), tip]
+        pts = fillet([t0, t0 + V((0, 0, 0.012)), tip + d * 0.03 + V((0, 0, -0.004)), tip], 0.02)
+        for q in pts[1:-1]:                    # под верхней обшивкой: над баком зазор мал, шланг выходил наружу
+            sk = R.skin(q.x, q.y, 'upper')[0]
+            if sk is not None and q.z > sk.z - 0.008:
+                q.z = sk.z - 0.008
         hose(f'{tag} vent hose {k + 1} (tank to filler)', f'Дренажный шланг {k + 1}: верхний угол бака {tag} — горловина под крышкой',
-             pts, 0.004, 0.02, 'AMM 28-10 разд. 3', ends=False)
+             pts, 0.004, 0.004, 'AMM 28-10 разд. 3', ends=False)
 
     # выходы: обратный клапан (бленд) на горловине и шланг с предохранительным клапаном/капилляром
     px, py = s * VENT_PANEL[0], VENT_PANEL[1]

@@ -9,8 +9,7 @@
       "Элероны влево → вправо",
       "Руль высоты"
     ],
-    "mb": 0.61,
-    "built": "tools/split-da40.js + tools/da40/controls.py"
+    "mb": 0.61
   },
   {
     "file": "da40-wing-structure.glb",
@@ -27,7 +26,7 @@
     "parts": 109,
     "meshes": 109,
     "clips": [],
-    "mb": 0.72,
+    "mb": 0.73,
     "built": "tools/da40/fuel.py"
   },
   {
@@ -36,16 +35,26 @@
     "parts": 33,
     "meshes": 33,
     "clips": [],
-    "mb": 0.41,
+    "mb": 0.39,
     "built": "tools/da40/electrical.py"
   },
   {
-    "file": "da40-avionics.glb",
-    "title": "Авионика и антенны",
-    "parts": 57,
-    "meshes": 57,
+    "file": "da40-instruments.glb",
+    "title": "Приборное оборудование",
+    "parts": 38,
+    "meshes": 38,
     "clips": [],
-    "mb": 0.55
+    "mb": 0.2,
+    "built": "tools/da40/avionics.py"
+  },
+  {
+    "file": "da40-radio.glb",
+    "title": "Радиооборудование",
+    "parts": 47,
+    "meshes": 47,
+    "clips": [],
+    "mb": 0.27,
+    "built": "tools/da40/avionics.py"
   },
   {
     "file": "da40-brakes.glb",
@@ -53,7 +62,7 @@
     "parts": 21,
     "meshes": 21,
     "clips": [],
-    "mb": 0.15,
+    "mb": 0.14,
     "built": "tools/da40/brakes.py"
   },
   {
@@ -62,7 +71,7 @@
     "parts": 38,
     "meshes": 38,
     "clips": [],
-    "mb": 0.56,
+    "mb": 0.53,
     "built": "tools/da40/air.py"
   },
   {
@@ -80,7 +89,7 @@
     "parts": 11,
     "meshes": 11,
     "clips": [],
-    "mb": 0.09,
+    "mb": 0.08,
     "built": "tools/da40/powerplant.py"
   },
   {
@@ -89,7 +98,7 @@
     "parts": 13,
     "meshes": 13,
     "clips": [],
-    "mb": 0.12,
+    "mb": 0.11,
     "built": "tools/da40/powerplant.py"
   },
   {
@@ -104,14 +113,14 @@
   {
     "file": "da40-airframe.glb",
     "title": "Планер",
-    "parts": 309,
-    "meshes": 233,
+    "parts": 303,
+    "meshes": 225,
     "clips": [
       "Закрылки UP → LDG",
       "Элероны влево → вправо",
       "Руль высоты"
     ],
-    "mb": 6.48
+    "mb": 6.4
   },
   {
     "file": "da40-wheels.glb",
@@ -124,11 +133,10 @@
   {
     "file": "da40-engine.glb",
     "title": "Двигатель AE300",
-    "parts": 21,
-    "meshes": 21,
+    "parts": 2,
+    "meshes": 2,
     "clips": [],
-    "mb": 0.15,
-    "built": "tools/da40/powerplant.py"
+    "mb": 6.33
   },
   {
     "file": "da40-cabin.glb",
