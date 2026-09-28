@@ -79,8 +79,13 @@
             "on": false
           },
           {
-            "src": "models/da40/da40-avionics.glb",
-            "title": "Авионика",
+            "src": "models/da40/da40-instruments.glb",
+            "title": "Приборное оборудование",
+            "on": false
+          },
+          {
+            "src": "models/da40/da40-radio.glb",
+            "title": "Радиооборудование",
             "on": false
           },
           {

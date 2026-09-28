@@ -10,7 +10,7 @@
   },
   "next": {
     "id": "da40-instruments",
-    "title": "ПВД, статика и G1000"
+    "title": "Приборное оборудование"
   },
   "blocks": [
     {
@@ -41,8 +41,13 @@
             "on": true
           },
           {
-            "src": "models/da40/da40-avionics.glb",
-            "title": "Авионика",
+            "src": "models/da40/da40-instruments.glb",
+            "title": "Приборное оборудование",
+            "on": false
+          },
+          {
+            "src": "models/da40/da40-radio.glb",
+            "title": "Радиооборудование",
             "on": false
           },
           {
