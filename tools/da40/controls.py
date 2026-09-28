@@ -279,7 +279,10 @@ def build():
         objs[('bc', s)] = pivot_obj(p, sd.B)
         p = P(f'Flap bellcrank bracket (flap control rib) {tag}', f'Кронштейн качалки {gen} закрылка на нервюре управления закрылком (x = {X_RIB:.2f} м)',
               'black', 'AMM 27-50 рис. 2, 57-10')
-        box(p, V((s * X_RIB, sd.B.y, sd.B.z - 0.004)), (0.004, 0.06, 0.05), Matrix.Identity(3), 0, bevel=0.002)
+        lo, hi = R.wing_section(s * X_RIB, sd.B.y)          # в высоте профиля: у задней кромки он тонкий
+        z0 = max(sd.B.z - 0.029, (lo if lo is not None else -9) + 0.005)
+        z1 = min(sd.B.z + 0.021, (hi if hi is not None else 9) - 0.005)
+        box(p, V((s * X_RIB, sd.B.y, (z0 + z1) / 2)), (0.004, 0.06, z1 - z0), Matrix.Identity(3), 0, bevel=0.002)
         box(p, sd.B - sd.nb * 0.012 + V((s * 0.008, 0, 0)), (0.02, 0.03, 0.004), Matrix.Identity(3), 0, bevel=0.001)
         p.done()
         # тяги
@@ -331,7 +334,9 @@ def build():
                           pa0, pa0 - d0 * 0.30, 0.007, 'AMM 27-50 рис. 3')
     p = P('Flap actuator mounting bracket (LH rear closing rib)', 'Кронштейн привода закрылков на левой задней замыкающей нервюре, ось поворота привода',
           'black', 'AMM 27-50 2.A, рис. 3')
-    box(p, V((REAR_CLOSING_RIB_X - 0.003, SWIVEL.y, SWIVEL.z + 0.01)), (0.005, 0.07, 0.07), Matrix.Identity(3), 0, bevel=0.002)
+    lo = R.skin(REAR_CLOSING_RIB_X - 0.003, SWIVEL.y, 'lower')[0]
+    z0 = max(SWIVEL.z - 0.025, (lo.z if lo is not None else -9) + 0.006)   # не ниже обшивки: нижний край выходил наружу
+    box(p, V((REAR_CLOSING_RIB_X - 0.003, SWIVEL.y, (z0 + SWIVEL.z + 0.045) / 2)), (0.005, 0.07, SWIVEL.z + 0.045 - z0), Matrix.Identity(3), 0, bevel=0.002)
     box(p, V(((REAR_CLOSING_RIB_X + SWIVEL.x) / 2, SWIVEL.y, SWIVEL.z - 0.016)), (REAR_CLOSING_RIB_X - SWIVEL.x, 0.04, 0.005), Matrix.Identity(3), 0, bevel=0.001)
     cyl(p, SWIVEL - V((0, 0, 0.02)), SWIVEL + V((0, 0, 0.035)), 0.004, p.m(M['steel']), segs=10)
     p.done()
