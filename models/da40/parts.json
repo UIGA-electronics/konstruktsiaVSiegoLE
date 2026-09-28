@@ -124,11 +124,10 @@
   {
     "file": "da40-engine.glb",
     "title": "Двигатель AE300",
-    "parts": 21,
-    "meshes": 21,
+    "parts": 2,
+    "meshes": 2,
     "clips": [],
-    "mb": 0.15,
-    "built": "tools/da40/powerplant.py"
+    "mb": 6.33
   },
   {
     "file": "da40-cabin.glb",

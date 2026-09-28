@@ -75,6 +75,9 @@ lay = {x.name for x in layer.all_objects}
 for o in bpy.data.objects:
     if o.name not in lay and o.name not in keep and o.type in ('MESH', 'CURVE'):
         o.hide_render = True
+solid = set()
+for cn in [c for c in os.environ.get('SOLID', '').split(',') if c]:
+    solid |= {o.name for o in bpy.data.collections[cn].all_objects}      # в режиме ghost остаются непрозрачными
 airframe = [o for o in bpy.data.objects if o.type == 'MESH' and o.name in keep]
 orig = {o.name: [s.material for s in o.material_slots] for o in airframe}
 
@@ -101,7 +104,7 @@ sys_names = {o.name for o in layer.all_objects}
 for name, camp, look, lens, mode in jobs:
     for o in airframe:
         o.hide_render = mode == 'sys'
-        if mode == 'ghost':
+        if mode == 'ghost' and o.name not in solid:
             for s in o.material_slots:
                 s.link = 'OBJECT'
                 s.material = ghost

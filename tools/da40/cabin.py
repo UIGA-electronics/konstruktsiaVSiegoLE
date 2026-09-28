@@ -13,7 +13,7 @@ import ref
 from route import Router
 
 LAYERS = os.environ.get('LAYERS', '/home/user/da40src/out2')
-BUILT = ('fuel', 'brakes', 'pitot', 'engine', 'cooling', 'induction', 'oil', 'air', 'wing', 'controls-addon', 'electrical')
+BUILT = ('fuel', 'brakes', 'pitot', 'cooling', 'induction', 'oil', 'air', 'wing', 'controls-addon', 'electrical')
 SOURCE_SYSTEMS = ('Flight controls', 'Electrical system', 'Avionics & antennas')
 
 # глаза пилотов, камера сзади по центру, низко у колен — как заглядывают в нишу для ног на сайте
