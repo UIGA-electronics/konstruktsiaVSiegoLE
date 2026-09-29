@@ -22,11 +22,12 @@
       "name": "model3d",
       "caption": "Радиооборудование DA 40 NG: стойка авионики за рамой багажного отсека (два GIA 63W и ответчик GTX 33), дальномер и приёмник АРК в хвостовой части, аварийный радиомаяк, процессор грозопеленгатора под сиденьем пассажиров; антенны сверху и снизу фюзеляжа, на крыше кабины и в горизонтальном оперении, коаксиальные кабели.",
       "opts": {
-        "src": "models/da40/da40-airframe.glb",
+        "src": ["models/da40/da40-airframe.glb", {"src": "models/da40/da40-wheels.glb", "title": "Колёса"}],
         "labelsSrc": "content/da40-labels.json",
         "srcTitle": "Планер",
         "scene": "apron",
-        "shellKeep": "^gear|propel",
+        "groundY": 0.012,
+        "shellKeep": "^gear|propel|tundra|beringer|hub cap",
         "shellMaterials": [
           "Fuselage",
           "Fuselage2",

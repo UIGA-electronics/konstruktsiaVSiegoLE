@@ -22,11 +22,12 @@
       "name": "model3d",
       "caption": "Электросистема DA 40 NG: основная батарея и релейная коробка за рамой багажного отсека, резервная батарея EECU, разъём наземного питания, блок EECU, предохранитель и регулятор генератора, основной жгут и жгуты огней в крыле.",
       "opts": {
-        "src": "models/da40/da40-airframe.glb",
+        "src": ["models/da40/da40-airframe.glb", {"src": "models/da40/da40-wheels.glb", "title": "Колёса"}],
         "labelsSrc": "content/da40-labels.json",
         "srcTitle": "Планер",
         "scene": "apron",
-        "shellKeep": "^gear|propel",
+        "groundY": 0.012,
+        "shellKeep": "^gear|propel|tundra|beringer|hub cap",
         "shellMaterials": [
           "Fuselage",
           "Fuselage2",

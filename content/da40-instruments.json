@@ -18,11 +18,12 @@
       "name": "model3d",
       "caption": "Система полного и статического давлений: приёмник полного давления под левым крылом, два приёмника статического давления на хвостовой части фюзеляжа, влагоотстойники, вычислитель воздушных сигналов GDC 74A на полке приборной доски; сигнализатор сваливания с отверстием в передней кромке левого крыла.",
       "opts": {
-        "src": "models/da40/da40-airframe.glb",
+        "src": ["models/da40/da40-airframe.glb", {"src": "models/da40/da40-wheels.glb", "title": "Колёса"}],
         "labelsSrc": "content/da40-labels.json",
         "srcTitle": "Планер",
         "scene": "apron",
-        "shellKeep": "^gear|propel",
+        "groundY": 0.012,
+        "shellKeep": "^gear|propel|tundra|beringer|hub cap",
         "shellMaterials": [
           "Fuselage",
           "Fuselage2",
@@ -230,11 +231,12 @@
       "name": "model3d",
       "caption": "Блоки G1000 и автопилота: дисплеи и аудиопанель в приборной доске, GDC 74A и GEA 71 на полке за ней, стойка авионики с GIA 63W и GTX 33 за рамой багажного отсека, GRS 77 рядом со стойкой, GMU 44 в правом крыле, три рулевые машины GSA 81, жгуты.",
       "opts": {
-        "src": "models/da40/da40-airframe.glb",
+        "src": ["models/da40/da40-airframe.glb", {"src": "models/da40/da40-wheels.glb", "title": "Колёса"}],
         "labelsSrc": "content/da40-labels.json",
         "srcTitle": "Планер",
         "scene": "apron",
-        "shellKeep": "^gear|propel",
+        "groundY": 0.012,
+        "shellKeep": "^gear|propel|tundra|beringer|hub cap",
         "shellMaterials": [
           "Fuselage",
           "Fuselage2",

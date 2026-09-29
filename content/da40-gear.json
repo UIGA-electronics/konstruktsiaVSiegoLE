@@ -22,11 +22,12 @@
       "name": "model3d",
       "caption": "Тормозная система: главные тормозные цилиндры на педалях обоих пилотов, бачки, клапан стояночного тормоза на пультовой переборке, гибкие шланги под полом и по задней кромке рессор к суппортам. Колёса показаны с увеличенными шинами Tundra.",
       "opts": {
-        "src": "models/da40/da40-airframe.glb",
+        "src": ["models/da40/da40-airframe.glb", {"src": "models/da40/da40-wheels.glb", "title": "Колёса"}],
         "labelsSrc": "content/da40-labels.json",
         "srcTitle": "Планер",
         "scene": "apron",
-        "shellKeep": "^gear|propel",
+        "groundY": 0.012,
+        "shellKeep": "^gear|propel|tundra|beringer|hub cap",
         "shellMaterials": [
           "Fuselage",
           "Fuselage2",
@@ -41,12 +42,6 @@
             "src": "models/da40/da40-brakes.glb",
             "title": "Тормоза",
             "on": true
-          },
-          {
-            "src": "models/da40/da40-wheels.glb",
-            "title": "Колёса",
-            "on": true,
-            "plain": true
           },
           {
             "src": "models/da40/da40-controls.glb",

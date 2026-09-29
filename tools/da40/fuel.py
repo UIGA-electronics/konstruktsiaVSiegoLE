@@ -779,9 +779,29 @@ def build_lines(fit, fus):
 
 
 def build_firewall_forward(fw_sup, fw_ret):
-    # тонкий фильтр на кронштейне моторамы, демпфер пульсаций, к ТНВД
-    flt = V((0.19, -1.34, -0.07))
-    p = P('Fine fuel filter', 'Тонкий топливный фильтр перед двигателем: на кронштейне моторамы, пробка слива законтрена',
+    """Шланги перед перегородкой — к двигателю AE300 из powerplant.py.
+
+    Точки на двигателе — колодка штуцеров на левом борту блока (powerplant.FUEL_IN,
+    FUEL_RET). Трассы в моторном отсеке прокладывает route.Router: препятствия —
+    двигатель, охлаждение, наддув, масло и электрика (cabin.BUILT)."""
+    import cabin
+    _trim, _sys, rt = cabin.setup(R, 'fuel', step=0.012)
+    rt.set_extra(ref._bvh([o for o in COL.all_objects if o.type == 'MESH']))
+    bay = ((-0.45, -1.80, -0.25), (0.45, -1.205, 0.60))
+
+    def lead(a, da, b, db, r, relax=()):
+        a, b, da, db = V(a), V(b), V(da).normalized(), V(db).normalized()
+        a0, b0 = a + da * 0.03, b - db * 0.03
+        mid = rt.route(a0, b0, r, *bay, hidden=False, relax=[(a, 0.05), (b, 0.05)] + list(relax))
+        if not mid:
+            raise SystemExit(f'нет трассы {tuple(round(v, 3) for v in a)} → {tuple(round(v, 3) for v in b)}')
+        return [a] + mid + [b]
+
+    FUEL_IN = V((0.137, -1.720, 0.175))      # powerplant.py: колодка штуцеров низкого давления
+    FUEL_RET = V((0.137, -1.680, 0.205))
+    # тонкий фильтр на кронштейне моторамы слева у перегородки
+    flt = V((0.30, -1.30, 0.10))
+    p = P('Fine fuel filter', 'Тонкий топливный фильтр перед двигателем: на кронштейне моторамы слева у перегородки, пробка слива законтрена',
           'alu', 'AMM 28-20 2.D, рис. 2')
     cyl(p, flt - V((0, 0, 0.06)), flt + V((0, 0, 0.03)), 0.028, 0, segs=28)
     cyl(p, flt + V((0, 0, 0.03)), flt + V((0, 0, 0.045)), 0.031, p.m(M['alu']), segs=28)
@@ -796,25 +816,25 @@ def build_firewall_forward(fw_sup, fw_ret):
     p.done()
     f_in = flt + V((-0.034, 0, 0.038))
     f_out = flt + V((0, -0.034, 0.038))
+    rt.set_extra(ref._bvh([o for o in COL.all_objects if o.type == 'MESH']))
     hose('Fire-sleeved hose firewall to fine filter', 'Шланг в огнезащитном рукаве: перегородка — тонкий фильтр',
-         [fw_sup, fw_sup - V((0, 0.04, 0)), V((0.12, -1.29, -0.02)), f_in - V((0.03, 0, 0)), f_in], 0.0078, 0.05,
-         'AMM 28-20 2.A', fire=True)
-    dmp = V((0.16, -1.47, 0.03))
+         lead(fw_sup, (0, -1, 0), f_in, (1, 0, 0), 0.012), 0.0078, 0.04, 'AMM 28-20 2.A', fire=True)
+    dmp = V((0.30, -1.44, 0.16))
     p = P('Fuel pressure pulsation damper', 'Демпфер пульсаций давления топлива между тонким фильтром и ТНВД', 'alu', 'AMM 28-20 2.H, рис. 2 (MÄM 40-468)')
     cyl(p, dmp - V((0, 0.035, 0)), dmp + V((0, 0.035, 0)), 0.022, 0, segs=24)
     for sgn in (-1, 1):
         cyl(p, dmp + V((0, 0.035 * sgn, 0)), dmp + V((0, 0.046 * sgn, 0)), 0.016, 0, segs=24)
         hexa(p, dmp + V((0, 0.046 * sgn, 0)), dmp + V((0, 0.054 * sgn, 0)), 0.016, p.m(M['an']))
     p.done()
+    rt.set_extra(ref._bvh([o for o in COL.all_objects if o.type == 'MESH']))
     hose('Fire-sleeved hose fine filter to pulsation damper', 'Шланг в огнезащитном рукаве: фильтр — демпфер пульсаций',
-         [f_out, f_out + V((0, 0, 0.03)), V((0.17, -1.40, 0.02)), dmp + V((0, 0.054, 0))], 0.0078, 0.04, 'AMM 28-20 рис. 2', fire=True)
-    hp = V((0.13, -1.60, 0.12))
-    hose('Fire-sleeved hose damper to high pressure pump', 'Шланг в огнезащитном рукаве: демпфер — ТНВД на двигателе',
-         [dmp - V((0, 0.054, 0)), V((0.16, -1.55, 0.06)), hp], 0.0078, 0.04, 'AMM 28-20 рис. 2', fire=True)
-    hr = V((0.08, -1.58, 0.14))
+         [f_out, f_out + V((0, 0, 0.03)), dmp + V((0, 0.054 + 0.03, 0.0)), dmp + V((0, 0.054, 0))], 0.0078, 0.03, 'AMM 28-20 рис. 2', fire=True)
+    rt.set_extra(ref._bvh([o for o in COL.all_objects if o.type == 'MESH']))
+    hose('Fire-sleeved hose damper to high pressure pump', 'Шланг в огнезащитном рукаве: демпфер — колодка штуцеров ТНВД на левом борту блока',
+         lead(dmp - V((0, 0.054, 0)), (0, -1, 0), FUEL_IN, (-1, 0, 0), 0.012), 0.0078, 0.04, 'AMM 28-20 рис. 2', fire=True)
+    rt.set_extra(ref._bvh([o for o in COL.all_objects if o.type == 'MESH']))
     hose('Fire-sleeved hose engine return to firewall', 'Шланг обратки в огнезащитном рукаве: двигатель — перегородка',
-         [hr, V((0.02, -1.45, 0.10)), V((-0.05, -1.30, 0.02)), fw_ret - V((0, 0.04, 0)), fw_ret], 0.0068, 0.05,
-         'AMM 28-20 2', fire=True, clamps=((0.5, V((1, 0, 0))),))
+         lead(FUEL_RET, (1, 0, 0), fw_ret, (0, 1, 0), 0.011), 0.0068, 0.04, 'AMM 28-20 2', fire=True)
 
 
 # ── Сборка ────────────────────────────────────────────────────────────────
