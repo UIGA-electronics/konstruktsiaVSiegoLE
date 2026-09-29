@@ -2389,7 +2389,12 @@ var Figures = (function () {
       var GENERIC = /^(cube|plane|cylinder|circle|sphere|torus|beziercurve|nurbspath|mesh|object|empty)\b[\s\d_]*/i;
 
       var files = [];
-      baseSrc.forEach(function (s) { files.push({ src: s, layer: false, on: true, title: opts.srcTitle }); });
+      /* Основа — строка (файл) или { src, title }: колёса стоят в основе
+         у каждой страницы с перроном, и подписываться «Планером» им незачем. */
+      baseSrc.forEach(function (s) {
+        var o = typeof s === 'string' ? { src: s } : s;
+        files.push({ src: o.src, layer: false, on: true, title: o.title || opts.srcTitle });
+      });
       layerDefs.forEach(function (d) {
         files.push({ src: d.src, layer: true, on: !!d.on, title: d.title, hint: d.hint,
           plain: !!d.plain });
@@ -2612,8 +2617,12 @@ var Figures = (function () {
 
         /* Перрон: земля — под колёсами, то есть по низу габарита основы. */
         if (apron) {
-          var env = Scenery.apron(THREE, scene, renderer, r, bb.min.y - mid.y);
-          floorY = bb.min.y - mid.y + r * 0.02;
+          /* Земля — под шинами. Шины бывают в слое («Колёса»), а не в основе,
+             поэтому высоту земли задаёт opts.groundY в координатах модели;
+             без неё — низ основы. */
+          var gy = (opts.groundY != null ? opts.groundY : bb.min.y) - mid.y;
+          var env = Scenery.apron(THREE, scene, renderer, r, gy);
+          floorY = gy + r * 0.02;
           if (env) scene.environment = env;
           var sc = key.shadow.camera, sr = r * 0.62;
           key.position.set(3, 5, 4).setLength(r * 3);
@@ -2933,6 +2942,8 @@ var Figures = (function () {
         document.addEventListener('fullscreenchange', hideTip);
 
         info.textContent = opts.hint || M3_HINT;
+        /* Для проверки из консоли и автотестов: камера, управление, сцена. */
+        frame.__m3 = { THREE: THREE, camera: camera, ctrl: ctrl, root: root, render: render };
         render();
       }
 

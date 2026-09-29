@@ -20,13 +20,14 @@
     {
       "t": "figure",
       "name": "model3d",
-      "caption": "Моторный отсек DA 40 NG: двигатель на мотораме, системы наддува и выпуска, охлаждения и смазки.",
+      "caption": "Моторный отсек DA 40 NG: двигатель E4-A на мотораме, жгут и датчики EECU, системы наддува и выпуска, охлаждения и смазки.",
       "opts": {
-        "src": "models/da40/da40-airframe.glb",
+        "src": ["models/da40/da40-airframe.glb", {"src": "models/da40/da40-wheels.glb", "title": "Колёса"}],
         "labelsSrc": "content/da40-labels.json",
         "srcTitle": "Планер",
         "scene": "apron",
-        "shellKeep": "^gear|propel",
+        "groundY": 0.012,
+        "shellKeep": "^gear|propel|tundra|beringer|hub cap",
         "shellMaterials": [
           "Fuselage",
           "Fuselage2",

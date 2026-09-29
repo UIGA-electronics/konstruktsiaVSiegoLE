@@ -18,11 +18,12 @@
       "name": "model3d",
       "caption": "Самолёт DA 40 NG (RA-02660) с разделением на системы.",
       "opts": {
-        "src": "models/da40/da40-airframe.glb",
+        "src": ["models/da40/da40-airframe.glb", {"src": "models/da40/da40-wheels.glb", "title": "Колёса"}],
         "labelsSrc": "content/da40-labels.json",
         "srcTitle": "Планер",
         "scene": "apron",
-        "shellKeep": "^gear|propel",
+        "groundY": 0.012,
+        "shellKeep": "^gear|propel|tundra|beringer|hub cap",
         "shellMaterials": [
           "Fuselage",
           "Fuselage2",
@@ -33,12 +34,6 @@
         "tall": true,
         "glow": "off",
         "layers": [
-          {
-            "src": "models/da40/da40-wheels.glb",
-            "title": "Колёса",
-            "on": false,
-            "plain": true
-          },
           {
             "src": "models/da40/da40-controls.glb",
             "title": "Управление",

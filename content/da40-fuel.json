@@ -22,11 +22,12 @@
       "name": "model3d",
       "caption": "Топливная система: баки MAIN и AUX с заливными горловинами, дренажные и сливные клапаны, датчики количества топлива, топливный кран, отстойник, подкачивающие насосы, насос перекачки, топливный радиатор и трубопроводы до двигателя.",
       "opts": {
-        "src": "models/da40/da40-airframe.glb",
+        "src": ["models/da40/da40-airframe.glb", {"src": "models/da40/da40-wheels.glb", "title": "Колёса"}],
         "labelsSrc": "content/da40-labels.json",
         "srcTitle": "Планер",
         "scene": "apron",
-        "shellKeep": "^gear|propel",
+        "groundY": 0.012,
+        "shellKeep": "^gear|propel|tundra|beringer|hub cap",
         "shellMaterials": [
           "Fuselage",
           "Fuselage2",

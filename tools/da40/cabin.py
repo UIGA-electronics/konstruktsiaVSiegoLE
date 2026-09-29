@@ -1,7 +1,8 @@
 """Общее для слоёв, которые прокладывают шланги и провода через кабину.
 
 Отделка кабины, соседние системы и планировщик трасс (route.Router) с одними
-и теми же точками обзора. Соседние системы: управление — из исходника,
+и теми же точками обзора. Двигатель AE300 (powerplant.py) — тоже препятствие:
+по нему прокладываются шланги топлива и кабели в моторном отсеке. Соседние системы: управление — из исходника,
 пересобранные слои — из их GLB в LAYERS (свой слой не берётся). Электрика и
 авионика исходника заменены слоями electrical, instruments и radio.
 """
@@ -14,7 +15,7 @@ import ref
 from route import Router
 
 LAYERS = os.environ.get('LAYERS', '/home/user/da40src/out2')
-BUILT = ('fuel', 'brakes', 'pitot', 'cooling', 'induction', 'oil', 'air', 'wing', 'controls-addon', 'electrical',
+BUILT = ('fuel', 'brakes', 'pitot', 'engine', 'cooling', 'induction', 'oil', 'air', 'wing', 'controls-addon', 'electrical',
          'instruments', 'radio')
 SOURCE_SYSTEMS = ('Flight controls',)
 

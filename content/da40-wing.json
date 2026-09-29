@@ -22,11 +22,12 @@
       "name": "model3d",
       "caption": "Силовой набор консолей крыла: лонжероны, комли с втулками главных болтов, корневая нервюра, нервюры бака и приводов, задняя стенка, концевая нервюра.",
       "opts": {
-        "src": "models/da40/da40-airframe.glb",
+        "src": ["models/da40/da40-airframe.glb", {"src": "models/da40/da40-wheels.glb", "title": "Колёса"}],
         "labelsSrc": "content/da40-labels.json",
         "srcTitle": "Планер",
         "scene": "apron",
-        "shellKeep": "^gear|propel",
+        "groundY": 0.012,
+        "shellKeep": "^gear|propel|tundra|beringer|hub cap",
         "shellMaterials": [
           "Fuselage",
           "Fuselage2",
