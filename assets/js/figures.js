@@ -2208,22 +2208,51 @@ var Figures = (function () {
         pmrem.dispose();
       }
 
-      /* Свет ставит сайт — модель приходит без запечённого освещения */
-      scene.add(new THREE.HemisphereLight(0xffffff, 0xb8bcc2, 0.55));
-      var key = new THREE.DirectionalLight(0xffffff, 1.15);
+      /* Свет ставит сайт — модель приходит без запечённого освещения.
+         На перроне свет дневной: небо сверху, от бетона снизу, солнце
+         сбоку-сверху. У механизмов — мастерская, свет ровный. */
+      var apron = opts.scene === 'apron';
+      var hemi = apron
+        ? new THREE.HemisphereLight(0xdfe9f3, 0x8a8577, 0.5)
+        : new THREE.HemisphereLight(0xffffff, 0x9a9486, 0.55);
+      scene.add(hemi);
+      var key = new THREE.DirectionalLight(apron ? 0xfff1dc : 0xffffff, apron ? 1.35 : 1.15);
+      if (apron) renderer.toneMappingExposure = 0.95;
       key.position.set(3, 5, 4);
       scene.add(key);
-      var fill = new THREE.DirectionalLight(0xffffff, 0.35);
+      scene.add(key.target);
+      var fill = new THREE.DirectionalLight(apron ? 0xc9d8ea : 0xffffff, apron ? 0.25 : 0.35);
       fill.position.set(-4, 2, -3);
       scene.add(fill);
+      if (!apron) scene.background = Scenery.studio(THREE);
+      if (apron) {
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.autoUpdate = false;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        key.castShadow = true;
+        key.shadow.mapSize.set(2048, 2048);
+        key.shadow.bias = -0.0004;
+        key.shadow.normalBias = 0.02;
+      }
 
       /* Общая группа всех файлов. Её сдвигаем при кадрировании, поэтому
          слои, подгруженные позже, встают туда же, куда и основа. */
       var root = new THREE.Group();
       scene.add(root);
 
-      var ctrl = null;
-      function render() { renderer.render(scene, camera); }
+      var ctrl = null, floorY = null;
+      function render() {
+        /* Под бетон камеру не пускаем: снизу перрон прозрачен, и вид
+           получается не с земли, а из-под земли. */
+        if (floorY !== null && ctrl && camera.position.y < floorY) {
+          camera.position.y = floorY;
+          camera.lookAt(ctrl.target);
+        }
+        renderer.render(scene, camera);
+      }
+      /* Тень от самолёта считаем не каждый кадр, а когда сцена меняется:
+         слой включили, обшивку сняли, идёт сценарий. */
+      function reshadow() { if (renderer.shadowMap.enabled) renderer.shadowMap.needsUpdate = true; }
 
       /* ── Подписи ─────────────────────────────────────────── */
 
@@ -2328,7 +2357,17 @@ var Figures = (function () {
         shellMat = {};
         opts.shellMaterials.forEach(function (n) { shellMat[n] = 1; });
       }
+      /* opts.shellKeep — что из основы остаётся при снятой обшивке (шасси,
+         винт). Всё прочее в основе — заклёпки, надписи, рамки остекления,
+         огни — висит на обшивке и уходит вместе с ней: без обшивки эта
+         мелочь висит в воздухе и сбивает с толку. Слои систем не трогаем. */
+      var keepRe = opts.shellKeep ? new RegExp(opts.shellKeep, 'i') : null;
       function isShellMesh(o) {
+        if (o.__shell != null) return o.__shell;
+        if (keepRe && o.__file && !o.__file.layer) {
+          var km = Array.isArray(o.material) ? o.material[0] : o.material;
+          return !keepRe.test((km && (km.__baseName || km.name)) || '');
+        }
         if (shellMat && o.material) {
           var mm = Array.isArray(o.material) ? o.material : [o.material];
           for (var i = 0; i < mm.length; i++) {
@@ -2398,8 +2437,11 @@ var Figures = (function () {
             ? o.material.emissiveIntensity : 1;
           o.__env = o.material && o.material.envMapIntensity != null
             ? o.material.envMapIntensity : 1;
-          (isShellMesh(o) ? shells : parts).push(o);
+          o.__shell = isShellMesh(o);
+          (o.__shell ? shells : parts).push(o);
+          if (renderer.shadowMap.enabled) o.castShadow = true;
         });
+        reshadow();
       }
 
       /* Процент загрузки по всем файлам сразу. Сервер не всегда отдаёт
@@ -2480,6 +2522,7 @@ var Figures = (function () {
             o.material.depthWrite = false;
           }
         });
+        reshadow();
       }
       function setLevel(n) {
         level = n;
@@ -2535,6 +2578,7 @@ var Figures = (function () {
             o.material.envMapIntensity = lit ? 0.2 : o.__env;
           }
         });
+        reshadow();
       }
 
       /* ── Анимация ────────────────────────────────────────── */
@@ -2565,6 +2609,19 @@ var Figures = (function () {
         var mid = bb.getCenter(new THREE.Vector3());
         var r = Math.max(size.x, size.y, size.z) || 1;
         root.position.sub(mid);
+
+        /* Перрон: земля — под колёсами, то есть по низу габарита основы. */
+        if (apron) {
+          var env = Scenery.apron(THREE, scene, renderer, r, bb.min.y - mid.y);
+          floorY = bb.min.y - mid.y + r * 0.02;
+          if (env) scene.environment = env;
+          var sc = key.shadow.camera, sr = r * 0.62;
+          key.position.set(3, 5, 4).setLength(r * 3);
+          sc.left = -sr; sc.right = sr; sc.top = sr; sc.bottom = -sr;
+          sc.near = r * 1.5; sc.far = r * 4.5;
+          sc.updateProjectionMatrix();
+          reshadow();
+        }
 
         ctrl = new THREE.OrbitControls(camera, renderer.domElement);
         ctrl.enableDamping = true;
@@ -2786,21 +2843,20 @@ var Figures = (function () {
           while (o) { if (!o.visible) return false; o = o.parent; }
           return true;
         }
-        renderer.domElement.addEventListener('click', function (e) {
+        /* Деталь под курсором: подпись по словарю, иначе имя из модели. */
+        function pick(cx, cy) {
           var b = renderer.domElement.getBoundingClientRect();
-          pt.x = ((e.clientX - b.left) / b.width) * 2 - 1;
-          pt.y = -((e.clientY - b.top) / b.height) * 2 + 1;
+          pt.x = ((cx - b.left) / b.width) * 2 - 1;
+          pt.y = -((cy - b.top) / b.height) * 2 + 1;
           ray.setFromCamera(pt, camera);
           /* Оболочка перехватывает каждый луч — кликать надо по механизму
              внутри, поэтому из выборки она исключена всегда. Приглушённые
              и выключенные узлы тоже пропускаем: иначе выбранную систему
-             не ткнуть сквозь висящий перед ней призрак. */
-          var all = ray.intersectObject(root, true), hit = null;
-          for (var i = 0; i < all.length; i++) {
-            var o = all[i].object;
-            if (!isShellMesh(o) && !o.__dim && shown(o)) { hit = all[i]; break; }
-          }
-          if (!hit) return;
+             не ткнуть сквозь висящий перед ней призрак. Земля и небо
+             перрона лежат вне root и в выборку не попадают. */
+          var cand = parts.filter(function (o) { return !o.__dim && shown(o); });
+          var hit = ray.intersectObjects(cand, false)[0];
+          if (!hit) return null;
           /* Кликнуть можно по вложенному мешу, у которого своего имени в словаре
              нет, — поднимаемся по родителям до первого известного узла. */
           var n = hit.object, label = null;
@@ -2820,10 +2876,61 @@ var Figures = (function () {
           var mt = hit.object.material;
           var mtn = mt && !Array.isArray(mt) ? materialName(mt) : '';
           var layer = from.title && from.title !== (label || name) ? from.title : '';
-          info.innerHTML = Render.esc(label || name || '—') +
-            (mtn ? ' <i>· ' + Render.esc(mtn) + '</i>' : '') +
-            (layer && multi ? ' <i>· ' + Render.esc(layer) + '</i>' : '');
+          return { title: label || name || '—', mat: mtn, layer: layer && multi ? layer : '' };
+        }
+        renderer.domElement.addEventListener('click', function (e) {
+          var h = pick(e.clientX, e.clientY);
+          if (!h) return;
+          info.innerHTML = Render.esc(h.title) +
+            (h.mat ? ' <i>· ' + Render.esc(h.mat) + '</i>' : '') +
+            (h.layer ? ' <i>· ' + Render.esc(h.layer) + '</i>' : '');
         });
+
+        /* Во весь экран подпись всплывает у курсора: кадр большой, и
+           бегать глазами к строке под моделью неудобно. Пока кнопка мыши
+           нажата (вращают), подпись не показываем. */
+        var tip = document.createElement('div');
+        tip.className = 'm3-tip';
+        tip.hidden = true;
+        box.appendChild(tip);
+        /* Луч по всей сборке — десятки миллисекунд, поэтому деталь ищем,
+           когда курсор остановился, а следом за ним только двигаем подпись. */
+        var tipQ = null, tipT = 0, tipKey = '';
+        function hideTip() { tip.hidden = true; tipKey = ''; clearTimeout(tipT); }
+        function placeTip(e) {
+          var bx = box.getBoundingClientRect();
+          var x = e.clientX - bx.left + 16, y = e.clientY - bx.top + 18;
+          var tw = tip.offsetWidth, th = tip.offsetHeight;
+          if (x + tw > bx.width - 8) x = e.clientX - bx.left - tw - 12;
+          if (y + th > bx.height - 8) y = e.clientY - bx.top - th - 12;
+          tip.style.transform = 'translate(' + Math.max(4, x) + 'px,' + Math.max(4, y) + 'px)';
+        }
+        function showTip() {
+          var e = tipQ;
+          if (!e || document.fullscreenElement !== frame) { hideTip(); return; }
+          var h = pick(e.clientX, e.clientY);
+          if (!h) { hideTip(); return; }
+          var k = h.title + '|' + h.mat + '|' + h.layer;
+          if (k !== tipKey) {
+            tipKey = k;
+            tip.innerHTML = '<b>' + Render.esc(h.title) + '</b>' +
+              (h.mat || h.layer ? '<span>' + Render.esc([h.mat, h.layer].filter(Boolean).join(' · ')) + '</span>' : '');
+          }
+          tip.hidden = false;
+          placeTip(e);
+        }
+        renderer.domElement.addEventListener('pointermove', function (e) {
+          if (e.pointerType === 'touch' || e.buttons) { hideTip(); return; }
+          if (document.fullscreenElement !== frame) { if (!tip.hidden) hideTip(); return; }
+          tipQ = e;
+          if (!tip.hidden) placeTip(e);
+          clearTimeout(tipT);
+          tipT = setTimeout(showTip, 90);
+        });
+        renderer.domElement.addEventListener('pointerleave', hideTip);
+        renderer.domElement.addEventListener('pointerdown', hideTip);
+        renderer.domElement.addEventListener('wheel', hideTip, { passive: true });
+        document.addEventListener('fullscreenchange', hideTip);
 
         info.textContent = opts.hint || M3_HINT;
         render();
@@ -2837,6 +2944,7 @@ var Figures = (function () {
         btn.setAttribute('aria-pressed', f.on ? 'true' : 'false');
         if (f.scene) {
           f.scene.visible = f.on;
+          reshadow();
           render();
           return;
         }
@@ -2867,6 +2975,7 @@ var Figures = (function () {
       loop(frame, function () {
         var dt = clock.getDelta();
         files.forEach(function (f) { if (f.mixer) f.mixer.update(dt); });
+        if (current) reshadow();
         if (ctrl) ctrl.update();
         render();
       });
@@ -2878,7 +2987,7 @@ var Figures = (function () {
         var nw = Math.round(box.clientWidth);
         if (nw < 40) return;              /* ещё нет раскладки — ждём */
         var nh = document.fullscreenElement === frame
-          ? Math.max(200, frame.clientHeight - bar.offsetHeight - 26)
+          ? Math.max(200, frame.clientHeight - bar.offsetHeight - 1)
           : Math.round(nw * ratio(nw));
         renderer.setSize(nw, nh);
         camera.aspect = nw / nh;

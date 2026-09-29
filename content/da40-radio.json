@@ -25,6 +25,8 @@
         "src": "models/da40/da40-airframe.glb",
         "labelsSrc": "content/da40-labels.json",
         "srcTitle": "Планер",
+        "scene": "apron",
+        "shellKeep": "^gear|propel",
         "shellMaterials": [
           "Fuselage",
           "Fuselage2",

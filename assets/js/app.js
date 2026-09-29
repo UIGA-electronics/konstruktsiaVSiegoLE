@@ -182,7 +182,7 @@
 
     var hero = el('div', 'hero');
     hero.innerHTML =
-      '<span class="hero-kicker"><i></i>Учебное пособие</span>' +
+      '<span class="hero-kicker">УИ ГА им. Б. П. Бугаева · учебное пособие</span>' +
       '<h1>' + MENU.title1 + ' <span class="accent">' + MENU.title2 + '</span></h1>' +
       '<p class="hero-lead">' + MENU.lead + '</p>' +
       '<div class="hero-meta">' +
@@ -215,7 +215,7 @@
       topic.screens.forEach(function (s, i) {
         html += '<a href="#' + s.id + '"' + (isRead(s.id) ? ' class="is-read"' : '') + '>' +
           '<span class="n">' + (i + 1) + '</span>' +
-          '<span style="flex:1;min-width:0">' + (s.short || s.title) + '</span>' +
+          '<span class="t">' + (s.short || s.title) + '</span><i class="lead"></i>' +
           (s.min ? '<span class="mins">' + s.min + '\u00a0мин</span>' : '') +
           '<span class="tick">' + ICON.check + '</span></a>';
       });
@@ -236,7 +236,7 @@
           '<span class="topic-body">' +
           '<span class="topic-title">' + t.title + '</span>' +
           '<span class="topic-sub">' + t.sub + '</span></span>' +
-          '<span class="topic-flag">' + (ready ? 'готово' : 'скоро') + '</span>';
+          '<span class="topic-flag">' + (ready ? 'готово' : 'в работе') + '</span>';
         list.appendChild(node);
       });
       wrap.appendChild(list);

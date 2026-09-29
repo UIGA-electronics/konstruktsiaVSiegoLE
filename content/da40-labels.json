@@ -619,12 +619,12 @@
   "Brake master cylinder copilot R": "Главный тормозной цилиндр правого тормоза под педалью второго пилота: давит жидкость, когда нажимают на верх педали (AMM 32-40 2.C, рис. 3)",
   "Brake master cylinder pilot L": "Главный тормозной цилиндр левого тормоза под педалью пилота: давит жидкость, когда нажимают на верх педали (AMM 32-40 2.C, рис. 3)",
   "Brake master cylinder pilot R": "Главный тормозной цилиндр правого тормоза под педалью пилота: давит жидкость, когда нажимают на верх педали (AMM 32-40 2.C, рис. 3)",
-  "Brake fluid reservoir L": "Бачок тормозной жидкости левого системы на цилиндре второго пилота: уровень между 12 и 25 мм от верха (AMM 32-40 2.C, рис. 2–3)",
+  "Brake fluid reservoir L": "Бачок тормозной жидкости левого системы за передней стенкой ниши для ног второго пилота: уровень между 12 и 25 мм от верха (AMM 32-40 2.C, рис. 2–3)",
   "Brake fluid in reservoir L": "Тормозная жидкость в бачке (AMM 32-40)",
-  "Reservoir L to co-pilot master cylinder": "Питание цилиндра из бачка (AMM 32-40 рис. 2)",
-  "Brake fluid reservoir R": "Бачок тормозной жидкости правого системы на цилиндре второго пилота: уровень между 12 и 25 мм от верха (AMM 32-40 2.C, рис. 2–3)",
+  "Reservoir L to co-pilot master cylinder": "Питание цилиндра второго пилота из бачка за передней стенкой ниши (AMM 32-40 рис. 2)",
+  "Brake fluid reservoir R": "Бачок тормозной жидкости правого системы за передней стенкой ниши для ног второго пилота: уровень между 12 и 25 мм от верха (AMM 32-40 2.C, рис. 2–3)",
   "Brake fluid in reservoir R": "Тормозная жидкость в бачке (AMM 32-40)",
-  "Reservoir R to co-pilot master cylinder": "Питание цилиндра из бачка (AMM 32-40 рис. 2)",
+  "Reservoir R to co-pilot master cylinder": "Питание цилиндра второго пилота из бачка за передней стенкой ниши (AMM 32-40 рис. 2)",
   "Parking brake Bowden cable": "Боуденовский трос от рукоятки PARKING BRAKE к рычагу клапана; регулировочный наконечник (AMM 32-40 рис. 8)",
   "Brake hose L co-pilot to pilot master cylinder": "Шланг левого системы: выход цилиндра второго пилота — вход цилиндра пилота (AMM 32-40 2.C, рис. 2–3)",
   "Brake hose L pilot master cylinder to parking valve": "Шланг левого системы: выход цилиндра пилота — клапан стояночного тормоза на пультовой переборке (AMM 32-40 2.C, рис. 8)",
@@ -1164,7 +1164,9 @@
   "DA40 hook-and-loop strap": "лента-липучка",
   "DA40 red cover": "красный колпачок",
   "DA40 flexible cooling duct (black)": "гибкий воздуховод",
-  "DA40 radio unit housing (dark grey)": "корпус блока, серая окраска"
+  "DA40 radio unit housing (dark grey)": "корпус блока, серая окраска",
+  "DA40 brake master cylinder (black anodised)": "алюминиевый сплав, чёрное анодирование",
+  "DA40 AN fitting black anodised": "штуцер AN, чёрное анодирование"
  },
  "materialsHide": "^(material|mat|screw|gear|canline|lights|cockpitlit|hobbs|propellor|fuselage2?|wings|\\$.*)[\\s\\d]*$"
 }
