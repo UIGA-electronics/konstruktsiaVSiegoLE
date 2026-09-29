@@ -41,11 +41,11 @@ COL = lib.collection('DA40 Brakes (AMM 32-40)')
 TRIM, SYS, RT = cabin.setup(R, 'brakes')
 
 M = dict(
-    mc=lib.mat('DA40 brake master cylinder (anodised)', (0.72, 0.73, 0.75), 0.9, 0.35, ru='алюминиевый сплав'),
+    mc=lib.mat('DA40 brake master cylinder (black anodised)', (0.07, 0.07, 0.08), 0.6, 0.4, ru='алюминиевый сплав, чёрное анодирование'),
     alu=lib.mat('DA40 aluminium', (0.80, 0.81, 0.83), 1.0, 0.32, ru='алюминиевый сплав'),
     steel=lib.mat('DA40 stainless steel', (0.62, 0.63, 0.65), 1.0, 0.28, ru='нержавеющая сталь'),
     hose=lib.mat('DA40 brake hose (black)', (0.03, 0.03, 0.035), 0.0, 0.6, ru='тормозной шланг высокого давления'),
-    an=lib.mat('DA40 AN fitting blue anodised', (0.08, 0.24, 0.72), 0.9, 0.3, ru='штуцер AN, анодированный алюминий'),
+    an=lib.mat('DA40 AN fitting black anodised', (0.06, 0.06, 0.07), 0.8, 0.35, ru='штуцер AN, чёрное анодирование'),
     res=lib.mat('DA40 brake reservoir (translucent)', (0.90, 0.88, 0.80), 0.0, 0.2, alpha=0.55, ru='полупрозрачный бачок'),
     fluid=lib.mat('DA40 brake fluid MIL-H-5606 (red)', (0.72, 0.05, 0.05), 0.0, 0.1, alpha=0.8, ru='гидрожидкость MIL-PRF-5606, красная'),
     black=lib.mat('DA40 black anodised', (0.05, 0.05, 0.06), 0.6, 0.4, ru='алюминий, чёрное анодирование'),
@@ -58,6 +58,7 @@ M = dict(
 PEDALS = {('pilot', 'L'): 0.315, ('pilot', 'R'): 0.200, ('copilot', 'L'): -0.205, ('copilot', 'R'): -0.315}
 MC_BOTTOM = (-0.765, -0.140)               # нижний шарнир цилиндра (y, z)
 MC_TOP = (-0.866, 0.035)                    # верхний шарнир на педали, под осью носка
+RES_Y, RES_Z = -1.25, 0.17                  # бачки — в кармане между передней стенкой ниши для ног и противопожарной перегородкой
 VALVE = V((0.18, -0.325, -0.170))           # на нижней полке пультовой переборки, со стороны пилота (рис. 8)
 PB_HANDLE = V((0.015, -0.68, 0.22))         # рычаг PARKING BRAKE в кабине (MSFS LANDING_GEAR_Switch_ParkingBrake)
 SPRING_LINE = [V((0.85, 0.323, -0.196)), V((1.041, 0.317, -0.33)), V((1.166, 0.313, -0.416)),
@@ -103,15 +104,16 @@ def master_cylinder(who, side):
     inlet = b - ax * 0.018 + V((0, 0.016, 0))
     outlet = a + ax * 0.02 + V((0, 0.016, 0))
     for q in (inlet, outlet):
-        cyl(p, q - V((0, 0.004, 0)), q + V((0, 0.006, 0)), 0.005, p.m(M['alu']), segs=10)
+        cyl(p, q - V((0, 0.004, 0)), q + V((0, 0.006, 0)), 0.005, p.m(M['black']), segs=10)
     p.done()
     return inlet + V((0, 0.006, 0)), outlet + V((0, 0.006, 0))
 
 
 def reservoir(side, inlet):
-    x = PEDALS[('copilot', side)] - 0.035
-    c = V((x, -0.80, -0.035))
-    p = P(f'Brake fluid reservoir {side}', f'Бачок тормозной жидкости {SIDE_RU[side]} системы на цилиндре второго пилота: уровень между 12 и 25 мм от верха',
+    # за передней стенкой ниши для ног, перед педалями второго пилота: из кабины не виден
+    x = PEDALS[('copilot', side)]
+    c = V((x, RES_Y, RES_Z))
+    p = P(f'Brake fluid reservoir {side}', f'Бачок тормозной жидкости {SIDE_RU[side]} системы за передней стенкой ниши для ног второго пилота: уровень между 12 и 25 мм от верха',
           'res', 'AMM 32-40 2.C, рис. 2–3')
     cyl(p, c - V((0, 0, 0.035)), c + V((0, 0, 0.035)), 0.016, 0, segs=24)
     cyl(p, c + V((0, 0, 0.035)), c + V((0, 0, 0.041)), 0.012, p.m(M['black']), segs=20)
@@ -120,8 +122,12 @@ def reservoir(side, inlet):
     f = P(f'Brake fluid in reservoir {side}', 'Тормозная жидкость в бачке', 'fluid', 'AMM 32-40')
     cyl(f, c - V((0, 0, 0.033)), c + V((0, 0, 0.012)), 0.0145, 0, segs=24)
     f.done()
-    hose(f'Reservoir {side} to co-pilot master cylinder', 'Питание цилиндра из бачка', [c - V((0, 0, 0.035)), c - V((0, 0, 0.05)),
-         inlet + V((-0.02, 0.01, 0)), inlet], 0.015, r=0.0035)
+    a = c - V((0, 0, 0.041))
+    pts = route(a, (0, 0, -1), inlet, (0, -1, 0), 0.0035, (-0.45, -1.33, -0.23), (0.10, -0.70, 0.25),
+                relax=[(a, 0.04), (inlet, 0.035)])
+    path = hose(f'Reservoir {side} to co-pilot master cylinder', 'Питание цилиндра второго пилота из бачка за передней стенкой ниши', pts, 0.015, r=0.0035)
+    CHECKS.append((f'Reservoir {side} to co-pilot master cylinder', path, 0.0035))
+    RT.set_extra(ref._bvh([o for o in COL.all_objects if o.type == 'MESH']))
 
 
 def parking_valve():
@@ -189,7 +195,7 @@ def build():
         # второй пилот → пилот: под педалями поперёк кабины
         c_out = ends[('copilot', side)][1]
         p_in = ends[('pilot', side)][0]
-        pts = route(c_out, (0, 1, 0), p_in, (0, -1, 0), 0.0045, (-0.45, -1.17, -0.23), (0.45, -0.60, 0.08),
+        pts = route(c_out, (0, 1, 0), p_in, (0, -1, 0), 0.0045, (-0.45, -1.33, -0.23), (0.45, -0.60, 0.25),
                     relax=[(c_out, 0.035), (p_in, 0.035)])
         path = hose(f'Brake hose {side} co-pilot to pilot master cylinder',
                     f'Шланг {SIDE_RU[side]} системы: выход цилиндра второго пилота — вход цилиндра пилота',
