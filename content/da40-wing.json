@@ -22,10 +22,16 @@
       "name": "model3d",
       "caption": "Силовой набор консолей крыла: лонжероны, комли с втулками главных болтов, корневая нервюра, нервюры бака и приводов, задняя стенка, концевая нервюра.",
       "opts": {
-        "src": ["models/da40/da40-airframe.glb", {"src": "models/da40/da40-wheels.glb", "title": "Колёса"}],
+        "src": [
+          "models/da40/da40-airframe.glb",
+          {
+            "src": "models/da40/da40-wheels.glb",
+            "title": "Колёса"
+          }
+        ],
         "labelsSrc": "content/da40-labels.json",
         "srcTitle": "Планер",
-        "scene": "apron",
+        "scene": "showroom",
         "groundY": 0.012,
         "shellKeep": "^gear|propel|tundra|beringer|hub cap",
         "shellMaterials": [
@@ -36,22 +42,33 @@
         ],
         "shellLevel": 2,
         "tall": true,
-        "glow": "on",
-        "layers": [
+        "glow": "off",
+        "system": [
           {
             "src": "models/da40/da40-wing-structure.glb",
-            "title": "Силовой набор крыла",
-            "on": true
+            "title": "Силовой набор крыла"
+          }
+        ],
+        "elements": [
+          {
+            "title": "Лонжероны",
+            "match": "spar|rear web",
+            "hint": "Передний и задний лонжероны, комли и задняя стенка"
           },
           {
-            "src": "models/da40/da40-fuel.glb",
-            "title": "Топливо",
-            "on": false
+            "title": "Нервюры",
+            "match": "rib",
+            "hint": "Корневая, нервюры бака и приводов, концевая"
           },
           {
-            "src": "models/da40/da40-controls.glb",
-            "title": "Управление",
-            "on": false
+            "title": "Узлы крепления",
+            "match": "bolt|bush",
+            "hint": "Главные болты и втулки крепления консоли к фюзеляжу"
+          },
+          {
+            "title": "Отсек бака",
+            "match": "fuel tank|access panel",
+            "hint": "Нервюры отсека бака и лючок в корневой нервюре"
           }
         ],
         "view": [

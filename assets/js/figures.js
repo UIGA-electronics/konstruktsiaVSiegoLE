@@ -2162,10 +2162,22 @@ var Figures = (function () {
      поверхность в другом. Такие куски запускаются вместе и с нуля. */
   reg.model3d = function (frame, opts) {
     opts = opts || {};
+    /* Сцена раздела закреплена за разделом: читатель меняет только вид
+       (прозрачность, подсветку, салон), а не набор систем.
+         opts.src     — основа: планер и колёса;
+         opts.system  — система раздела [{ src, title, plain }]: видна всегда;
+         opts.context — соседние детали для привязки [{ src, title, match }]:
+                        видны всегда, серые, только совпавшие с match;
+         opts.extras  — то, что можно включить для наглядности ([{ src, title }],
+                        например салон с педалями), грузится по кнопке;
+         opts.elements — элементы системы [{ title, files | match, hint }]:
+                        выбранный в цвете, остальное приглушено;
+         opts.sections — ссылки на разделы (обзорная страница). */
     var baseSrc = [].concat(opts.src || []);
-    var layerDefs = opts.layers || [];
-    if (!baseSrc.length && !layerDefs.length) { console.warn('model3d без opts.src'); return; }
-    var multi = baseSrc.length + layerDefs.length > 1;
+    var sysDefs = opts.system || [], ctxDefs = opts.context || [];
+    var layerDefs = opts.extras || [];
+    if (!baseSrc.length && !sysDefs.length) { console.warn('model3d без opts.src'); return; }
+    var multi = baseSrc.length + sysDefs.length + ctxDefs.length + layerDefs.length > 1;
 
     var box = document.createElement('div');
     box.className = 'model3d';
@@ -2209,20 +2221,19 @@ var Figures = (function () {
       }
 
       /* Свет ставит сайт — модель приходит без запечённого освещения.
-         На перроне свет дневной: небо сверху, от бетона снизу, солнце
-         сбоку-сверху. У механизмов — мастерская, свет ровный. */
-      var apron = opts.scene === 'apron';
-      var hemi = apron
-        ? new THREE.HemisphereLight(0xdfe9f3, 0x8a8577, 0.5)
-        : new THREE.HemisphereLight(0xffffff, 0x9a9486, 0.55);
+         Зал (самолёт) и мастерская (механизмы) — тёмные: белая обшивка
+         читается формой, а не пересвеченным пятном. Ключевой свет сверху
+         спереди, холодный контровой сзади обводит силуэт. */
+      var apron = opts.scene === 'showroom' || opts.scene === 'apron';
+      var hemi = new THREE.HemisphereLight(0xdde5ee, 0x1c1f24, apron ? 0.32 : 0.4);
       scene.add(hemi);
-      var key = new THREE.DirectionalLight(apron ? 0xfff1dc : 0xffffff, apron ? 1.35 : 1.15);
-      if (apron) renderer.toneMappingExposure = 0.95;
+      var key = new THREE.DirectionalLight(0xfff6ea, apron ? 1.25 : 1.1);
+      renderer.toneMappingExposure = apron ? 0.9 : 0.95;
       key.position.set(3, 5, 4);
       scene.add(key);
       scene.add(key.target);
-      var fill = new THREE.DirectionalLight(apron ? 0xc9d8ea : 0xffffff, apron ? 0.25 : 0.35);
-      fill.position.set(-4, 2, -3);
+      var fill = new THREE.DirectionalLight(0x9fb8d6, apron ? 0.55 : 0.4);
+      fill.position.set(-4, 2.5, -5);
       scene.add(fill);
       if (!apron) scene.background = Scenery.studio(THREE);
       if (apron) {
@@ -2242,7 +2253,7 @@ var Figures = (function () {
 
       var ctrl = null, floorY = null;
       function render() {
-        /* Под бетон камеру не пускаем: снизу перрон прозрачен, и вид
+        /* Под пол камеру не пускаем: снизу пол прозрачен, и вид
            получается не с земли, а из-под земли. */
         if (floorY !== null && ctrl && camera.position.y < floorY) {
           camera.position.y = floorY;
@@ -2364,7 +2375,7 @@ var Figures = (function () {
       var keepRe = opts.shellKeep ? new RegExp(opts.shellKeep, 'i') : null;
       function isShellMesh(o) {
         if (o.__shell != null) return o.__shell;
-        if (keepRe && o.__file && !o.__file.layer) {
+        if (keepRe && o.__file && o.__file.role === 'base') {
           var km = Array.isArray(o.material) ? o.material[0] : o.material;
           return !keepRe.test((km && (km.__baseName || km.name)) || '');
         }
@@ -2390,14 +2401,21 @@ var Figures = (function () {
 
       var files = [];
       /* Основа — строка (файл) или { src, title }: колёса стоят в основе
-         у каждой страницы с перроном, и подписываться «Планером» им незачем. */
+         у каждой страницы с залом, и подписываться «Планером» им незачем. */
       baseSrc.forEach(function (s) {
         var o = typeof s === 'string' ? { src: s } : s;
-        files.push({ src: o.src, layer: false, on: true, title: o.title || opts.srcTitle });
+        files.push({ src: o.src, role: 'base', on: true, title: o.title || opts.srcTitle });
+      });
+      sysDefs.forEach(function (d) {
+        files.push({ src: d.src, role: 'system', on: true, title: d.title, plain: !!d.plain });
+      });
+      ctxDefs.forEach(function (d) {
+        files.push({ src: d.src, role: 'context', on: true, title: d.title, plain: true,
+          match: d.match ? new RegExp(d.match, 'i') : null });
       });
       layerDefs.forEach(function (d) {
-        files.push({ src: d.src, layer: true, on: !!d.on, title: d.title, hint: d.hint,
-          plain: !!d.plain });
+        files.push({ src: d.src, role: 'extra', layer: true, on: !!d.on, title: d.title, hint: d.hint,
+          plain: true });
       });
 
       var shells = [], parts = [];
@@ -2415,12 +2433,21 @@ var Figures = (function () {
       var NORM = { Int8Array: 127, Uint8Array: 255, Int16Array: 32767, Uint16Array: 65535 };
       function dequantize(g) {
         var a = g && g.attributes && g.attributes.position;
-        if (!a || !a.normalized || a.isInterleavedBufferAttribute) return;
-        var k = NORM[a.array.constructor.name];
+        if (!a || !a.normalized) return;
+        /* Слои после pack.js приходят чередованными (interleaved): позиция,
+           нормаль и UV в одном буфере. Читаем поэлементно. */
+        var arr = a.isInterleavedBufferAttribute ? a.data.array : a.array;
+        var k = NORM[arr.constructor.name];
         if (!k) return;
-        var src = a.array, dst = new Float32Array(src.length);
-        for (var i = 0; i < src.length; i++) dst[i] = Math.max(src[i] / k, -1);
-        g.setAttribute('position', new THREE.BufferAttribute(dst, a.itemSize));
+        var n = a.count, dst = new Float32Array(n * 3);
+        for (var i = 0; i < n; i++) {
+          dst[i * 3] = Math.max(a.getX(i) / k, -1);
+          dst[i * 3 + 1] = Math.max(a.getY(i) / k, -1);
+          dst[i * 3 + 2] = Math.max(a.getZ(i) / k, -1);
+        }
+        g.setAttribute('position', new THREE.BufferAttribute(dst, 3));
+        g.computeBoundingSphere();
+        g.computeBoundingBox();
       }
 
       function adopt(f, sceneNode) {
@@ -2509,7 +2536,10 @@ var Figures = (function () {
         { t: 'Обшивка: снята',   o: 0 }
       ];
       var level = Math.max(0, Math.min(LEVELS.length - 1, opts.shellLevel || 0));
-      var sysRe = null, glow = opts.glow === 'on', sb = null;
+      var elDef = null, glow = opts.glow === 'on', sb = null;
+      var elDefs = (opts.elements || []).map(function (d) {
+        return { title: d.title, hint: d.hint, files: d.files || null, re: d.match ? new RegExp(d.match, 'i') : null };
+      });
 
       function applyShell() {
         var lv = LEVELS[level];
@@ -2539,36 +2569,36 @@ var Figures = (function () {
         render();
       }
 
-      /* Разбор по системам (opts.systems — регулярные выражения по именам):
-         выбранная остаётся в цвете, остальные гаснут до призрака — так видно,
-         где система проходит относительно других.
-         Подсветка (glow) красит детали слоёв: тяга в крыле — труба в два
-         сантиметра на одиннадцать метров размаха, в общем виде это меньше
-         пикселя, на светлом фоне её не найти. */
+      /* Элементы системы раздела (opts.elements): выбранный остаётся в цвете,
+         остальная система гаснет до призрака — видно, где он проходит
+         относительно соседей. Основа и соседние детали не гаснут.
+         Подсветка (glow) красит систему раздела: тяга в крыле — труба в два
+         сантиметра на одиннадцать метров размаха, на светлом фоне её не найти. */
+      function nameOf(o) { return norm(chainName(o)); }
+      function inElement(def, o) {
+        if (def.files && def.files.indexOf(o.__file.src) < 0) return false;
+        return !def.re || def.re.test(nameOf(o));
+      }
       function applyParts() {
         parts.forEach(function (o) {
-          var on = !sysRe || sysRe.test(chainName(o));
-          /* Тихая трасса видна только когда выбрана её система. */
-          if (o.__quiet) {
-            o.visible = !!(sysRe && on);
-            o.__dim = !o.visible;
-            if (!o.visible) return;
+          var f = o.__file || {};
+          if (f.role === 'context' && f.match && !f.match.test(nameOf(o))) {
+            o.visible = false; o.__dim = true; return;
           }
+          var on = !(elDef && f.role === 'system') || inElement(elDef, o);
           o.__dim = !on;
           if (!o.material) return;
-          /* plain — слой-окружение (колёса, фотоскан двигателя): его не
-             красим, иначе шина или двигатель превращаются в синее пятно. */
-          var lit = (sysRe && on) || (glow && o.__file && o.__file.layer && !o.__file.plain);
+          var lit = f.role === 'system' && !f.plain && on && (glow || !!elDef);
           if (on) {
             o.material.transparent = o.__tr;
             o.material.opacity = o.__op;
             o.material.depthWrite = true;
           } else {
             o.material.transparent = true;
-            o.material.opacity = 0.05;
+            o.material.opacity = 0.06;
             o.material.depthWrite = false;
           }
-          if (o.material.emissive) {
+          if (o.material.emissive && !o.__sel) {
             if (lit) {
               o.material.emissive.setHex(0x1f4ea8);
               o.material.emissiveIntensity = 0.85;
@@ -2577,7 +2607,7 @@ var Figures = (function () {
               o.material.emissiveIntensity = o.__ei;
             }
           }
-          /* Полированный алюминий (баки, трубки) отражает белую студию
+          /* Полированный алюминий (баки, трубки) отражает небо
              и сливается с белой обшивкой — на время подсветки гасим блики. */
           if (o.material.envMapIntensity != null) {
             o.material.envMapIntensity = lit ? 0.2 : o.__env;
@@ -2615,13 +2645,13 @@ var Figures = (function () {
         var r = Math.max(size.x, size.y, size.z) || 1;
         root.position.sub(mid);
 
-        /* Перрон: земля — под колёсами, то есть по низу габарита основы. */
+        /* Зал: пол — под колёсами, то есть по низу габарита основы. */
         if (apron) {
           /* Земля — под шинами. Шины бывают в слое («Колёса»), а не в основе,
              поэтому высоту земли задаёт opts.groundY в координатах модели;
              без неё — низ основы. */
           var gy = (opts.groundY != null ? opts.groundY : bb.min.y) - mid.y;
-          var env = Scenery.apron(THREE, scene, renderer, r, gy);
+          var env = Scenery.showroom(THREE, scene, renderer, r, gy, 1);
           floorY = gy + r * 0.02;
           if (env) scene.environment = env;
           var sc = key.shadow.camera, sr = r * 0.62;
@@ -2672,36 +2702,23 @@ var Figures = (function () {
           names = files[0].animations.map(function (c) { return { clip: c.name, title: c.name }; });
         }
 
-        if (layerDefs.length) {
-          var lh = '<span class="fig-label">' + Render.esc(opts.layersLabel || 'Системы') + '</span>';
-          files.forEach(function (f, i) {
-            if (!f.layer) return;
-            lh += '<button class="fig-btn' + (f.on ? ' is-on' : '') + '" data-layer="' + i +
-              '" type="button" aria-pressed="' + (f.on ? 'true' : 'false') + '">' +
-              Render.esc(f.title) + '</button>';
+        /* Элементы системы раздела: «Вся система» и по кнопке на каждый узел. */
+        if (elDefs.length) {
+          var eh = '<span class="fig-label">Элементы</span>' +
+            '<button class="fig-btn is-on" data-el="-1" type="button">Вся система</button>';
+          elDefs.forEach(function (d, i) {
+            eh += '<button class="fig-btn" data-el="' + i + '" type="button">' + Render.esc(d.title) + '</button>';
           });
-          bar.insertAdjacentHTML('afterbegin', '<div class="fig-row">' + lh + '</div>');
-          bar.querySelectorAll('[data-layer]').forEach(function (b) {
-            b.addEventListener('click', function () { toggleLayer(files[+b.dataset.layer], b); });
-          });
-        }
-
-        if (opts.systems && opts.systems.length) {
-          var sh = '<span class="fig-label">Система</span>';
-          opts.systems.forEach(function (sysDef, i) {
-            sh += '<button class="fig-btn' + (i ? '' : ' is-on') +
-              '" data-sys="' + i + '" type="button">' + Render.esc(sysDef.title) + '</button>';
-          });
-          bar.insertAdjacentHTML('afterbegin', '<div class="fig-row">' + sh + '</div>');
-          bar.querySelectorAll('[data-sys]').forEach(function (b) {
+          bar.insertAdjacentHTML('afterbegin', '<div class="fig-row fig-row-el">' + eh + '</div>');
+          bar.querySelectorAll('[data-el]').forEach(function (b) {
             b.addEventListener('click', function () {
-              bar.querySelectorAll('[data-sys]').forEach(function (x) { x.classList.remove('is-on'); });
+              bar.querySelectorAll('[data-el]').forEach(function (x) { x.classList.remove('is-on'); });
               b.classList.add('is-on');
-              var def = opts.systems[+b.dataset.sys];
-              sysRe = def.match ? new RegExp(def.match, 'i') : null;
+              elDef = +b.dataset.el < 0 ? null : elDefs[+b.dataset.el];
+              select(null);
               applyParts();
               render();
-              info.textContent = def.hint || def.title;
+              info.textContent = elDef ? (elDef.hint || elDef.title) : (opts.hint || M3_HINT);
             });
           });
         }
@@ -2737,6 +2754,16 @@ var Figures = (function () {
           if (!multi) play(names[0].clip);
         }
 
+        /* Обзорная страница: вместо систем — ссылки на разделы, где каждая
+           система показана отдельно. */
+        if (opts.sections && opts.sections.length) {
+          var sh2 = '<span class="fig-label">Разделы</span>';
+          opts.sections.forEach(function (d) {
+            sh2 += '<a class="fig-btn fig-link" href="' + Render.esc(d.href) + '">' + Render.esc(d.title) + '</a>';
+          });
+          bar.insertAdjacentHTML('afterbegin', '<div class="fig-row fig-row-sec">' + sh2 + '</div>');
+        }
+
         if (shells.length) {
           sb = document.createElement('button');
           sb.type = 'button';
@@ -2747,12 +2774,26 @@ var Figures = (function () {
           bar.appendChild(sb);
         }
 
-        if (layerDefs.length && opts.glow !== false) {
+        /* Дополнительно для наглядности (салон с педалями и т. п.) — вид,
+           а не другая система. */
+        files.forEach(function (f) {
+          if (!f.layer) return;
+          var xb = document.createElement('button');
+          xb.type = 'button';
+          xb.className = 'fig-btn' + (f.on ? ' is-on' : '');
+          xb.textContent = f.title;
+          if (f.hint) xb.title = f.hint;
+          xb.setAttribute('aria-pressed', f.on ? 'true' : 'false');
+          xb.addEventListener('click', function () { toggleLayer(f, xb); });
+          bar.appendChild(xb);
+        });
+
+        if (sysDefs.length && opts.glow !== false) {
           var gb = document.createElement('button');
           gb.type = 'button';
           gb.className = 'fig-btn' + (glow ? ' is-on' : '');
           gb.textContent = 'Подсветка';
-          gb.title = 'Подсветить детали включённых систем';
+          gb.title = 'Подсветить систему раздела';
           gb.setAttribute('aria-pressed', glow ? 'true' : 'false');
           gb.addEventListener('click', function () {
             glow = !glow;
@@ -2862,7 +2903,7 @@ var Figures = (function () {
              внутри, поэтому из выборки она исключена всегда. Приглушённые
              и выключенные узлы тоже пропускаем: иначе выбранную систему
              не ткнуть сквозь висящий перед ней призрак. Земля и небо
-             перрона лежат вне root и в выборку не попадают. */
+             зала лежат вне root и в выборку не попадают. */
           var cand = parts.filter(function (o) { return !o.__dim && shown(o); });
           var hit = ray.intersectObjects(cand, false)[0];
           if (!hit) return null;
@@ -2885,14 +2926,91 @@ var Figures = (function () {
           var mt = hit.object.material;
           var mtn = mt && !Array.isArray(mt) ? materialName(mt) : '';
           var layer = from.title && from.title !== (label || name) ? from.title : '';
-          return { title: label || name || '—', mat: mtn, layer: layer && multi ? layer : '' };
+          return { title: label || name || '—', mat: mtn, layer: layer && multi ? layer : '',
+            el: elementOf(hit.object, label ? n : null) };
         }
+        /* Деталь целиком: узел с подписью (шланг вместе со штуцерами и
+           хомутами), иначе группа примитивов одного меша, иначе сам меш. */
+        function meshCount(n) { var k = 0; n.traverse(function (o) { if (o.isMesh) k++; }); return k; }
+        function elementOf(m, labelled) {
+          if (labelled && labelled !== root && meshCount(labelled) <= 60) return labelled;
+          var p = m.parent;
+          if (p && p !== root && p !== (m.__file || {}).scene && p.children.length <= 12 &&
+              p.children.every(function (c) { return c.isMesh; })) return p;
+          return m;
+        }
+        /* Выбранная деталь: оранжевая и видна насквозь — поверх обшивки и
+           соседних деталей, чтобы было понятно, где и через что она проходит. */
+        var xray = new THREE.MeshBasicMaterial({ color: 0xff8f2e, transparent: true, opacity: 0.42,
+          depthTest: false, depthWrite: false });
+        xray.toneMapped = false;
+        var selEl = null, selMeshes = [], overlays = [];
+        function select(el) {
+          selMeshes.forEach(function (o) { o.__sel = false; });
+          overlays.forEach(function (x) { if (x.parent) x.parent.remove(x); });
+          selMeshes = []; overlays = [];
+          selEl = el;
+          if (el) {
+            var ms = [];
+            el.traverse(function (o) { if (o.isMesh && !o.__xray && !o.__shell && o.material) ms.push(o); });
+            ms.forEach(function (o) {
+              o.__sel = true;
+              selMeshes.push(o);
+              if (o.material.emissive) {
+                o.material.emissive.setHex(0xff6a00);
+                o.material.emissiveIntensity = 0.9;
+              }
+              var x = new THREE.Mesh(o.geometry, xray);
+              x.__xray = true;
+              x.renderOrder = 999;
+              x.raycast = function () {};
+              o.add(x);
+              overlays.push(x);
+            });
+          }
+          applyParts();
+          render();
+        }
+        function frameOn(el) {
+          var bb = new THREE.Box3().setFromObject(el);
+          if (bb.isEmpty()) return;
+          var c = bb.getCenter(new THREE.Vector3());
+          var d = Math.max(bb.getSize(new THREE.Vector3()).length() * 1.6, ctrl.minDistance * 4);
+          var from = { p: camera.position.clone(), t: ctrl.target.clone() };
+          var dir = camera.position.clone().sub(ctrl.target).normalize();
+          var to = { p: c.clone().add(dir.multiplyScalar(d)), t: c };
+          var t0 = performance.now();
+          (function step() {
+            var k = Math.min(1, (performance.now() - t0) / 450), e = k * k * (3 - 2 * k);
+            camera.position.lerpVectors(from.p, to.p, e);
+            ctrl.target.lerpVectors(from.t, to.t, e);
+            ctrl.update();
+            render();
+            if (k < 1) requestAnimationFrame(step);
+          })();
+        }
+        var down = null;
+        renderer.domElement.addEventListener('pointerdown', function (e) { down = [e.clientX, e.clientY]; });
         renderer.domElement.addEventListener('click', function (e) {
+          /* после поворота мышью клик не считается выбором */
+          if (down && Math.abs(e.clientX - down[0]) + Math.abs(e.clientY - down[1]) > 6) return;
+          var h = pick(e.clientX, e.clientY);
+          if (!h) { if (selEl) { select(null); info.textContent = opts.hint || M3_HINT; } return; }
+          select(h.el === selEl ? null : h.el);
+          if (!selEl) { info.textContent = opts.hint || M3_HINT; return; }
+          info.innerHTML = '<b class="m3-sel">' + Render.esc(h.title) + '</b>' +
+            (h.mat ? ' <i>· ' + Render.esc(h.mat) + '</i>' : '') +
+            (h.layer ? ' <i>· ' + Render.esc(h.layer) + '</i>' : '') +
+            ' <i class="m3-how">— двойной щелчок: показать крупно</i>';
+        });
+        renderer.domElement.addEventListener('dblclick', function (e) {
           var h = pick(e.clientX, e.clientY);
           if (!h) return;
-          info.innerHTML = Render.esc(h.title) +
-            (h.mat ? ' <i>· ' + Render.esc(h.mat) + '</i>' : '') +
-            (h.layer ? ' <i>· ' + Render.esc(h.layer) + '</i>' : '');
+          if (h.el !== selEl) select(h.el);
+          frameOn(h.el);
+        });
+        frame.addEventListener('keydown', function (e) {
+          if (e.key === 'Escape' && selEl) { select(null); info.textContent = opts.hint || M3_HINT; }
         });
 
         /* Во весь экран подпись всплывает у курсора: кадр большой, и

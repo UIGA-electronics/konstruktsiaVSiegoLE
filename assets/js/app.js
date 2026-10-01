@@ -177,72 +177,85 @@
   /* ── Экран: главная ────────────────────────────────────── */
 
   function viewHome() {
-    var wrap = el('div', 'wrap');
+    var page = el('div', 'home');
     var topic = readyTopic();
+    var lab = null;
+    MENU.parts.forEach(function (p) { p.topics.forEach(function (t) { if (t.num === '3D') lab = t; }); });
 
-    var hero = el('div', 'hero');
+    /* Титул: слева заголовок, справа студийный снимок DA 40 NG с выносками,
+       как на листе технического описания. Под ним — цифры из РЛЭ. */
+    var hero = el('section', 'hero');
+    var go = topic ? '#' + topic.screens[0].id : '#home';
     hero.innerHTML =
-      '<span class="hero-kicker">УИ ГА им. Б. П. Бугаева · учебное пособие</span>' +
-      '<h1>' + MENU.title1 + ' <span class="accent">' + MENU.title2 + '</span></h1>' +
+      '<div class="hero-in">' +
+      '<div class="hero-text">' +
+      '<div class="hero-kicker"><span>УИ ГА им. Б. П. Бугаева</span><span>учебное пособие</span><span>2026</span></div>' +
+      '<h1>' + MENU.title1 + ' <em>' + MENU.title2 + '</em></h1>' +
       '<p class="hero-lead">' + MENU.lead + '</p>' +
-      '<div class="hero-meta">' +
-      '<span class="chip">' + ICON.book + MENU.source + '</span>' +
-      '<span class="chip">' + ICON.spark + MENU.effort + '</span>' +
-      '</div>';
-    wrap.appendChild(hero);
+      '<div class="hero-actions">' +
+      (topic ? '<a class="btn btn-primary" href="' + go + '">' + topic.readyLabel + ICON.arrowR + '</a>' : '') +
+      (lab ? '<a class="btn" href="#' + lab.screens[0].id + '">3D-практикум DA 40 NG</a>' : '') +
+      '</div></div>' +
+      '<figure class="hero-plane">' +
+      '<img src="assets/img/da40-hero.webp" width="1600" height="617" alt="Самолёт DA 40 NG, студийный снимок 3D-модели">' +
+      '<span class="callout is-r" style="--x:25.2%;--y:36%"><i></i><b>Двигатель E4-A</b><small>123,5 кВт · дизель</small></span>' +
+      '<span class="callout" style="--x:40.7%;--y:24.4%"><i></i><b>Кабина</b><small>G1000 · 4 места</small></span>' +
+      '<span class="callout" style="--x:65.5%;--y:22%"><i></i><b>Т-образное оперение</b><small>РВ — тяги, РН — тросы</small></span>' +
+      '<span class="callout is-r" style="--x:94.1%;--y:34.4%"><i></i><b>Крыло</b><small>размах 11,63 м</small></span>' +
+      '</figure></div>' +
+      '<dl class="specs">' +
+      [['Размах', '11,63', 'м'], ['Длина', '8,06', 'м'], ['Взлётная масса', '1 280', 'кг'],
+       ['Мощность', '123,5', 'кВт'], ['V<sub>NE</sub>', '172', 'уз'], ['Топливо', '2 × 56,8', 'л']]
+        .map(function (r) { return '<div><dt>' + r[0] + '</dt><dd>' + r[1] + '<span>' + r[2] + '</span></dd></div>'; }).join('') +
+      '</dl>' +
+      '<p class="specs-src">DA 40 NG · данные РЛЭ, разд. 1 и 2</p>';
+    page.appendChild(hero);
+
+    var wrap = el('div', 'wrap');
+    page.appendChild(wrap);
 
     if (topic) {
       var done = readCount(topic);
-      var cta = el('a', 'cta');
-      cta.href = '#' + (done && done < topic.screens.length
-        ? firstUnread(topic) : topic.screens[0].id);
-      cta.innerHTML =
-        '<span class="cta-ic">' + ICON.arrowR + '</span>' +
-        '<span class="cta-tx"><b>' + (done ? 'Продолжить тему' : topic.readyLabel) + '</b>' +
-        '<span>' + (done
-          ? 'Пройдено ' + done + ' из ' + topic.screens.length + ' разделов'
-          : topic.readyHint) + '</span></span>' +
-        '<span class="cta-ar">' + ICON.chevR + '</span>';
-      wrap.appendChild(cta);
-
-      var box = el('div', 'screens');
-      /* Суммарное время по теме: читателю с телефона полезно знать заранее,
-         на что он подписывается, — за один присест или в несколько. */
       var total = topic.screens.reduce(function (a, s) { return a + (s.min || 0); }, 0);
-      var html = '<div class="screens-h"><b>Разделы темы ' + topic.num + '</b>' +
-        '<span>' + done + ' / ' + topic.screens.length +
-        (total ? ' · ' + total + '\u00a0мин' : '') + '</span></div>';
+      var box = el('section', 'screens');
+      var html = '<header class="sec-head"><span class="sec-no">Гл. ' + topic.num + '</span>' +
+        '<h2>' + topic.title + '</h2>' +
+        '<span class="sec-meta">' + done + ' / ' + topic.screens.length +
+        (total ? ' · ' + total + ' мин' : '') + '</span></header>';
+      if (done && done < topic.screens.length) {
+        html += '<a class="resume" href="#' + firstUnread(topic) + '"><span>Продолжить с места остановки</span>' + ICON.arrowR + '</a>';
+      }
+      html += '<div class="screens-grid">';
       topic.screens.forEach(function (s, i) {
         html += '<a href="#' + s.id + '"' + (isRead(s.id) ? ' class="is-read"' : '') + '>' +
-          '<span class="n">' + (i + 1) + '</span>' +
-          '<span class="t">' + (s.short || s.title) + '</span><i class="lead"></i>' +
-          (s.min ? '<span class="mins">' + s.min + '\u00a0мин</span>' : '') +
-          '<span class="tick">' + ICON.check + '</span></a>';
+          '<span class="n">' + String(i + 1).padStart(2, '0') + '</span>' +
+          '<span class="t">' + (s.short || s.title) + '</span>' +
+          '<span class="mins">' + (s.min ? s.min + ' мин' : '') + '<span class="tick">' + ICON.check + '</span></span></a>';
       });
-      box.innerHTML = html;
+      box.innerHTML = html + '</div>';
       wrap.appendChild(box);
     }
 
+    var toc = el('section', 'contents');
+    var th = '<header class="sec-head"><span class="sec-no">Курс</span><h2>Содержание</h2>' +
+      '<span class="sec-meta">14 тем · практикум</span></header>';
     MENU.parts.forEach(function (part) {
-      wrap.appendChild(el('div', 'part-head', '<b>' + part.name + '</b><i></i>'));
-      var list = el('div', 'topic-list');
+      th += '<div class="part-head">' + part.name + '</div><div class="topic-list">';
       part.topics.forEach(function (t) {
         var ready = t.status === 'ready';
-        var node = el(ready ? 'a' : 'div', 'topic ' + (ready ? 'is-ready' : 'is-soon'));
-        if (ready) node.href = '#' + (t.screens ? t.screens[0].id : t.id);
-        else node.setAttribute('aria-disabled', 'true');
-        node.innerHTML =
+        th += (ready ? '<a class="topic is-ready" href="#' + (t.screens ? t.screens[0].id : t.id) + '">'
+          : '<div class="topic is-soon" aria-disabled="true">') +
           '<span class="topic-num">' + t.num + '</span>' +
-          '<span class="topic-body">' +
-          '<span class="topic-title">' + t.title + '</span>' +
+          '<span class="topic-body"><span class="topic-title">' + t.title + '</span>' +
           '<span class="topic-sub">' + t.sub + '</span></span>' +
-          '<span class="topic-flag">' + (ready ? 'готово' : 'в работе') + '</span>';
-        list.appendChild(node);
+          '<span class="topic-flag">' + (ready ? 'готово' : 'в работе') + '</span>' +
+          (ready ? '</a>' : '</div>');
       });
-      wrap.appendChild(list);
+      th += '</div>';
     });
-
-    return wrap;
+    toc.innerHTML = th;
+    wrap.appendChild(toc);
+    return page;
   }
 
   function firstUnread(topic) {

@@ -18,10 +18,16 @@
       "name": "model3d",
       "caption": "Проводка управления DA 40 NG: тяги элеронов и руля высоты, тросы руля направления, привод закрылков и механизм триммера руля высоты.",
       "opts": {
-        "src": ["models/da40/da40-airframe.glb", {"src": "models/da40/da40-wheels.glb", "title": "Колёса"}],
+        "src": [
+          "models/da40/da40-airframe.glb",
+          {
+            "src": "models/da40/da40-wheels.glb",
+            "title": "Колёса"
+          }
+        ],
         "labelsSrc": "content/da40-labels.json",
         "srcTitle": "Планер",
-        "scene": "apron",
+        "scene": "showroom",
         "groundY": 0.012,
         "shellKeep": "^gear|propel|tundra|beringer|hub cap",
         "shellMaterials": [
@@ -33,27 +39,49 @@
         "shellLevel": 2,
         "tall": true,
         "glow": "on",
-        "layers": [
+        "system": [
           {
             "src": "models/da40/da40-controls.glb",
-            "title": "Управление",
-            "on": true
-          },
+            "title": "Управление"
+          }
+        ],
+        "extras": [
           {
             "src": "models/da40/da40-cabin.glb",
-            "title": "Кабина",
-            "on": false,
-            "plain": true
+            "title": "Салон",
+            "hint": "Салон: кресла, приборная доска, педали — чтобы видеть, где система относительно кабины"
+          }
+        ],
+        "elements": [
+          {
+            "title": "Элероны",
+            "match": "^aileron",
+            "hint": "Элероны: тяги от ручки через центроплан и крыло к качалке и кабанчику"
           },
           {
-            "src": "models/da40/da40-wing-structure.glb",
-            "title": "Силовой набор крыла",
-            "on": false
+            "title": "Руль высоты",
+            "match": "^elevator(?! trim)",
+            "hint": "Руль высоты: торсион ручки, промежуточная качалка, длинная тяга, качалка в киле"
           },
           {
-            "src": "models/da40/da40-brakes.glb",
-            "title": "Тормоза",
-            "on": false
+            "title": "Руль направления",
+            "match": "^rudder",
+            "hint": "Руль направления: педали, S-образные трубы, тросы с талрепами"
+          },
+          {
+            "title": "Закрылки",
+            "match": "^flap",
+            "hint": "Закрылки: электропривод, торсионная труба, тяги к нервюрам"
+          },
+          {
+            "title": "Триммер",
+            "match": "trim",
+            "hint": "Триммер руля высоты: колесо на консоли, боуденовский трос, привод на стабилизаторе"
+          },
+          {
+            "title": "Ручки",
+            "match": "stick",
+            "hint": "Ручки управления и торсионная труба"
           }
         ],
         "view": [

@@ -16,12 +16,18 @@
     {
       "t": "figure",
       "name": "model3d",
-      "caption": "Самолёт DA 40 NG (RA-02660) с разделением на системы.",
+      "caption": "Самолёт DA 40 NG (RA-02660). Каждая система разобрана в своём разделе — ссылки под моделью.",
       "opts": {
-        "src": ["models/da40/da40-airframe.glb", {"src": "models/da40/da40-wheels.glb", "title": "Колёса"}],
+        "src": [
+          "models/da40/da40-airframe.glb",
+          {
+            "src": "models/da40/da40-wheels.glb",
+            "title": "Колёса"
+          }
+        ],
         "labelsSrc": "content/da40-labels.json",
         "srcTitle": "Планер",
-        "scene": "apron",
+        "scene": "showroom",
         "groundY": 0.012,
         "shellKeep": "^gear|propel|tundra|beringer|hub cap",
         "shellMaterials": [
@@ -33,98 +39,55 @@
         "shellLevel": 0,
         "tall": true,
         "glow": "off",
-        "layers": [
-          {
-            "src": "models/da40/da40-controls.glb",
-            "title": "Управление",
-            "on": false
-          },
-          {
-            "src": "models/da40/da40-wing-structure.glb",
-            "title": "Силовой набор крыла",
-            "on": false
-          },
-          {
-            "src": "models/da40/da40-fuel.glb",
-            "title": "Топливо",
-            "on": false
-          },
-          {
-            "src": "models/da40/da40-engine.glb",
-            "title": "Двигатель",
-            "on": false,
-            "plain": true
-          },
-          {
-            "src": "models/da40/da40-cooling.glb",
-            "title": "Охлаждение",
-            "on": false
-          },
-          {
-            "src": "models/da40/da40-induction.glb",
-            "title": "Наддув и выхлоп",
-            "on": false
-          },
-          {
-            "src": "models/da40/da40-oil.glb",
-            "title": "Масло",
-            "on": false
-          },
-          {
-            "src": "models/da40/da40-electrical.glb",
-            "title": "Электрика",
-            "on": false
-          },
-          {
-            "src": "models/da40/da40-instruments.glb",
-            "title": "Приборное оборудование",
-            "on": false
-          },
-          {
-            "src": "models/da40/da40-radio.glb",
-            "title": "Радиооборудование",
-            "on": false
-          },
-          {
-            "src": "models/da40/da40-pitot-static.glb",
-            "title": "ПВД и статика",
-            "on": false
-          },
-          {
-            "src": "models/da40/da40-brakes.glb",
-            "title": "Тормоза",
-            "on": false
-          },
-          {
-            "src": "models/da40/da40-air.glb",
-            "title": "Вентиляция и отопление",
-            "on": false
-          },
+        "extras": [
           {
             "src": "models/da40/da40-cabin.glb",
-            "title": "Кабина",
-            "on": false,
-            "plain": true
+            "title": "Салон",
+            "hint": "Салон: кресла, приборная доска, педали — чтобы видеть, где система относительно кабины"
+          }
+        ],
+        "sections": [
+          {
+            "title": "Управление",
+            "href": "#da40-controls"
+          },
+          {
+            "title": "Крыло",
+            "href": "#da40-wing"
+          },
+          {
+            "title": "Топливо",
+            "href": "#da40-fuel"
+          },
+          {
+            "title": "Силовая установка",
+            "href": "#da40-powerplant"
+          },
+          {
+            "title": "Электросистема",
+            "href": "#da40-electrical"
+          },
+          {
+            "title": "Приборы",
+            "href": "#da40-instruments"
+          },
+          {
+            "title": "Радио",
+            "href": "#da40-radio"
+          },
+          {
+            "title": "Шасси и тормоза",
+            "href": "#da40-gear"
+          },
+          {
+            "title": "Вентиляция",
+            "href": "#da40-air"
           }
         ],
         "view": [
           0.6,
           0.4,
           0.82
-        ],
-        "scenarios": [
-          {
-            "clip": "Закрылки UP → LDG",
-            "title": "Закрылки"
-          },
-          {
-            "clip": "Элероны влево → вправо",
-            "title": "Элероны"
-          },
-          {
-            "clip": "Руль высоты",
-            "title": "Руль высоты"
-          }
         ]
       }
     },

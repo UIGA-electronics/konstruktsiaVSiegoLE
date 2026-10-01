@@ -97,7 +97,7 @@ var Render = (function () {
 
   function blockFigure(b) {
     var node = el('figure', 'figure');
-    var frame = el('div', 'figure-frame');
+    var frame = el('div', 'figure-frame' + (b.name === 'model3d' ? ' is-3d' : ' is-sheet'));
     frame.dataset.figure = b.name;
     if (b.opts) frame.dataset.opts = JSON.stringify(b.opts);
     node.appendChild(frame);
