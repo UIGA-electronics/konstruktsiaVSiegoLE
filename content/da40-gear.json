@@ -22,10 +22,16 @@
       "name": "model3d",
       "caption": "Тормозная система: главные тормозные цилиндры на педалях обоих пилотов, бачки, клапан стояночного тормоза на пультовой переборке, гибкие шланги под полом и по задней кромке рессор к суппортам. Колёса показаны с увеличенными шинами Tundra.",
       "opts": {
-        "src": ["models/da40/da40-airframe.glb", {"src": "models/da40/da40-wheels.glb", "title": "Колёса"}],
+        "src": [
+          "models/da40/da40-airframe.glb",
+          {
+            "src": "models/da40/da40-wheels.glb",
+            "title": "Колёса"
+          }
+        ],
         "labelsSrc": "content/da40-labels.json",
         "srcTitle": "Планер",
-        "scene": "apron",
+        "scene": "showroom",
         "groundY": 0.012,
         "shellKeep": "^gear|propel|tundra|beringer|hub cap",
         "shellMaterials": [
@@ -37,22 +43,34 @@
         "shellLevel": 2,
         "tall": true,
         "glow": "on",
-        "layers": [
+        "system": [
           {
             "src": "models/da40/da40-brakes.glb",
-            "title": "Тормоза",
-            "on": true
-          },
-          {
-            "src": "models/da40/da40-controls.glb",
-            "title": "Управление",
-            "on": false
-          },
+            "title": "Тормоза"
+          }
+        ],
+        "extras": [
           {
             "src": "models/da40/da40-cabin.glb",
-            "title": "Кабина",
-            "on": false,
-            "plain": true
+            "title": "Салон",
+            "hint": "Салон: кресла, приборная доска, педали — чтобы видеть, где система относительно кабины"
+          }
+        ],
+        "elements": [
+          {
+            "title": "Цилиндры и бачки",
+            "match": "master cylinder|reservoir|brake fluid",
+            "hint": "Главные цилиндры у педалей обоих пилотов, бачки за передней стенкой ниши"
+          },
+          {
+            "title": "Стояночный тормоз",
+            "match": "parking|bulkhead",
+            "hint": "Клапан на нижней полке пультовой переборки и трос рукоятки"
+          },
+          {
+            "title": "Шланги к колёсам",
+            "match": "hose|caliper",
+            "hint": "Шланги от цилиндров к клапану и по задней кромке рессор к суппортам"
           }
         ],
         "view": [

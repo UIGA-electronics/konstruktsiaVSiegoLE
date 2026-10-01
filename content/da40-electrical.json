@@ -22,10 +22,16 @@
       "name": "model3d",
       "caption": "Электросистема DA 40 NG: основная батарея и релейная коробка за рамой багажного отсека, резервная батарея EECU, разъём наземного питания, блок EECU, предохранитель и регулятор генератора, основной жгут и жгуты огней в крыле.",
       "opts": {
-        "src": ["models/da40/da40-airframe.glb", {"src": "models/da40/da40-wheels.glb", "title": "Колёса"}],
+        "src": [
+          "models/da40/da40-airframe.glb",
+          {
+            "src": "models/da40/da40-wheels.glb",
+            "title": "Колёса"
+          }
+        ],
         "labelsSrc": "content/da40-labels.json",
         "srcTitle": "Планер",
-        "scene": "apron",
+        "scene": "showroom",
         "groundY": 0.012,
         "shellKeep": "^gear|propel|tundra|beringer|hub cap",
         "shellMaterials": [
@@ -37,32 +43,44 @@
         "shellLevel": 2,
         "tall": true,
         "glow": "on",
-        "layers": [
+        "system": [
           {
             "src": "models/da40/da40-electrical.glb",
-            "title": "Электрика",
-            "on": true
-          },
-          {
-            "src": "models/da40/da40-instruments.glb",
-            "title": "Приборное оборудование",
-            "on": false
-          },
-          {
-            "src": "models/da40/da40-radio.glb",
-            "title": "Радиооборудование",
-            "on": false
-          },
+            "title": "Электросистема"
+          }
+        ],
+        "context": [
           {
             "src": "models/da40/da40-engine.glb",
             "title": "Двигатель",
-            "on": false,
-            "plain": true
+            "match": "^alternator|starter motor|harness connector|cylinder block|gearbox"
+          }
+        ],
+        "elements": [
+          {
+            "title": "Батареи и реле",
+            "match": "battery|relay junction|external power",
+            "hint": "Основная батарея, релейная коробка, разъём наземного питания"
           },
           {
-            "src": "models/da40/da40-pitot-static.glb",
-            "title": "ПВД и статика",
-            "on": false
+            "title": "Генератор",
+            "match": "alternator",
+            "hint": "Генератор, предохранитель 100 А, регулятор и его провода"
+          },
+          {
+            "title": "EECU",
+            "match": "eecu|ecu backup|engine harness",
+            "hint": "Блок EECU, резервная батарея и реле, жгут двигателя"
+          },
+          {
+            "title": "Жгуты и шины",
+            "match": "main wiring|bus bar|grommet|starter cable",
+            "hint": "Основной жгут, шины автоматов, кабель стартера, проходы в перегородке"
+          },
+          {
+            "title": "Освещение",
+            "match": "light",
+            "hint": "Жгуты огней в крыльях, фары, освещение кабины"
           }
         ],
         "view": [

@@ -2,7 +2,7 @@
    Стратегия «сеть впереди, кеш в запасе» — чтобы правки сайта
    доезжали до читателя сразу, а без связи страница всё равно открылась. */
 
-var CACHE = 'kioe-la-v9';
+var CACHE = 'kioe-la-v10';
 var CORE = [
   './',
   './index.html',
@@ -13,6 +13,7 @@ var CORE = [
   './assets/js/scenery.js',
   './assets/js/figures.js',
   './assets/img/icon.svg',
+  './assets/img/da40-hero.webp',
   './content/menu.json'
 ];
 

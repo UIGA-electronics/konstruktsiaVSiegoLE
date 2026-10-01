@@ -22,10 +22,16 @@
       "name": "model3d",
       "caption": "Радиооборудование DA 40 NG: стойка авионики за рамой багажного отсека (два GIA 63W и ответчик GTX 33), дальномер и приёмник АРК в хвостовой части, аварийный радиомаяк, процессор грозопеленгатора под сиденьем пассажиров; антенны сверху и снизу фюзеляжа, на крыше кабины и в горизонтальном оперении, коаксиальные кабели.",
       "opts": {
-        "src": ["models/da40/da40-airframe.glb", {"src": "models/da40/da40-wheels.glb", "title": "Колёса"}],
+        "src": [
+          "models/da40/da40-airframe.glb",
+          {
+            "src": "models/da40/da40-wheels.glb",
+            "title": "Колёса"
+          }
+        ],
         "labelsSrc": "content/da40-labels.json",
         "srcTitle": "Планер",
-        "scene": "apron",
+        "scene": "showroom",
         "groundY": 0.012,
         "shellKeep": "^gear|propel|tundra|beringer|hub cap",
         "shellMaterials": [
@@ -37,27 +43,39 @@
         "shellLevel": 2,
         "tall": true,
         "glow": "on",
-        "layers": [
+        "system": [
           {
             "src": "models/da40/da40-radio.glb",
-            "title": "Радиооборудование",
-            "on": true
-          },
-          {
-            "src": "models/da40/da40-instruments.glb",
-            "title": "Приборное оборудование",
-            "on": false
-          },
+            "title": "Радиооборудование"
+          }
+        ],
+        "extras": [
           {
             "src": "models/da40/da40-cabin.glb",
-            "title": "Кабина",
-            "on": false,
-            "plain": true
+            "title": "Салон",
+            "hint": "Салон: кресла, приборная доска, педали — чтобы видеть, где система относительно кабины"
+          }
+        ],
+        "elements": [
+          {
+            "title": "Антенны",
+            "match": "antenna(?! cable)|antenna bracket",
+            "hint": "COM 1, COM 2, GPS, ответчик, DME, маркер, АРК, VOR/LOC/GS, ELT"
           },
           {
-            "src": "models/da40/da40-electrical.glb",
-            "title": "Электрика",
-            "on": false
+            "title": "Блоки",
+            "match": "gia|gtx|kn 63|ra 3502|wx-500|gma|me406|enclosure|rack|shelf|tray|cooling fan|splitter",
+            "hint": "GIA 63W, GTX 33, KN 63, RA 3502, WX-500, GMA 1347"
+          },
+          {
+            "title": "Кабели",
+            "match": "coax|cable|harness",
+            "hint": "Коаксиальные кабели антенн и жгуты данных"
+          },
+          {
+            "title": "Аварийный маяк",
+            "match": "elt",
+            "hint": "ELT ME406, антенна внутри фюзеляжа, пульт на доске"
           }
         ],
         "view": [

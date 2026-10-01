@@ -18,10 +18,16 @@
       "name": "model3d",
       "caption": "Система полного и статического давлений: приёмник полного давления под левым крылом, два приёмника статического давления на хвостовой части фюзеляжа, влагоотстойники, вычислитель воздушных сигналов GDC 74A на полке приборной доски; сигнализатор сваливания с отверстием в передней кромке левого крыла.",
       "opts": {
-        "src": ["models/da40/da40-airframe.glb", {"src": "models/da40/da40-wheels.glb", "title": "Колёса"}],
+        "src": [
+          "models/da40/da40-airframe.glb",
+          {
+            "src": "models/da40/da40-wheels.glb",
+            "title": "Колёса"
+          }
+        ],
         "labelsSrc": "content/da40-labels.json",
         "srcTitle": "Планер",
-        "scene": "apron",
+        "scene": "showroom",
         "groundY": 0.012,
         "shellKeep": "^gear|propel|tundra|beringer|hub cap",
         "shellMaterials": [
@@ -33,32 +39,39 @@
         "shellLevel": 2,
         "tall": true,
         "glow": "on",
-        "layers": [
+        "system": [
           {
             "src": "models/da40/da40-pitot-static.glb",
-            "title": "ПВД и статика",
-            "on": true
-          },
+            "title": "ПВД и статика"
+          }
+        ],
+        "context": [
           {
             "src": "models/da40/da40-instruments.glb",
             "title": "Приборное оборудование",
-            "on": true
+            "match": "gdc 74a air data|gdu 1040"
+          }
+        ],
+        "elements": [
+          {
+            "title": "Полное давление",
+            "match": "pitot",
+            "hint": "Приёмник под левым крылом, зелёные шланги к GDC 74A и резервному указателю скорости"
           },
           {
-            "src": "models/da40/da40-radio.glb",
-            "title": "Радиооборудование",
-            "on": false
+            "title": "Статическое давление",
+            "match": "static",
+            "hint": "Приёмники на хвостовой части, синие шланги, кран альтернативной статики"
           },
           {
-            "src": "models/da40/da40-cabin.glb",
-            "title": "Кабина",
-            "on": false,
-            "plain": true
+            "title": "Влагоотстойники",
+            "match": "water trap",
+            "hint": "Влагоотстойники в нижних точках линий"
           },
           {
-            "src": "models/da40/da40-electrical.glb",
-            "title": "Электрика",
-            "on": false
+            "title": "Сигнализатор сваливания",
+            "match": "stall",
+            "hint": "Отверстие в передней кромке левого крыла, шланг, сирена в доске"
           }
         ],
         "view": [
@@ -231,10 +244,16 @@
       "name": "model3d",
       "caption": "Блоки G1000 и автопилота: дисплеи и аудиопанель в приборной доске, GDC 74A и GEA 71 на полке за ней, стойка авионики с GIA 63W и GTX 33 за рамой багажного отсека, GRS 77 рядом со стойкой, GMU 44 в правом крыле, три рулевые машины GSA 81, жгуты.",
       "opts": {
-        "src": ["models/da40/da40-airframe.glb", {"src": "models/da40/da40-wheels.glb", "title": "Колёса"}],
+        "src": [
+          "models/da40/da40-airframe.glb",
+          {
+            "src": "models/da40/da40-wheels.glb",
+            "title": "Колёса"
+          }
+        ],
         "labelsSrc": "content/da40-labels.json",
         "srcTitle": "Планер",
-        "scene": "apron",
+        "scene": "showroom",
         "groundY": 0.012,
         "shellKeep": "^gear|propel|tundra|beringer|hub cap",
         "shellMaterials": [
@@ -246,32 +265,46 @@
         "shellLevel": 2,
         "tall": true,
         "glow": "on",
-        "layers": [
+        "system": [
           {
             "src": "models/da40/da40-instruments.glb",
-            "title": "Приборное оборудование",
-            "on": true
-          },
+            "title": "Приборное оборудование"
+          }
+        ],
+        "context": [
           {
             "src": "models/da40/da40-radio.glb",
             "title": "Радиооборудование",
-            "on": true
-          },
-          {
-            "src": "models/da40/da40-controls.glb",
-            "title": "Управление",
-            "on": false
-          },
+            "match": "gia 63w|gtx 33|gma 1347|avionics enclosure"
+          }
+        ],
+        "extras": [
           {
             "src": "models/da40/da40-cabin.glb",
-            "title": "Кабина",
-            "on": false,
-            "plain": true
+            "title": "Салон",
+            "hint": "Салон: кресла, приборная доска, педали — чтобы видеть, где система относительно кабины"
+          }
+        ],
+        "elements": [
+          {
+            "title": "Дисплеи",
+            "match": "gdu|display harness|fan|avionics shelf",
+            "hint": "PFD и MFD GDU 1040 с вентиляторами, полка за доской"
           },
           {
-            "src": "models/da40/da40-pitot-static.glb",
-            "title": "ПВД и статика",
-            "on": false
+            "title": "Датчики",
+            "match": "gdc|grs|gmu|gtp|gea",
+            "hint": "GDC 74A, GRS 77, GMU 44, GTP 59, GEA 71"
+          },
+          {
+            "title": "Автопилот",
+            "match": "gsa|servo|pitch trim",
+            "hint": "Рулевые машины GSA 81 крена, тангажа и триммера"
+          },
+          {
+            "title": "Рычаг POWER",
+            "match": "power lever|eecu",
+            "hint": "Датчик рычага POWER и линия к EECU"
           }
         ],
         "view": [

@@ -22,10 +22,16 @@
       "name": "model3d",
       "caption": "Топливная система: баки MAIN и AUX с заливными горловинами, дренажные и сливные клапаны, датчики количества топлива, топливный кран, отстойник, подкачивающие насосы, насос перекачки, топливный радиатор и трубопроводы до двигателя.",
       "opts": {
-        "src": ["models/da40/da40-airframe.glb", {"src": "models/da40/da40-wheels.glb", "title": "Колёса"}],
+        "src": [
+          "models/da40/da40-airframe.glb",
+          {
+            "src": "models/da40/da40-wheels.glb",
+            "title": "Колёса"
+          }
+        ],
         "labelsSrc": "content/da40-labels.json",
         "srcTitle": "Планер",
-        "scene": "apron",
+        "scene": "showroom",
         "groundY": 0.012,
         "shellKeep": "^gear|propel|tundra|beringer|hub cap",
         "shellMaterials": [
@@ -37,27 +43,49 @@
         "shellLevel": 2,
         "tall": true,
         "glow": "on",
-        "layers": [
+        "system": [
           {
             "src": "models/da40/da40-fuel.glb",
-            "title": "Топливо",
-            "on": true
-          },
-          {
-            "src": "models/da40/da40-wing-structure.glb",
-            "title": "Силовой набор крыла",
-            "on": false
-          },
-          {
-            "src": "models/da40/da40-electrical.glb",
-            "title": "Электрика",
-            "on": false
-          },
+            "title": "Топливная система"
+          }
+        ],
+        "context": [
           {
             "src": "models/da40/da40-engine.glb",
             "title": "Двигатель",
-            "on": false,
-            "plain": true
+            "match": "low-pressure fuel|high-pressure fuel|common rail|cylinder block|cylinder head$|cylinder head \\||gearbox"
+          }
+        ],
+        "elements": [
+          {
+            "title": "Баки",
+            "match": "fuel tank|fuel jet|quantity probe|low fuel|temperature sensor|sensors connector|tank bonding|finger filter|return adapter",
+            "hint": "Баки MAIN и AUX, перегородки, датчики количества и температуры"
+          },
+          {
+            "title": "Заправка",
+            "match": "filler|placard",
+            "hint": "Заливные горловины, шланги и хомуты, крышки, таблички"
+          },
+          {
+            "title": "Дренаж и слив",
+            "match": "vent|drain|gascolator",
+            "hint": "Дренаж баков с обратными и предохранительным клапанами, сливные клапаны, отстойник"
+          },
+          {
+            "title": "Насосы и кран",
+            "match": "pump|fuel valve|bypass|tees|mounting plate",
+            "hint": "Топливный кран, подкачивающие насосы A и B, насос перекачки"
+          },
+          {
+            "title": "Магистрали",
+            "match": "fuel supply|fuel return|transfer line|cooling loop|cooler|supply tee|lightning",
+            "hint": "Подача, обратка через петлю охлаждения в AUX и радиатор, линия перекачки"
+          },
+          {
+            "title": "Перед двигателем",
+            "match": "fire-sleeved|firewall fitting|fine fuel|pulsation",
+            "hint": "Проходные штуцеры перегородки, тонкий фильтр, демпфер, шланги в огнезащитном рукаве"
           }
         ],
         "view": [

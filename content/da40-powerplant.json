@@ -22,10 +22,16 @@
       "name": "model3d",
       "caption": "Моторный отсек DA 40 NG: двигатель E4-A на мотораме, жгут и датчики EECU, системы наддува и выпуска, охлаждения и смазки.",
       "opts": {
-        "src": ["models/da40/da40-airframe.glb", {"src": "models/da40/da40-wheels.glb", "title": "Колёса"}],
+        "src": [
+          "models/da40/da40-airframe.glb",
+          {
+            "src": "models/da40/da40-wheels.glb",
+            "title": "Колёса"
+          }
+        ],
         "labelsSrc": "content/da40-labels.json",
         "srcTitle": "Планер",
-        "scene": "apron",
+        "scene": "showroom",
         "groundY": 0.012,
         "shellKeep": "^gear|propel|tundra|beringer|hub cap",
         "shellMaterials": [
@@ -36,43 +42,66 @@
         ],
         "shellLevel": 2,
         "tall": true,
-        "glow": "on",
-        "layers": [
+        "glow": "off",
+        "system": [
           {
             "src": "models/da40/da40-engine.glb",
             "title": "Двигатель",
-            "on": true,
             "plain": true
           },
           {
-            "src": "models/da40/da40-cooling.glb",
-            "title": "Охлаждение",
-            "on": true
+            "src": "models/da40/da40-induction.glb",
+            "title": "Наддув и выпуск"
           },
           {
-            "src": "models/da40/da40-induction.glb",
-            "title": "Наддув и выхлоп",
-            "on": true
+            "src": "models/da40/da40-cooling.glb",
+            "title": "Охлаждение"
           },
           {
             "src": "models/da40/da40-oil.glb",
-            "title": "Масло",
-            "on": true
-          },
+            "title": "Масло"
+          }
+        ],
+        "context": [
           {
             "src": "models/da40/da40-fuel.glb",
             "title": "Топливо",
-            "on": false
+            "match": "fire-sleeved|fine fuel|pulsation|firewall fitting"
+          }
+        ],
+        "elements": [
+          {
+            "title": "Двигатель",
+            "files": [
+              "models/da40/da40-engine.glb"
+            ],
+            "hint": "Двигатель E4-A: блок, головка, редуктор, навесные агрегаты, моторама"
           },
           {
-            "src": "models/da40/da40-air.glb",
-            "title": "Вентиляция и отопление",
-            "on": false
+            "title": "Датчики и проводка",
+            "match": "sensor|harness|connector|wire",
+            "hint": "Жгуты свечей и форсунок, датчики EECU"
           },
           {
-            "src": "models/da40/da40-electrical.glb",
-            "title": "Электрика",
-            "on": false
+            "title": "Наддув и выпуск",
+            "files": [
+              "models/da40/da40-induction.glb"
+            ],
+            "hint": "Заборник, фильтр, турбокомпрессор, интеркулер, выпуск"
+          },
+          {
+            "title": "Охлаждение",
+            "files": [
+              "models/da40/da40-cooling.glb"
+            ],
+            "hint": "Радиатор, термостат, расширительный бачок, контур отопления"
+          },
+          {
+            "title": "Масло",
+            "files": [
+              "models/da40/da40-oil.glb"
+            ],
+            "hint": "Маслоохладитель, горловина со щупом, сапун, смазка турбины"
           }
         ],
         "view": [
