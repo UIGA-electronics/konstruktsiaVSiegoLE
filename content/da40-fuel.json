@@ -54,6 +54,12 @@
             "src": "models/da40/da40-engine.glb",
             "title": "Двигатель",
             "match": "low-pressure fuel|high-pressure fuel|common rail|cylinder block|cylinder head$|cylinder head \\||gearbox"
+          },
+          {
+            "src": "models/da40/da40-structure.glb",
+            "title": "Перегородка",
+            "match": "^firewall",
+            "opacity": 0.3
           }
         ],
         "elements": [
@@ -98,7 +104,8 @@
           0,
           0,
           0.06
-        ]
+        ],
+        "shellDrop": "^(Cube0(28|32|34|36|38|40|51|99)|Cube100|Cylinder0(17|18|23)|Cylinder173|Plane0(11|17|18|22|25|26)|BezierCurve)$"
       }
     },
     {

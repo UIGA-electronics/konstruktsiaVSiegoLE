@@ -50,6 +50,12 @@
             "src": "models/da40/da40-cooling.glb",
             "title": "Охлаждение",
             "match": "heat exchanger"
+          },
+          {
+            "src": "models/da40/da40-structure.glb",
+            "title": "Перегородка",
+            "match": "^firewall",
+            "opacity": 0.35
           }
         ],
         "extras": [
@@ -81,7 +87,8 @@
           0,
           0,
           0.2
-        ]
+        ],
+        "shellDrop": "^(Cube0(28|32|34|36|38|40|51|99)|Cube100|Cylinder0(17|18|23)|Cylinder173|Plane0(11|17|18|22|25|26)|BezierCurve)$"
       }
     },
     {

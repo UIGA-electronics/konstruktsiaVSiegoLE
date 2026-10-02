@@ -108,6 +108,15 @@
             "clip": "Руль высоты",
             "title": "Руль высоты"
           }
+        ],
+        "shellDrop": "^(Cube0(28|32|34|36|38|40|51|99)|Cube100|Cylinder0(17|18|23)|Cylinder173|Plane0(11|17|18|22|25|26)|BezierCurve)$",
+        "context": [
+          {
+            "src": "models/da40/da40-structure.glb",
+            "title": "Набор фюзеляжа и оперения",
+            "match": "baggage|ring frame|vertical stabilizer|horizontal stabilizer|elevator|rudder|bellcrank mounting|roll bar",
+            "opacity": 0.5
+          }
         ]
       }
     },

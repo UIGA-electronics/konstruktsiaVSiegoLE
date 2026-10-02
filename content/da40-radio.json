@@ -88,7 +88,8 @@
           0,
           0.1,
           0.05
-        ]
+        ],
+        "shellDrop": "^(Cube0(28|32|34|36|38|40|51|99)|Cube100|Cylinder0(17|18|23)|Cylinder173|Plane0(11|17|18|22|25|26)|BezierCurve)$"
       }
     },
     {
