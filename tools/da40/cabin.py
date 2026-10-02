@@ -15,7 +15,7 @@ import ref
 from route import Router
 
 LAYERS = os.environ.get('LAYERS', '/home/user/da40src/out2')
-BUILT = ('fuel', 'brakes', 'pitot', 'engine', 'cooling', 'induction', 'oil', 'air', 'wing', 'controls-addon', 'electrical',
+BUILT = ('fuel', 'brakes', 'gear', 'pitot', 'engine', 'cooling', 'induction', 'oil', 'air', 'wing', 'controls-addon', 'electrical',
          'instruments', 'radio')
 SOURCE_SYSTEMS = ('Flight controls',)
 
