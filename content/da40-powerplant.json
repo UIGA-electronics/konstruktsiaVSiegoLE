@@ -67,6 +67,12 @@
             "src": "models/da40/da40-fuel.glb",
             "title": "Топливо",
             "match": "fire-sleeved|fine fuel|pulsation|firewall fitting"
+          },
+          {
+            "src": "models/da40/da40-structure.glb",
+            "title": "Перегородка",
+            "match": "^firewall|engine mount attachment",
+            "opacity": 0.45
           }
         ],
         "elements": [
@@ -114,7 +120,8 @@
           0,
           0,
           0.45
-        ]
+        ],
+        "shellDrop": "^(Cube0(28|32|34|36|38|40|51|99)|Cube100|Cylinder0(17|18|23)|Cylinder173|Plane0(11|17|18|22|25|26)|BezierCurve)$"
       }
     },
     {

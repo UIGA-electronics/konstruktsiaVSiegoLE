@@ -817,11 +817,8 @@ cooling()
 oil()
 details()
 
-# противопожарная перегородка из исходника — в слой двигателя
-fw = bpy.data.objects.get('Firewall')
-if fw:
-    COL.objects.link(fw)
-    lib.LABELS['Firewall'] = 'Противопожарная перегородка: огнестойкий мат, со стороны двигателя — нержавеющая сталь (AFM 7.2.1)'
+# противопожарная перегородка — в слое силового набора фюзеляжа (structure.py, AMM 53-10 2.B);
+# на страницах систем она подключается контекстом
 
 # проверка: детали не выходят за капоты
 LAYERS = [(COL, 'da40-engine-raw.glb'), (COL_IND, 'da40-induction-raw.glb'), (COL_COOL, 'da40-cooling-raw.glb'), (COL_OIL, 'da40-oil-raw.glb')]

@@ -2373,9 +2373,14 @@ var Figures = (function () {
          огни — висит на обшивке и уходит вместе с ней: без обшивки эта
          мелочь висит в воздухе и сбивает с толку. Слои систем не трогаем. */
       var keepRe = opts.shellKeep ? new RegExp(opts.shellKeep, 'i') : null;
+      /* opts.shellDrop — узлы основы, которые уходят с обшивкой, хотя их
+         материал подходит под shellKeep: в модели MSFS «шасси» (Gear.003)
+         покрашены и воздухозаборники капота, днище, детали моторного отсека. */
+      var dropRe = opts.shellDrop ? new RegExp(opts.shellDrop) : null;
       function isShellMesh(o) {
         if (o.__shell != null) return o.__shell;
         if (keepRe && o.__file && o.__file.role === 'base') {
+          if (dropRe && (dropRe.test(o.name) || (o.parent && dropRe.test(o.parent.name)))) return true;
           var km = Array.isArray(o.material) ? o.material[0] : o.material;
           return !keepRe.test((km && (km.__baseName || km.name)) || '');
         }
@@ -2411,7 +2416,8 @@ var Figures = (function () {
       });
       ctxDefs.forEach(function (d) {
         files.push({ src: d.src, role: 'context', on: true, title: d.title, plain: true,
-          match: d.match ? new RegExp(d.match, 'i') : null });
+          match: d.match ? new RegExp(d.match, 'i') : null,
+          opacity: d.opacity != null ? d.opacity : null });
       });
       layerDefs.forEach(function (d) {
         files.push({ src: d.src, role: 'extra', layer: true, on: !!d.on, title: d.title, hint: d.hint,
@@ -2589,7 +2595,12 @@ var Figures = (function () {
           o.__dim = !on;
           if (!o.material) return;
           var lit = f.role === 'system' && !f.plain && on && (glow || !!elDef);
-          if (on) {
+          if (on && f.role === 'context' && f.opacity != null) {
+            /* соседние детали, которые иначе закрывают систему (перегородка) */
+            o.material.transparent = true;
+            o.material.opacity = f.opacity;
+            o.material.depthWrite = false;
+          } else if (on) {
             o.material.transparent = o.__tr;
             o.material.opacity = o.__op;
             o.material.depthWrite = true;

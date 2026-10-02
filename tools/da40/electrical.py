@@ -228,6 +228,43 @@ def cb_panel():
         box(p, V(((lo.x + hi.x) / 2, lo.y - 0.012, z)), (hi.x - lo.x - 0.01, 0.002, 0.010), Matrix.Identity(3), 0)
     box(p, V(((lo.x + hi.x) / 2, lo.y - 0.004, (lo.z + hi.z) / 2)), (hi.x - lo.x, 0.004, hi.z - lo.z), Matrix.Identity(3), p.m(M['black']))
     p.done()
+    # реле шин за доской под автоматами (AMM 24-60: avionics master relay, essential tie relay)
+    for nm, ru, x in (('Avionics master relay', 'Реле шины авионики: включается выключателем AVIONIC MASTER, подаёт питание основной шины на шину авионики', -0.355),
+                      ('Essential tie relay', 'Реле связи с шиной ESSENTIAL: выключатель ESSENTIAL BUS отключает основную шину и питает от батареи только необходимых потребителей', -0.295)):
+        q = V((x, -0.738, 0.322))
+        p = P(nm, ru, 'black', 'AMM 24-00 рис. 1, 24-60')
+        box(p, q, (0.034, 0.03, 0.04), Matrix.Identity(3), 0, bevel=0.002)
+        for dx in (-0.009, 0.009):
+            cyl(p, q + V((dx, 0, 0.02)), q + V((dx, 0, 0.028)), 0.0035, p.m(M['copper']), segs=8)
+        p.done()
+
+
+EMERG_BATT = V((-0.330, -0.875, 0.255))           # AMM 24-32: за приборной доской со стороны второго пилота
+INVERTER = V((0.450, -0.760, 0.335))              # преобразователь заливающей подсветки за доской
+FLOOD_Y, FLOOD_Z = -0.655, 0.576                  # под противобликовым козырьком (низ козырька 0,579)
+
+
+def emergency_and_flood():
+    p = P('Emergency battery pack', 'Аварийная батарея: 10 литий-марганцевых элементов по 3 В; при отказе всех источников выключатель EMERGENCY подаёт от неё питание на резервный авиагоризонт и заливающую подсветку — не менее 1 ч',
+          'black', 'AMM 24-32 2, AFM 7.10')
+    box(p, EMERG_BATT, (0.13, 0.05, 0.07), Matrix.Identity(3), 0, bevel=0.004)
+    box(p, EMERG_BATT + V((0, 0.0, 0.038)), (0.14, 0.056, 0.006), Matrix.Identity(3), p.m(M['steel']), bevel=0.001)   # прижимная планка
+    cyl(p, EMERG_BATT + V((0.055, 0.027, 0.02)), EMERG_BATT + V((0.055, 0.04, 0.02)), 0.006, p.m(M['conn']), segs=12)
+    p.done()
+    a = EMERG_BATT + V((0.055, 0.046, 0.02))
+    pts = route(a, (0, 1, 0), CB_BACK + V((0.05, 0, -0.05)), (0, 1, 0), 0.003, (-0.50, -0.95, 0.20), (-0.10, -0.68, 0.55), step=0.008,
+                relax=[(a, 0.03), (CB_BACK, 0.07)])
+    cable('Emergency battery cable (to EMERGENCY switch)', 'Провод аварийной батареи к выключателю EMERGENCY и к шине резервного авиагоризонта и подсветки', pts, 0.003, 'thin', 'AMM 24-32', lugs=False)
+    p = P('Flood light inverter', 'Статический преобразователь: вырабатывает переменный ток 115 В для плёночной полосы заливающей подсветки', 'black', 'AMM 33-10 2.B')
+    box(p, INVERTER, (0.07, 0.04, 0.05), Matrix.Identity(3), 0, bevel=0.003)
+    p.done()
+    p = P('Instrument panel flood light strip', 'Плёночная светящаяся полоса заливающей подсветки под противобликовым козырьком, на двустороннем скотче; яркость — регулятор FLOOD',
+          'thin', 'AMM 33-10 2.B')
+    box(p, V((0.0, FLOOD_Y, FLOOD_Z)), (0.72, 0.022, 0.002), Matrix.Identity(3), 0)
+    p.done()
+    s = INVERTER + V((-0.02, 0.0, 0.026))
+    cable('Flood light inverter lead', 'Провод от преобразователя к полосе заливающей подсветки',
+          [s, s + V((0, 0, 0.05)), V((0.40, -0.70, 0.52)), V((0.37, FLOOD_Y + 0.004, FLOOD_Z - 0.004))], 0.002, 'thin', 'AMM 33-10', lugs=False, bend=0.02)
 
 
 def build():
@@ -235,6 +272,7 @@ def build():
     ports, ext_in, ext_d = relay_box()
     conns = regulator_and_relays()
     cb_panel()
+    emergency_and_flood()
     rear = ((-0.30, 1.9, -0.12), (0.30, 2.40, 0.30))
     # короткие силовые кабели у батареи
     pts = route(term['+'], (0, 0, 1), ports[0], (0, -1, 0), 0.006, *rear, stub=0.015, relax=[(term['+'], 0.03), (ports[0], 0.03)], step=0.008)
