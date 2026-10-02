@@ -307,6 +307,151 @@ def copy_old(name, new_name, ru, doc):
     lib.LABELS[new_name] = ob['ru']
 
 
+# ── Запорная трубка главных болтов (AMM 57-10 рис. 2) ──────────────────────
+
+def _bolt_end(name, which):
+    """Центр торца главного болта: 'aft' — задний, 'fwd' — передний."""
+    o = bpy.data.objects[name + ' (old)']
+    pts = [o.matrix_world @ v.co for v in o.data.vertices]
+    if which == 'aft':
+        y = max(q.y for q in pts)
+        sel = [q for q in pts if q.y > y - 0.004]
+    else:
+        y = min(q.y for q in pts)
+        sel = [q for q in pts if q.y < y + 0.004]
+    c = sum(sel, V()) / len(sel)
+    return V((c.x, y, c.z))
+
+
+def main_bolt_lock(s):
+    tag, gen = SIDE[s]
+    f = _bolt_end(f'Front wing main bolt {tag}', 'aft')
+    r = _bolt_end(f'Rear wing main bolt {tag}', 'fwd')
+    d = (r - f).normalized()
+    p = P(f'Main bolt long end-piece {tag}', f'Длинный наконечник в торце переднего главного болта {gen} крыла: на него надевается запорная трубка',
+          'steel', 'AMM 57-10 рис. 2')
+    cyl(p, f - d * 0.004, f + d * 0.070, 0.0075, 0, segs=16)
+    hexa(p, f, f + d * 0.010, 0.022, 0)
+    p.done()
+    p = P(f'Main bolt short end-piece {tag}', f'Короткий наконечник в торце заднего главного болта {gen} крыла',
+          'steel', 'AMM 57-10 рис. 2')
+    cyl(p, r - d * 0.034, r + d * 0.004, 0.0075, 0, segs=16)
+    hexa(p, r - d * 0.010, r, 0.022, 0)
+    p.done()
+    p = P(f'Main bolt locking tube {tag}', f'Запорная трубка главных болтов {gen} крыла: держит оба болта от выворачивания; '
+          'снимают первой — сдвигают на длинный наконечник и вынимают короткий',
+          'alu', 'AMM 57-10 рис. 2, 57-10 2.B(11)')
+    a, b = f + d * 0.012, r - d * 0.012
+    cyl(p, a, b, 0.0140, 0, segs=24)
+    p.done()
+    # запорный болт поперёк трубки у переднего конца, шайба и гайка
+    p = P(f'Main bolt locking bolt {tag}', f'Болт запорной трубки {gen} крыла: проходит сквозь трубку и длинный наконечник, шайба и гайка',
+          'steel', 'AMM 57-10 рис. 2')
+    q = a + d * 0.020
+    side = V((0, 0, 1)).cross(d).normalized()
+    hexa(p, q + side * 0.0150, q + side * 0.0195, 0.010, 0)
+    cyl(p, q + side * 0.0150, q - side * 0.0215, 0.0025, 0, segs=10)
+    cyl(p, q - side * 0.0145, q - side * 0.0160, 0.0060, 0, segs=14)
+    hexa(p, q - side * 0.0160, q - side * 0.0205, 0.008, 0)
+    p.done()
+
+
+# ── Кронштейны навески закрылка и элерона на задней стенке (AMM 57-10 рис. 4) ─
+
+def _axis(bone):
+    """Ось вращения поверхности: локальная Z объекта-кости из исходной модели."""
+    m = bpy.data.objects[bone].matrix_world
+    z = m.to_3x3() @ V((0, 0, 1))
+    return m.translation.copy(), z.normalized()
+
+
+def _on_axis(ax, X):
+    p0, d = ax
+    return p0 + d * ((X - p0.x) / d.x)
+
+
+FLAP_HINGES = [1.33, 1.82, 2.32, 3.30, 3.80]        # пять навесок закрылка (57-50 2.E)
+AIL_HINGES = [4.48, 4.95, 5.34]                     # три навески элерона (57-60 2.D)
+
+
+def hinge_bracket(s, X, name, ru, ax, kind):
+    """Кронштейн на задней стенке: стойка двумя болтами к стенке, ухо с втулкой на оси
+    поверхности, на передней стороне стенки — анкерная пластина на заклёпках.
+    kind: 'hinge' — обычная навеска; 'flap horn' — у кронштейна закрылка, с лапкой на
+    нижнюю обшивку на трёх болтах; 'ail horn' — у кронштейна элерона, ось держит штифт."""
+    h = _on_axis(ax, X)
+    yw = rear_web_te(X)
+    zlo, zup = S.lo_in(X, yw), S.up_in(X, yw)
+    yb = yw + 0.004
+    z0 = zlo + 0.004
+    z1 = min(zlo + 0.048, zup - 0.004)
+    zc = (z0 + z1) / 2
+    p = P(name, ru, 'alu', 'AMM 57-10 рис. 4, 4.B')
+    box(p, V((X, yb + 0.0015, zc)), (0.030, 0.003, z1 - z0), Matrix.Identity(3), 0, bevel=0.0008)
+    # щека от стойки к уху
+    root = V((X, yb + 0.003, min(max(h.z, z0 + 0.006), z1 - 0.006)))
+    dv = h - root
+    if dv.length > 0.004:
+        box(p, (root + h) / 2, (0.005, 0.016, dv.length + 0.010), lib.basis(dv, up=V((1, 0, 0))), 0, bevel=0.0008)
+    cyl(p, h - V((0.0055, 0, 0)), h + V((0.0055, 0, 0)), 0.0085, 0, segs=18)
+    # втулка с буртиком и палец навески
+    cyl(p, h - V((0.0070, 0, 0)), h + V((0.0070, 0, 0)), 0.0048, p.m(M['steel']), segs=14)
+    ring_tube(p, h - V((s * 0.0065, 0, 0)), V((1, 0, 0)), 0.0075, 0.0045, 0.0012, p.m(M['steel']), segs=18)
+    cyl(p, h - V((0.018, 0, 0)), h + V((0.018, 0, 0)), 0.0025, p.m(M['steel']), segs=10)
+    # болты сквозь стойку и стенку: головки сзади, гайки спереди
+    for dz in (-0.011, 0.011):
+        q = V((X, yb + 0.003, zc + dz * min(1.0, (z1 - z0) / 0.034)))
+        hexa(p, q, q + V((0, 0.004, 0)), 0.008, p.m(M['steel']))
+        cyl(p, q, q - V((0, 0.020, 0)), 0.0024, p.m(M['steel']), segs=8)
+    if kind == 'flap horn':
+        # лапка на нижнюю обшивку: три болта снизу (большие шайбы и самоконтрящиеся гайки изнутри)
+        fy = yw - 0.024
+        fz = S.lo_in(X, fy) + 0.002
+        box(p, V((X, fy, fz)), (0.030, 0.044, 0.003), Matrix.Identity(3), 0, bevel=0.0008)
+        for dx, dy in ((-0.009, -0.012), (0.009, -0.012), (0.0, 0.010)):
+            q = V((X + dx, fy + dy, fz + 0.0015))
+            # головка болта снаружи под обшивкой, шайба и гайка на лапке внутри крыла
+            cyl(p, q + V((0, 0, 0.006)), q - V((0, 0, 0.011)), 0.0024, p.m(M['steel']), segs=8)
+            cyl(p, q - V((0, 0, 0.011)), q - V((0, 0, 0.013)), 0.0055, p.m(M['steel']), segs=12)
+            cyl(p, q, q + V((0, 0, 0.001)), 0.0065, p.m(M['steel']), segs=14)
+            hexa(p, q + V((0, 0, 0.001)), q + V((0, 0, 0.005)), 0.008, p.m(M['steel']))
+    elif kind == 'ail horn':
+        q = h + V((s * 0.012, 0, 0))
+        cyl(p, q - V((0, 0, 0.007)), q + V((0, 0, 0.007)), 0.0012, p.m(M['steel']), segs=8)   # штифт пальца
+    p.done()
+    if kind == 'hinge':
+        a = P(name + ' anchor-nut plate', 'Анкерная пластина на передней стороне задней стенки: две гайки под болты кронштейна, держится на заклёпках',
+              'steel', 'AMM 57-10 2.F, рис. 4')
+        ya = yw - 0.004 - 0.0012
+        box(a, V((X, ya, zc)), (0.040, 0.0024, min(0.030, z1 - z0)), Matrix.Identity(3), 0)
+        for dz in (-0.011, 0.011):
+            q = V((X, ya - 0.0012, zc + dz * min(1.0, (z1 - z0) / 0.034)))
+            cyl(a, q, q - V((0, 0.005, 0)), 0.0045, 0, segs=12)
+        for dx in (-0.016, 0.016):
+            screw(a, V((X + dx, ya - 0.0012, zc)), V((0, -1, 0)), 0.0035)
+        a.done()
+
+
+def hinges(s):
+    tag, gen = SIDE[s]
+    fl = _axis('Bone_l' if s > 0 else 'Bone_r')
+    ai = _axis('Bone2_l' if s > 0 else 'Bone2_r')
+    for k, x in enumerate(FLAP_HINGES):
+        hinge_bracket(s, s * x, f'Flap hinge bracket {k + 1} {tag}',
+                      f'Кронштейн навески {gen} закрылка № {k + 1} на задней стенке: два болта, ухо с втулкой и пальцем',
+                      fl, 'hinge')
+    hinge_bracket(s, s * 2.837, f'Flap control horn hinge bracket {tag}',
+                  f'Кронштейн навески у кронштейна {gen} закрылка: стойка на задней стенке и лапка на нижней обшивке на трёх болтах; '
+                  'гайки — через лючок качалки', fl, 'flap horn')
+    hinge_bracket(s, s * 3.985, f'Aileron control horn hinge bracket {tag}',
+                  f'Кронштейн навески у кронштейна {gen} элерона: палец фиксирует штифт', ai, 'ail horn')
+    for k, x in enumerate(AIL_HINGES):
+        nm = 'inner' if k == 0 else f'outer {k}'
+        hinge_bracket(s, s * x, f'Aileron {nm} hinge bracket {tag}',
+                      f'Кронштейн {"внутренней" if k == 0 else "наружной"} навески {gen} элерона на задней стенке: два болта, ухо с втулкой и пальцем',
+                      ai, 'hinge')
+
+
 # ── Сборка ────────────────────────────────────────────────────────────────
 
 for s in (+1, -1):
@@ -334,6 +479,8 @@ for s in (+1, -1):
             (f'A-bolt (root rib) {tag}', f'A-bolt {tag}', 'Болт A в передней части корневой нервюры: передаёт подъёмную силу', 'AMM 57-10 2.C, рис. 3'),
             (f'B-bolt (root rib) {tag}', f'B-bolt {tag}', 'Болт B в задней части корневой нервюры: передаёт подъёмную силу', 'AMM 57-10 2.C, рис. 3')):
         copy_old(old, new, ru, doc)
+    main_bolt_lock(s)
+    hinges(s)
 
 ref.drop_collection(OLD)
 dup = [o.name for o in COL.all_objects if '.0' in o.name[-4:]]

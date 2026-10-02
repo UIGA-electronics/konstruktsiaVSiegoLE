@@ -14,19 +14,19 @@
   {
     "file": "da40-wing-structure.glb",
     "title": "Силовой набор крыла",
-    "parts": 62,
-    "meshes": 62,
+    "parts": 106,
+    "meshes": 106,
     "clips": [],
-    "mb": 0.21,
+    "mb": 0.4,
     "built": "tools/da40/wing.py"
   },
   {
     "file": "da40-fuel.glb",
     "title": "Топливная система",
-    "parts": 109,
-    "meshes": 109,
+    "parts": 112,
+    "meshes": 112,
     "clips": [],
-    "mb": 0.77,
+    "mb": 0.78,
     "built": "tools/da40/fuel.py"
   },
   {
@@ -64,6 +64,15 @@
     "clips": [],
     "mb": 0.16,
     "built": "tools/da40/brakes.py"
+  },
+  {
+    "file": "da40-gear.glb",
+    "title": "Шасси: узлы крепления",
+    "parts": 18,
+    "meshes": 18,
+    "clips": [],
+    "mb": 0.09,
+    "built": "tools/da40/gear.py"
   },
   {
     "file": "da40-air.glb",

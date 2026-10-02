@@ -61,10 +61,9 @@ PEDALS = {('pilot', 'L'): 0.315, ('pilot', 'R'): 0.200, ('copilot', 'L'): -0.205
 # (у MSFS площадка — y −0,92…−0,96). Из кабины его закрывает сама педаль.
 MC_BOTTOM = (-1.035, -0.088)               # нижний шарнир цилиндра (y, z)
 MC_TOP = (-0.978, 0.030)                    # верхний шарнир на тормозной площадке педали
-RES_Y, RES_Z = -1.25, 0.17                  # бачки — в кармане между передней стенкой ниши для ног и противопожарной перегородкой
 VALVE = V((0.18, -0.325, -0.170))           # на нижней полке пультовой переборки, со стороны пилота (рис. 8)
 PB_HANDLE = V((0.015, -0.68, 0.22))         # рычаг PARKING BRAKE в кабине (MSFS LANDING_GEAR_Switch_ParkingBrake)
-SPRING_LINE = [V((0.85, 0.323, -0.196)), V((1.041, 0.317, -0.33)), V((1.166, 0.313, -0.416)),
+SPRING_LINE = [V((0.85, 0.33, -0.182)), V((1.041, 0.317, -0.33)), V((1.166, 0.313, -0.416)),
                V((1.239, 0.311, -0.469)), V((1.327, 0.31, -0.528)), V((1.371, 0.306, -0.562)), V((1.39, 0.33, -0.60))]
 SIDE_RU = {'L': 'левого', 'R': 'правого'}
 WHO_RU = {'pilot': 'пилота', 'copilot': 'второго пилота'}
@@ -113,23 +112,29 @@ def master_cylinder(who, side):
 
 
 def reservoir(side, inlet):
-    # за передней стенкой ниши для ног, перед педалями второго пилота: из кабины не виден
+    # AMM 32-40 2.C, рис. 3: бачок крепится к главному цилиндру на педали второго пилота —
+    # сбоку у верха цилиндра; оба бачка смещены вправо (к борту), потому что слева от
+    # цилиндра левой педали проходит воздуховод обогрева ног
     x = PEDALS[('copilot', side)]
-    c = V((x, RES_Y, RES_Z))
-    p = P(f'Brake fluid reservoir {side}', f'Бачок тормозной жидкости {SIDE_RU[side]} системы за передней стенкой ниши для ног второго пилота: уровень между 12 и 25 мм от верха',
+    bot, top = V((x, *MC_BOTTOM)), V((x, *MC_TOP))
+    ax = (top - bot).normalized()
+    lat = V((-0.030 if side == 'L' else -0.025, 0, 0))
+    c = bot + ax * 0.118 + lat
+    p = P(f'Brake fluid reservoir {side}', f'Бачок тормозной жидкости {SIDE_RU[side]} системы на главном цилиндре педали второго пилота: уровень между 12 и 25 мм от верха',
           'res', 'AMM 32-40 2.C, рис. 2–3')
-    cyl(p, c - V((0, 0, 0.035)), c + V((0, 0, 0.035)), 0.016, 0, segs=24)
-    cyl(p, c + V((0, 0, 0.035)), c + V((0, 0, 0.041)), 0.012, p.m(M['black']), segs=20)
-    hexa(p, c + V((0, 0, 0.041)), c + V((0, 0, 0.046)), 0.01, p.m(M['black']))
+    cyl(p, c - V((0, 0, 0.024)), c + V((0, 0, 0.024)), 0.012, 0, segs=24)
+    cyl(p, c + V((0, 0, 0.024)), c + V((0, 0, 0.029)), 0.009, p.m(M['black']), segs=20)
+    hexa(p, c + V((0, 0, 0.029)), c + V((0, 0, 0.033)), 0.008, p.m(M['black']))
+    mid = bot + ax * 0.11
+    box(p, (c + mid) / 2 - V((0, 0, 0.006)), (abs(lat.x) + 0.004, 0.012, 0.010), Matrix.Identity(3), p.m(M['black']))   # хомут на цилиндре
     p.done()
     f = P(f'Brake fluid in reservoir {side}', 'Тормозная жидкость в бачке', 'fluid', 'AMM 32-40')
-    cyl(f, c - V((0, 0, 0.033)), c + V((0, 0, 0.012)), 0.0145, 0, segs=24)
+    cyl(f, c - V((0, 0, 0.022)), c + V((0, 0, 0.008)), 0.0108, 0, segs=24)
     f.done()
-    a = c - V((0, 0, 0.041))
-    pts = route(a, (0, 0, -1), inlet, (0, 1, 0), 0.0035, (-0.45, -1.33, -0.23), (0.10, -0.70, 0.25),
-                relax=[(a, 0.04), (inlet, 0.035)])
-    path = hose(f'Reservoir {side} to co-pilot master cylinder', 'Питание цилиндра второго пилота из бачка за передней стенкой ниши', pts, 0.015, r=0.0035)
-    CHECKS.append((f'Reservoir {side} to co-pilot master cylinder', path, 0.0035))
+    a = c - V((0, 0, 0.026))
+    pts = [a, a - V((0, 0, 0.012)), V((inlet.x + lat.x * 0.6, inlet.y - 0.018, inlet.z - 0.004)), inlet - V((0, 0.008, 0)), inlet]
+    path = hose(f'Reservoir {side} to co-pilot master cylinder', 'Питание цилиндра второго пилота из бачка на этом же цилиндре', pts, 0.008, r=0.003)
+    CHECKS.append((f'Reservoir {side} to co-pilot master cylinder', path, 0.003))
     RT.set_extra(ref._bvh([o for o in COL.all_objects if o.type == 'MESH']))
 
 
@@ -216,8 +221,8 @@ def build():
         s = 1 if side == 'L' else -1
         v_out, dvo = ports[(side, 'out')]
         line = [V((s * q.x, q.y, q.z)) for q in SPRING_LINE]
-        exit_ = V((s * 0.78, 0.323, -0.19))
-        lo, hi = (-0.80, -0.35, -0.23), (0.80, 0.36, 0.0)
+        exit_ = V((s * 0.80, 0.33, -0.168))           # над рессорой у уплотнительной панели (gear.py)
+        lo, hi = (-0.82, -0.35, -0.23), (0.82, 0.36, 0.0)
         inside = route(v_out, dvo, exit_, (s, 0, 0), 0.0045, lo, hi)
         pts = inside + line
         L_in = lib.path_len(inside)

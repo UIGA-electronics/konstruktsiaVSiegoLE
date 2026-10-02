@@ -37,7 +37,7 @@ from mathutils import Matrix, Vector as V  # noqa: E402
 import lib  # noqa: E402
 import ref  # noqa: E402
 import cabin  # noqa: E402
-from lib import Part, basis, box, cyl, fillet, hexa, ring_tube, sweep  # noqa: E402
+from lib import Part, basis, box, cyl, fillet, hexa, ring_tube, screw, sweep  # noqa: E402
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else '/tmp/da40-electrical-raw.glb'
 
@@ -80,8 +80,9 @@ ECU_RELAY = V((0.0, -0.848, 0.316))            # на полке приборн�
 EECU = (V((-0.35, -1.18, 0.15)), V((-0.09, -1.13, 0.33)))
 FUSE100 = V((0.20, -1.245, 0.08))               # предохранитель 100 А и датчик тока — моторный отсек, слева на перегородке
 GROMMET = {1: V((0.20, -1.195, -0.05)), -1: V((-0.16, -1.195, -0.07))}   # проходы жгутов сквозь перегородку
+STARTER_GROMMET = V((0.252, -1.195, -0.018))      # отдельный проход кабеля стартера (стартер слева, AMM 80-00)
 ALT_TERM = V((0.165, -1.507, -0.005))           # клемма B+ генератора (powerplant.py: ALT)
-STARTER_TERM = V((-0.210, -1.635, 0.262))       # клемма тягового реле стартера
+STARTER_TERM = V((0.212, -1.687, 0.310))        # клемма тягового реле стартера (powerplant.py: STARTER, слева спереди)
 ENGINE_HARNESS_END = V((-0.125, -1.36, 0.404))  # жгут двигателя: снизу в разъём за головкой справа (powerplant.HARNESS_END)
 CB_BACK = V((-0.385, -0.735, 0.455))            # за панелью автоматов защиты
 CB_PANEL = (V((-0.47, -0.70, 0.373)), V((-0.30, -0.70, 0.544)))
@@ -211,9 +212,8 @@ def regulator_and_relays():
         cyl(p, q, q + V((0, 0.03, 0)), 0.018, p.m(M['conn']), segs=20)
         conns.append(q + V((0, 0.03, 0)))
     p.done()
-    for s in (1, -1):
-        g = GROMMET[s]
-        p = P(f'Firewall grommet (cables) {"LH" if s > 0 else "RH"}', 'Огнестойкий проход кабелей сквозь противопожарную перегородку', 'steel', 'AMM 24-00, 71-00')
+    for tag, g in (('LH', GROMMET[1]), ('RH', GROMMET[-1]), ('starter cable', STARTER_GROMMET)):
+        p = P(f'Firewall grommet ({"cables" if len(tag) == 2 else tag}){" " + tag if len(tag) == 2 else ""}', 'Огнестойкий проход кабелей сквозь противопожарную перегородку', 'steel', 'AMM 24-00, 71-00')
         cyl(p, g - V((0, 0.02, 0)), g + V((0, 0.02, 0)), 0.018, 0, segs=20)
         ring_tube(p, g + V((0, 0.012, 0)), V((0, 1, 0)), 0.026, 0.014, 0.004, 0, segs=20)
         p.done()
@@ -246,7 +246,7 @@ def build():
     cable('External power cable to external power relay', 'Кабель от разъёма наземного питания к реле внешнего питания', pts, 0.005, 'power', 'AMM 24-40')
     # к двигателю: стартер
     fwd = ((-0.50, -1.19, -0.27), (0.50, 2.40, 0.70))
-    g = GROMMET[-1]
+    g = STARTER_GROMMET
     pts = route(ports[2], (0, 1, 0), g + V((0, 0.03, 0)), (0, -1, 0), 0.007, *fwd, step=0.02, relax=[(ports[2], 0.03)])
     eng = ((-0.45, -1.80, -0.25), (0.45, -1.20, 0.60))
     pts2 = route(g - V((0, 0.03, 0)), (0, -1, 0), STARTER_TERM, (0, -1, 0), 0.007, *eng, step=0.012, hidden=False,
@@ -309,6 +309,18 @@ def build():
         pts2 = wing_run(s, root, nav)
         cable(f'Wing lighting harness {tag}', f'Жгут огней {"левого" if s > 0 else "правого"} крыла: за доской — носок центроплана — носок крыла — АНО и строб на законцовке',
               pts + pts2[1:], 0.005, 'harness', 'AMM 33-40, 24-60')
+        # AMM 33-00: блок питания строба в каждой законцовке (без OÄM 40-369), у огня
+        a, b = pts2[-2], pts2[-1]
+        c = a + (b - a) * 0.55 + V((0, 0.035, -0.006))
+        p = P(f'Strobe power unit {tag}', f'Блок питания проблескового огня в {"левой" if s > 0 else "правой"} законцовке: от него — высоковольтный провод к лампе-вспышке',
+              'black', 'AMM 33-00 2, 33-40')
+        d = (b - a).normalized()
+        box(p, c, (0.032, 0.085, 0.024), lib.basis(V((0, 0, 1)), up=d), 0, bevel=0.003)
+        for k in (-1, 1):
+            screw(p, c + d * (k * 0.036) + V((0, 0, 0.012)), V((0, 0, 1)), 0.004, p.m(M['steel']))
+        p.done()
+        cable(f'Strobe power unit lead {tag}', 'Провод от блока питания к лампе-вспышке в огне законцовки',
+              [c + d * 0.044, c + d * 0.06 + V((0, -0.01, 0)), b - V((0, 0.012, 0))], 0.0025, 'thin', 'AMM 33-40', lugs=False, bend=0.008)
         if s > 0:
             for key, ru in (('LDG', 'посадочной фары'), ('TAXI', 'рулёжной фары')):
                 q = LIGHTS[key] + V((0, 0.05, 0))
