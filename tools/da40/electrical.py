@@ -378,7 +378,10 @@ def wing_run(s, root, nav):
         lo, hi = R.wing_section(s * x, -0.005)
         if lo is None or hi is None:
             continue
-        pts.append(V((s * x, -0.005, (lo + hi) / 2 + 0.01)))
+        z = (lo + hi) / 2 + 0.01
+        if abs(x - 1.0) < 1e-6:
+            z = max(z, -0.03)             # над передним главным болтом крыла (x 1,02–1,07, верх z −0,045)
+        pts.append(V((s * x, -0.005, z)))
     lo, hi = R.wing_section(s * 5.45, 0.25)
     pts += [V((s * 5.45, 0.25, (lo + hi) / 2)), nav - V((s * 0.04, 0, 0))]
     return pts
