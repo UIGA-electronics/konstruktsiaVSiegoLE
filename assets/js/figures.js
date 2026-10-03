@@ -2377,6 +2377,28 @@ var Figures = (function () {
          материал подходит под shellKeep: в модели MSFS «шасси» (Gear.003)
          покрашены и воздухозаборники капота, днище, детали моторного отсека. */
       var dropRe = opts.shellDrop ? new RegExp(opts.shellDrop) : null;
+      /* opts.shellKeepWith — оставленное из основы показывается без обшивки
+         только вместе со своим слоем: винт — с двигателем, колёса и стойки —
+         с узлами шасси. Иначе при выключенных слоях они висят в пустоте.
+         [{ match: 'по материалу', with: ['models/…glb', …] }] */
+      var keepWith = (opts.shellKeepWith || []).map(function (r) {
+        return { re: new RegExp(r.match, 'i'), srcs: r.with || [] };
+      });
+      function keptShown(o) {
+        if (!keepWith.length || !o.__file || o.__file.role !== 'base') return true;
+        var km = Array.isArray(o.material) ? o.material[0] : o.material;
+        var mn = (km && (km.__baseName || km.name)) || '';
+        for (var i = 0; i < keepWith.length; i++) {
+          if (!keepWith[i].re.test(mn)) continue;
+          return keepWith[i].srcs.some(function (s) {
+            /* соседний слой, показанный частично (моторама из двигателя), не в счёт */
+            return files.some(function (f) {
+              return f.src === s && f.on && (f.role !== 'extra' || !!f.scene) && !(f.role === 'context' && f.match);
+            });
+          });
+        }
+        return true;
+      }
       function isShellMesh(o) {
         if (o.__shell != null) return o.__shell;
         if (keepRe && o.__file && o.__file.role === 'base') {
@@ -2563,6 +2585,11 @@ var Figures = (function () {
             o.material.depthWrite = false;
           }
         });
+        if (keepWith.length) {
+          parts.forEach(function (o) {
+            if (o.__file && o.__file.role === 'base') o.visible = lv.o > 0 || keptShown(o);
+          });
+        }
         reshadow();
       }
       function setLevel(n) {
@@ -3084,7 +3111,7 @@ var Figures = (function () {
         btn.setAttribute('aria-pressed', f.on ? 'true' : 'false');
         if (f.scene) {
           f.scene.visible = f.on;
-          reshadow();
+          applyShell();
           render();
           return;
         }

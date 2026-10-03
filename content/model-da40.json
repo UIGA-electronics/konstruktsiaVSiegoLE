@@ -5,8 +5,8 @@
   "lead": "Общие сведения о самолёте: основные данные, конструкция планера и состав систем.",
   "source": "РЛЭ DA 40 NG (AFM 6.01.15-E, ред. 4); руководство по ТО (AMM 6.02.15, ред. 3)",
   "next": {
-    "id": "da40-controls",
-    "title": "Управление"
+    "id": "da40-fuselage",
+    "title": "Фюзеляж и оперение"
   },
   "blocks": [
     {
@@ -30,6 +30,21 @@
         "scene": "showroom",
         "groundY": 0.012,
         "shellKeep": "^gear|propel|tundra|beringer|hub cap",
+        "shellKeepWith": [
+          {
+            "match": "propel",
+            "with": [
+              "models/da40/da40-engine.glb"
+            ]
+          },
+          {
+            "match": "gear|tundra|beringer|hub cap",
+            "with": [
+              "models/da40/da40-gear.glb",
+              "models/da40/da40-brakes.glb"
+            ]
+          }
+        ],
         "shellMaterials": [
           "Fuselage",
           "Fuselage2",
@@ -72,6 +87,14 @@
         ],
         "sections": [
           {
+            "title": "Фюзеляж и оперение",
+            "href": "#da40-fuselage"
+          },
+          {
+            "title": "Кабина",
+            "href": "#da40-cabin"
+          },
+          {
             "title": "Управление",
             "href": "#da40-controls"
           },
@@ -113,7 +136,7 @@
           0.4,
           0.82
         ],
-        "shellDrop": "^(Cube0(28|32|34|36|38|40|51|99)|Cube100|Cylinder0(17|18|23)|Cylinder173|Plane0(11|17|18|22|25|26)|BezierCurve)$"
+        "shellDrop": "^(Cube0(28|32|34|36|38|40|51|99)|Cube100|Cylinder0(17|18|23)|Cylinder173|Plane0(11|17|18|22|25|26)|BezierCurve|Prop_Cone001)$"
       }
     },
     {
