@@ -14,19 +14,19 @@
   {
     "file": "da40-wing-structure.glb",
     "title": "Силовой набор крыла",
-    "parts": 106,
-    "meshes": 106,
+    "parts": 108,
+    "meshes": 108,
     "clips": [],
-    "mb": 0.4,
+    "mb": 0.38,
     "built": "tools/da40/wing.py"
   },
   {
     "file": "da40-structure.glb",
     "title": "Силовой набор фюзеляжа и оперения",
-    "parts": 61,
-    "meshes": 61,
+    "parts": 65,
+    "meshes": 65,
     "clips": [],
-    "mb": 0.23,
+    "mb": 0.24,
     "built": "tools/da40/structure.py"
   },
   {
@@ -140,10 +140,10 @@
   {
     "file": "da40-oil.glb",
     "title": "Масляная система",
-    "parts": 8,
-    "meshes": 8,
+    "parts": 11,
+    "meshes": 11,
     "clips": [],
-    "mb": 0.05,
+    "mb": 0.07,
     "built": "tools/da40/powerplant.py"
   },
   {
@@ -169,10 +169,10 @@
   {
     "file": "da40-engine.glb",
     "title": "Двигатель AE300",
-    "parts": 40,
-    "meshes": 40,
+    "parts": 41,
+    "meshes": 41,
     "clips": [],
-    "mb": 0.26,
+    "mb": 0.28,
     "built": "tools/da40/powerplant.py"
   },
   {

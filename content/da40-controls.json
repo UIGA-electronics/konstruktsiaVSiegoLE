@@ -129,7 +129,7 @@
           {
             "src": "models/da40/da40-structure.glb",
             "title": "Набор фюзеляжа и оперения",
-            "match": "baggage|ring frame|vertical stabilizer|horizontal stabilizer|elevator|rudder|bellcrank mounting|roll bar",
+            "match": "baggage|ring frame|vertical stabilizer|horizontal stabilizer|elevator|rudder|bellcrank mounting|roll bar|trim actuator",
             "opacity": 0.5
           }
         ]
