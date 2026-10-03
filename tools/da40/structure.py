@@ -208,8 +208,19 @@ def firewall():
 
 
 HAT_X = (-0.078, 0.154)       # стенки снаружи опорных пластин подшипников носовой стойки (gear.py)
-HAT_TOP = -0.085
 HAT_Y = (-1.17, 0.012)
+FLOOR = 'Plane.378'           # пол кабины в модели MSFS: z −0,094 у перегородки … −0,127 у переднего главного шпангоута
+_floor_bvh = None
+
+
+def hat_top(y):
+    """Верх «шляпы» — на 3 мм ниже пола кабины (пол ложится на неё сверху)."""
+    global _floor_bvh
+    if _floor_bvh is None:
+        _floor_bvh = ref._bvh([bpy.data.objects[FLOOR]])
+    y = max(-1.10, min(1.10, y))                     # пол кончается у y ±1,11
+    h = _floor_bvh.ray_cast(V((0.04, y, 0.5)), V((0, 0, -1)), 2.0)[0]
+    return h.z - 0.003
 
 
 def top_hat():
@@ -223,18 +234,19 @@ def top_hat():
         for y in ys:
             zb = bottom_z(xw, y) + T_SH
             zf = bottom_z(xw + s * 0.03, y) + T_SH
-            wall.append([V((xw, y, zb)), V((xw + s * t, y, zb)), V((xw + s * t, y, HAT_TOP)), V((xw, y, HAT_TOP))])
+            zt = hat_top(y) - t
+            wall.append([V((xw, y, zb)), V((xw + s * t, y, zb)), V((xw + s * t, y, zt)), V((xw, y, zt))])
             flange.append([V((xw, y, zb)), V((xw + s * 0.03, y, zf)), V((xw + s * 0.03, y, zf + t)), V((xw, y, zb + t))])
         loft(p, wall, 0, smooth=False)
         loft(p, flange, 0, smooth=False)
-    cap = [[V((HAT_X[0], y, HAT_TOP)), V((HAT_X[1] + 0.005, y, HAT_TOP)), V((HAT_X[1] + 0.005, y, HAT_TOP + t)),
-            V((HAT_X[0] - 0.005, y, HAT_TOP + t))] for y in ys]
+    cap = [[V((HAT_X[0] - 0.005, y, hat_top(y) - t)), V((HAT_X[1] + 0.005, y, hat_top(y) - t)), V((HAT_X[1] + 0.005, y, hat_top(y))),
+            V((HAT_X[0] - 0.005, y, hat_top(y)))] for y in ys]
     loft(p, cap, 0, smooth=False)
     p.done()
     q = P('Top hat profile nose gear inserts', 'Монолитные вставки в стенках «шляпы» под опорные пластины подшипников носовой стойки',
           'insert', 'AMM 53-10 2.C, 32-20')
     for xw, s in ((HAT_X[0], -1), (HAT_X[1], 1)):
-        box(q, V((xw + s * 0.008, -0.970, -0.130)), (0.006, 0.09, 0.085), Matrix.Identity(3), 0, bevel=0.002)
+        box(q, V((xw + s * 0.008, -0.970, -0.134)), (0.006, 0.09, 0.060), Matrix.Identity(3), 0, bevel=0.002)   # ниже пола
     q.done()
 
 

@@ -3,13 +3,13 @@
     "file": "da40-controls.glb",
     "title": "Управление",
     "parts": 188,
-    "meshes": 113,
+    "meshes": 118,
     "clips": [
       "Закрылки UP → LDG",
       "Элероны влево → вправо",
       "Руль высоты"
     ],
-    "mb": 0.61
+    "mb": 0.71
   },
   {
     "file": "da40-wing-structure.glb",
@@ -26,7 +26,7 @@
     "parts": 65,
     "meshes": 65,
     "clips": [],
-    "mb": 0.24,
+    "mb": 0.26,
     "built": "tools/da40/structure.py"
   },
   {
@@ -98,7 +98,7 @@
     "parts": 21,
     "meshes": 21,
     "clips": [],
-    "mb": 0.16,
+    "mb": 0.17,
     "built": "tools/da40/brakes.py"
   },
   {
@@ -116,7 +116,7 @@
     "parts": 38,
     "meshes": 38,
     "clips": [],
-    "mb": 0.53,
+    "mb": 0.57,
     "built": "tools/da40/air.py"
   },
   {
@@ -187,13 +187,13 @@
   {
     "file": "da40-cabin.glb",
     "title": "Кабина",
-    "parts": 653,
-    "meshes": 518,
+    "parts": 629,
+    "meshes": 494,
     "clips": [
       "Закрылки UP → LDG",
       "Элероны влево → вправо",
       "Руль высоты"
     ],
-    "mb": 11.7
+    "mb": 11.63
   }
 ]
