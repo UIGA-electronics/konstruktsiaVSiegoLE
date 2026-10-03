@@ -66,6 +66,15 @@
     "built": "tools/da40/electrical.py"
   },
   {
+    "file": "da40-bonding.glb",
+    "title": "Молниезащита и металлизация",
+    "parts": 10,
+    "meshes": 10,
+    "clips": [],
+    "mb": 0.09,
+    "built": "tools/da40/bonding.py"
+  },
+  {
     "file": "da40-instruments.glb",
     "title": "Приборное оборудование",
     "parts": 38,
@@ -140,10 +149,10 @@
   {
     "file": "da40-oil.glb",
     "title": "Масляная система",
-    "parts": 11,
-    "meshes": 11,
+    "parts": 14,
+    "meshes": 14,
     "clips": [],
-    "mb": 0.07,
+    "mb": 0.11,
     "built": "tools/da40/powerplant.py"
   },
   {
@@ -169,10 +178,10 @@
   {
     "file": "da40-engine.glb",
     "title": "Двигатель AE300",
-    "parts": 41,
-    "meshes": 41,
+    "parts": 42,
+    "meshes": 42,
     "clips": [],
-    "mb": 0.28,
+    "mb": 0.31,
     "built": "tools/da40/powerplant.py"
   },
   {
