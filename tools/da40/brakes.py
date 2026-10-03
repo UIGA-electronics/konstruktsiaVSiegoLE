@@ -3,7 +3,7 @@
     python3 tools/da40/brakes.py [out.glb]
 
 AMM 6.02.15 Rev. 3, 32-40: рис. 2 (схема), 3 (цилиндры и бачки), 5 (тормоз
-колеса при ОÄМ 40-334), 8 (клапан стояночного тормоза); AFM 7.5.
+колеса при OÄM 40-334), 8 (клапан стояночного тормоза); AFM 7.5.
 Две независимые системы — левая и правая. Цилиндры второго пилота (с бачками)
 и пилота стоят последовательно: выход второго пилота — на вход пилота, выход
 пилота — в клапан стояночного тормоза на нижней полке пультовой переборки,
@@ -13,10 +13,13 @@ AMM 6.02.15 Rev. 3, 32-40: рис. 2 (схема), 3 (цилиндры и бач
 Пультовая переборка (control bulkhead) в исходнике не смоделирована; её
 место — по деталям управления, которые на ней стоят: передняя качалка
 элеронов, коромысло и ролики руля направления (y ≈ −0,31…−0,37, низ ≈ −0,22).
-Цилиндр висит между нижним шарниром у пола и верхним на педали (рис. 3),
-перед педалью: из кабины его закрывает тормозная площадка.
-Шланги и трос прокладывает route.Router (cabin.setup): под полом и в тоннеле,
-не задевая соседние системы.
+Цилиндр стоит на педальном узле под тормозной площадкой (AMM 27-20 рис. 2):
+нижний шарнир — на оси в каретке узла, верхний — в вилке площадки; цилиндры и
+шланги MSFS на этом месте вырезаны (replaced.json). От штуцеров шланги идут
+короткими выводами над полом вперёд, сквозь переднюю стенку ниши для ног;
+дальше их прокладывает route.Router (cabin.setup): за стенкой, под полом и в
+тоннеле, не задевая соседние системы и педальные узлы MSFS. Собирается после
+вентиляции (air.py пропускает шланги тормозов).
 """
 import json
 import math
@@ -40,6 +43,24 @@ ref.drop_collection('Brakes (hydraulic)')
 COL = lib.collection('DA40 Brakes (AMM 32-40)')
 TRIM, SYS, RT = cabin.setup(R, 'brakes')
 
+
+def pedal_parts():
+    """Педальные узлы салона MSFS (салазки, каретки, оси, педали): шланги обходят их, а не проходят
+    насквозь, как сквозь мягкую отделку."""
+    out = []
+    for o in bpy.data.collections['DA40 Interior'].all_objects:
+        if o.type != 'MESH' or o.name in ref.REPLACED:
+            continue
+        ws = [o.matrix_world @ V(c) for c in o.bound_box]
+        lo = V([min(w[i] for w in ws) for i in range(3)])
+        hi = V([max(w[i] for w in ws) for i in range(3)])
+        if 0.08 <= abs(lo.x + hi.x) / 2 <= 0.48 and hi.x - lo.x < 0.4 and lo.y >= -1.12 and hi.y <= -0.75 and lo.z >= -0.14 and hi.z <= 0.30:
+            out.append(o)
+    return out
+
+
+RT.solids = list(RT.solids) + [ref._bvh(pedal_parts())]
+
 M = dict(
     mc=lib.mat('DA40 brake master cylinder (black anodised)', (0.07, 0.07, 0.08), 0.6, 0.4, ru='алюминиевый сплав, чёрное анодирование'),
     alu=lib.mat('DA40 aluminium', (0.80, 0.81, 0.83), 1.0, 0.32, ru='алюминиевый сплав'),
@@ -54,13 +75,15 @@ M = dict(
     red=lib.mat('DA40 red marking', (0.78, 0.06, 0.05), 0.0, 0.4, ru='красная краска'),
 )
 
-# педали (MSFS HANDLING_RudderPedals): у пилота левая педаль снаружи, у второго пилота — внутри
-PEDALS = {('pilot', 'L'): 0.315, ('pilot', 'R'): 0.200, ('copilot', 'L'): -0.205, ('copilot', 'R'): -0.315}
-# Цилиндр стоит перед педалью, между ней и передней стенкой ниши: нижний шарнир
-# на кронштейне пола, верхний — на передней стороне тормозной площадки педали
-# (у MSFS площадка — y −0,92…−0,96). Из кабины его закрывает сама педаль.
-MC_BOTTOM = (-1.035, -0.088)               # нижний шарнир цилиндра (y, z)
-MC_TOP = (-0.978, 0.030)                    # верхний шарнир на тормозной площадке педали
+# педали (MSFS HANDLING_RudderPedals): у пилота левая педаль снаружи, у второго пилота — внутри;
+# x — по вилке тормозной площадки педали MSFS
+PEDALS = {('pilot', 'L'): 0.305, ('pilot', 'R'): 0.2115, ('copilot', 'L'): -0.2105, ('copilot', 'R'): -0.3045}
+# AMM 27-20 рис. 2: цилиндр стоит на педальном узле под тормозной площадкой, почти вертикально:
+# нижний шарнир — на оси в каретке узла, верхний — в вилке под площадкой (оси узла MSFS:
+# нижняя y −0,9525 z −0,081, вилка y −0,9375 z 0,1115). Цилиндры MSFS на этом месте
+# вырезаны (replaced.json) — иначе их было бы по два на педаль.
+MC_BOTTOM = (-0.9525, -0.081)              # нижний шарнир цилиндра (y, z)
+MC_TOP = (-0.9375, 0.1115)                  # верхний шарнир в вилке тормозной площадки
 VALVE = V((0.18, -0.325, -0.170))           # на нижней полке пультовой переборки, со стороны пилота (рис. 8)
 PB_HANDLE = V((0.015, -0.68, 0.22))         # рычаг PARKING BRAKE в кабине (MSFS LANDING_GEAR_Switch_ParkingBrake)
 SPRING_LINE = [V((0.85, 0.33, -0.182)), V((1.041, 0.317, -0.33)), V((1.166, 0.313, -0.416)),
@@ -86,13 +109,18 @@ def hose(name, ru, pts, bend=0.03, clamps=(), r=0.0045, doc='AMM 32-40 рис. 2
     return path
 
 
+ASSY_X = {'pilot': 0.2575, 'copilot': -0.258}   # середина педального узла MSFS (верхняя салазка)
+NICHE_Y = -1.135                               # за передней стенкой ниши для ног (стенка — y −1,10…−1,12)
+
+
 def master_cylinder(who, side):
     x = PEDALS[(who, side)]
+    off = 1 if x > ASSY_X[who] else -1         # штуцеры и выводы шлангов — в сторону от середины узла
     bot, top = V((x, *MC_BOTTOM)), V((x, *MC_TOP))
     ax = (top - bot).normalized()
     a, b = bot + ax * 0.012, bot + ax * 0.100          # корпус 88 мм, остальное — шток
     p = P(f'Brake master cylinder {who} {side}',
-          f'Главный тормозной цилиндр {SIDE_RU[side]} тормоза перед педалью {WHO_RU[who]}: давит жидкость, когда нажимают на верх педали',
+          f'Главный тормозной цилиндр {SIDE_RU[side]} тормоза на педальном узле {WHO_RU[who]}, под тормозной площадкой педали: давит жидкость, когда нажимают на верх педали',
           'mc', 'AMM 32-40 2.C, рис. 3')
     cyl(p, a, b, 0.0135, 0, segs=20)
     for q in (a, b):
@@ -102,38 +130,39 @@ def master_cylinder(who, side):
     for q in (bot, top):
         cyl(p, q + V((0.009, 0, 0)), q - V((0.009, 0, 0)), 0.0055, p.m(M['steel']), segs=12)  # шарниры
         box(p, q, (0.004, 0.016, 0.016), lib.basis(ax), p.m(M['steel']))
-    # штуцеры: вход сверху, выход снизу, оба вперёд — шланги идут у передней стенки ниши
-    inlet = b - ax * 0.018 - V((0, 0.016, 0))
-    outlet = a + ax * 0.02 - V((0, 0.016, 0))
+    # штуцеры: вход сверху, выход снизу, оба вперёд, сдвинуты от середины узла — шланги идут
+    # над полом вперёд и сквозь переднюю стенку ниши
+    inlet = b - ax * 0.018 + V((off * 0.0075, -0.016, 0))
+    outlet = a + ax * 0.02 + V((off * 0.0075, -0.016, 0))
     for q in (inlet, outlet):
         cyl(p, q + V((0, 0.004, 0)), q - V((0, 0.006, 0)), 0.005, p.m(M['black']), segs=10)
     p.done()
-    return inlet - V((0, 0.006, 0)), outlet - V((0, 0.006, 0))
+    tin, tout = inlet - V((0, 0.006, 0)), outlet - V((0, 0.006, 0))
+    xi, xo = x + off * 0.024, x + off * 0.0075
+    lead_in = [tin, tin - V((0, 0.018, 0)), V((xi, tin.y - 0.045, -0.062)), V((xi, NICHE_Y, -0.062))]
+    lead_out = [tout, tout - V((0, 0.018, 0)), V((xo, tout.y - 0.055, -0.082)), V((xo, NICHE_Y, -0.082))]
+    return {'in': tin, 'out': tout, 'lead_in': lead_in, 'lead_out': lead_out, 'off': off}
 
 
-def reservoir(side, inlet):
-    # AMM 32-40 2.C, рис. 3: бачок крепится к главному цилиндру на педали второго пилота —
-    # сбоку у верха цилиндра; оба бачка смещены вправо (к борту), потому что слева от
-    # цилиндра левой педали проходит воздуховод обогрева ног
+def reservoir(side, end):
+    # AMM 32-40 2.C, рис. 3: бачок крепится к главному цилиндру на педали второго пилота; здесь — перед
+    # верхом цилиндра, над входным штуцером: под тормозной площадкой места нет
     x = PEDALS[('copilot', side)]
-    bot, top = V((x, *MC_BOTTOM)), V((x, *MC_TOP))
-    ax = (top - bot).normalized()
-    lat = V((-0.030 if side == 'L' else -0.025, 0, 0))
-    c = bot + ax * 0.118 + lat
+    inlet = end['in']
+    c = V((x + end['off'] * 0.006, inlet.y - 0.026, 0.047))
     p = P(f'Brake fluid reservoir {side}', f'Бачок тормозной жидкости {SIDE_RU[side]} системы на главном цилиндре педали второго пилота: уровень между 12 и 25 мм от верха',
           'res', 'AMM 32-40 2.C, рис. 2–3')
     cyl(p, c - V((0, 0, 0.024)), c + V((0, 0, 0.024)), 0.012, 0, segs=24)
     cyl(p, c + V((0, 0, 0.024)), c + V((0, 0, 0.029)), 0.009, p.m(M['black']), segs=20)
     hexa(p, c + V((0, 0, 0.029)), c + V((0, 0, 0.033)), 0.008, p.m(M['black']))
-    mid = bot + ax * 0.11
-    box(p, (c + mid) / 2 - V((0, 0, 0.006)), (abs(lat.x) + 0.004, 0.012, 0.010), Matrix.Identity(3), p.m(M['black']))   # хомут на цилиндре
+    box(p, V((x, (c.y + inlet.y) / 2 + 0.012, c.z + 0.012)), (0.010, abs(c.y - inlet.y) + 0.002, 0.012), Matrix.Identity(3), p.m(M['black']))   # кронштейн на цилиндре
     p.done()
     f = P(f'Brake fluid in reservoir {side}', 'Тормозная жидкость в бачке', 'fluid', 'AMM 32-40')
     cyl(f, c - V((0, 0, 0.022)), c + V((0, 0, 0.008)), 0.0108, 0, segs=24)
     f.done()
     a = c - V((0, 0, 0.026))
-    pts = [a, a - V((0, 0, 0.012)), V((inlet.x + lat.x * 0.6, inlet.y - 0.018, inlet.z - 0.004)), inlet - V((0, 0.008, 0)), inlet]
-    path = hose(f'Reservoir {side} to co-pilot master cylinder', 'Питание цилиндра второго пилота из бачка на этом же цилиндре', pts, 0.008, r=0.003)
+    pts = [a, a - V((0, 0, 0.010)), inlet - V((0, 0.012, -0.010)), inlet - V((0, 0.004, 0)), inlet]
+    path = hose(f'Reservoir {side} to co-pilot master cylinder', 'Питание цилиндра второго пилота из бачка на этом же цилиндре', pts, 0.006, r=0.003)
     CHECKS.append((f'Reservoir {side} to co-pilot master cylinder', path, 0.003))
     RT.set_extra(ref._bvh([o for o in COL.all_objects if o.type == 'MESH']))
 
@@ -197,25 +226,28 @@ def build():
         for side in 'LR':
             ends[(who, side)] = master_cylinder(who, side)
     for side in 'LR':
-        reservoir(side, ends[('copilot', side)][0])
+        reservoir(side, ends[('copilot', side)])
     ports = parking_valve()
     for side in 'LR':
-        # второй пилот → пилот: под педалями поперёк кабины
-        c_out = ends[('copilot', side)][1]
-        p_in = ends[('pilot', side)][0]
-        pts = route(c_out, (0, -1, 0), p_in, (0, 1, 0), 0.0045, (-0.45, -1.33, -0.23), (0.45, -0.60, 0.25),
-                    relax=[(c_out, 0.035), (p_in, 0.035)])
+        # второй пилот → пилот: за передней стенкой ниши поперёк кабины
+        c_lead = ends[('copilot', side)]['lead_out']
+        p_lead = ends[('pilot', side)]['lead_in']
+        mid = route(c_lead[-1], (0, -1, 0), p_lead[-1], (0, 1, 0), 0.0045, (-0.45, -1.33, -0.23), (0.45, -1.00, 0.25),
+                    relax=[(c_lead[-1], 0.03), (p_lead[-1], 0.03)])
+        pts = c_lead[:-1] + mid + list(reversed(p_lead))[1:]
         path = hose(f'Brake hose {side} co-pilot to pilot master cylinder',
                     f'Шланг {SIDE_RU[side]} системы: выход цилиндра второго пилота — вход цилиндра пилота',
-                    pts, 0.03, doc='AMM 32-40 2.C, рис. 2–3')
+                    pts, 0.02, doc='AMM 32-40 2.C, рис. 2–3')
         CHECKS.append((f'Brake hose {side} co-pilot to pilot master cylinder', path, 0.0045))
-        # пилот → клапан на пультовой переборке: под полом назад
-        p_out = ends[('pilot', side)][1]
+        RT.set_extra(ref._bvh([o for o in COL.all_objects if o.type == 'MESH']))
+        # пилот → клапан на пультовой переборке: за стенкой ниши вниз и под полом назад
+        p_lead = ends[('pilot', side)]['lead_out']
         v_in, dv = ports[(side, 'in')]
-        pts = route(p_out, (0, -1, 0), v_in, -dv, 0.0045, (-0.10, -1.15, -0.23), (0.45, -0.28, 0.0))
+        pts = p_lead[:-1] + route(p_lead[-1], (0, -1, 0), v_in, -dv, 0.0045, (-0.10, -1.20, -0.23), (0.45, -0.28, 0.0),
+                                  relax=[(p_lead[-1], 0.03)])
         path = hose(f'Brake hose {side} pilot master cylinder to parking valve',
                     f'Шланг {SIDE_RU[side]} системы: выход цилиндра пилота — клапан стояночного тормоза на пультовой переборке',
-                    pts, 0.03, doc='AMM 32-40 2.C, рис. 8')
+                    pts, 0.02, doc='AMM 32-40 2.C, рис. 8')
         CHECKS.append((f'Brake hose {side} pilot master cylinder to parking valve', path, 0.0045))
         # клапан → суппорт: под полом к выходу рессоры из фюзеляжа, дальше по задней кромке рессоры
         s = 1 if side == 'L' else -1

@@ -26,7 +26,8 @@ EYES = [V(e) for e in ((0, 0.25, 0.78), (0.28, 0.15, 0.78), (-0.28, 0.15, 0.78),
 
 
 def trim_bvh():
-    objs = [o for o in bpy.data.collections['DA40 Interior'].all_objects if o.type == 'MESH' and
+    """Отделка салона; детали MSFS, заменённые построенными (replaced.json), не мешают."""
+    objs = [o for o in bpy.data.collections['DA40 Interior'].all_objects if o.type == 'MESH' and o.name not in ref.REPLACED and
             not any(m and 'Glass' in m.name for m in o.data.materials)]
     return ref._bvh(objs)
 
