@@ -34,6 +34,21 @@
         "scene": "showroom",
         "groundY": 0.012,
         "shellKeep": "^gear|propel|tundra|beringer|hub cap",
+        "shellKeepWith": [
+          {
+            "match": "propel",
+            "with": [
+              "models/da40/da40-engine.glb"
+            ]
+          },
+          {
+            "match": "gear|tundra|beringer|hub cap",
+            "with": [
+              "models/da40/da40-gear.glb",
+              "models/da40/da40-brakes.glb"
+            ]
+          }
+        ],
         "shellMaterials": [
           "Fuselage",
           "Fuselage2",
@@ -121,7 +136,7 @@
           0,
           0.45
         ],
-        "shellDrop": "^(Cube0(28|32|34|36|38|40|51|99)|Cube100|Cylinder0(17|18|23)|Cylinder173|Plane0(11|17|18|22|25|26)|BezierCurve)$"
+        "shellDrop": "^(Cube0(28|32|34|36|38|40|51|99)|Cube100|Cylinder0(17|18|23)|Cylinder173|Plane0(11|17|18|22|25|26)|BezierCurve|Prop_Cone001)$"
       }
     },
     {

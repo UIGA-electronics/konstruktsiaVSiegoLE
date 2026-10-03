@@ -5,8 +5,8 @@
   "lead": "На DA 40 NG применены все три вида проводки: жёсткая — к элеронам, рулю высоты и закрылкам, тросовая — к рулю направления, боуденовская — к триммеру руля высоты. Привод закрылков электромеханический.",
   "source": "РЛЭ DA 40 NG (AFM 6.01.15-E, ред. 4); руководство по ТО (AMM 6.02.15, ред. 3)",
   "prev": {
-    "id": "model-da40",
-    "title": "Самолёт DA 40 NG"
+    "id": "da40-cabin",
+    "title": "Кабина: фонарь, дверь, кресла"
   },
   "next": {
     "id": "da40-wing",
@@ -30,6 +30,21 @@
         "scene": "showroom",
         "groundY": 0.012,
         "shellKeep": "^gear|propel|tundra|beringer|hub cap",
+        "shellKeepWith": [
+          {
+            "match": "propel",
+            "with": [
+              "models/da40/da40-engine.glb"
+            ]
+          },
+          {
+            "match": "gear|tundra|beringer|hub cap",
+            "with": [
+              "models/da40/da40-gear.glb",
+              "models/da40/da40-brakes.glb"
+            ]
+          }
+        ],
         "shellMaterials": [
           "Fuselage",
           "Fuselage2",

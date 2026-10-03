@@ -23,11 +23,29 @@
   {
     "file": "da40-structure.glb",
     "title": "Силовой набор фюзеляжа и оперения",
-    "parts": 57,
-    "meshes": 57,
+    "parts": 61,
+    "meshes": 61,
     "clips": [],
-    "mb": 0.2,
+    "mb": 0.23,
     "built": "tools/da40/structure.py"
+  },
+  {
+    "file": "da40-doors.glb",
+    "title": "Фонарь и задняя дверь",
+    "parts": 24,
+    "meshes": 24,
+    "clips": [],
+    "mb": 0.11,
+    "built": "tools/da40/doors.py"
+  },
+  {
+    "file": "da40-equipment.glb",
+    "title": "Ремни, энергопоглощающие элементы, крепление сидений, багажная сетка",
+    "parts": 30,
+    "meshes": 30,
+    "clips": [],
+    "mb": 0.08,
+    "built": "tools/da40/equipment.py"
   },
   {
     "file": "da40-fuel.glb",
@@ -151,10 +169,10 @@
   {
     "file": "da40-engine.glb",
     "title": "Двигатель AE300",
-    "parts": 37,
-    "meshes": 37,
+    "parts": 40,
+    "meshes": 40,
     "clips": [],
-    "mb": 0.24,
+    "mb": 0.26,
     "built": "tools/da40/powerplant.py"
   },
   {
