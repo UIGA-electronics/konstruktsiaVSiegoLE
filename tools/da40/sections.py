@@ -2,6 +2,7 @@
 обшивки. Общие для бака (fuel.py) и нервюр (wing.py), чтобы вырез нервюры
 и бак совпадали по построению, а не по подгонке."""
 import math
+import bmesh
 
 from mathutils import Vector as V
 
@@ -140,6 +141,46 @@ def plate_with_hole(p, outer, inner, axis, t, mi, mi_rim=None):
     for i in range(n):
         j = (i + 1) % n
         f = bm.faces.new((of[i], of[j], ob[j], ob[i])); f.material_index = rim; f.smooth = True
+
+
+def plate_with_holes(p, outer, holes, axis, t, mi, mi_rim=None):
+    """Плоская деталь толщиной t с любым числом вырезов: outer — контур, holes — список контуров
+    (каждый — замкнутый, в плоскости детали). Лицевые грани — триангуляция с дырами."""
+    axis = V(axis).normalized()
+    h = axis * (t / 2)
+    bm = p.bm
+    rim = mi if mi_rim is None else mi_rim
+    polys = [outer] + [hl for hl in holes if hl]
+    sides = []
+    for sgn in (-1, 1):
+        loops, edges = [], []
+        for poly in polys:
+            vs = [bm.verts.new(q + h * sgn) for q in poly]
+            edges += [bm.edges.new((vs[i], vs[(i + 1) % len(vs)])) for i in range(len(vs))]
+            loops.append(vs)
+        res = bmesh.ops.triangle_fill(bm, use_beauty=True, use_dissolve=False, edges=edges, normal=axis * sgn)
+        for f in res['geom']:
+            if isinstance(f, bmesh.types.BMFace):
+                f.material_index = mi
+                f.smooth = False
+                f.normal_update()
+                if f.normal.dot(axis * sgn) < 0:
+                    f.normal_flip()
+        sides.append(loops)
+    for k, poly in enumerate(polys):
+        a, b = sides[0][k], sides[1][k]
+        n = len(poly)
+        for i in range(n):
+            j = (i + 1) % n
+            f = bm.faces.new((a[i], a[j], b[j], b[i]))
+            f.material_index = rim
+            f.smooth = True
+            f.normal_update()
+            # стенка контура — наружу, стенка выреза — к его центру
+            c = sum(poly, V()) / n
+            out = ((a[i].co + a[j].co) / 2 - c)
+            if (f.normal.dot(out) < 0) == (k == 0):
+                f.normal_flip()
 
 
 def ellipse(c, ay, az, n, phase=-math.pi / 2):

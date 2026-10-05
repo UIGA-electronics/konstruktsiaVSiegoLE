@@ -19,7 +19,8 @@ from mathutils import Matrix, Vector as V  # noqa: E402
 import lib  # noqa: E402
 import ref  # noqa: E402
 from lib import Part, box, cyl, hexa, ring_tube, screw  # noqa: E402
-from sections import TANK_CLR, Sections, ellipse, loft, plate_with_hole, resample_closed  # noqa: E402
+from sections import TANK_CLR, Sections, ellipse, loft, plate_with_hole, plate_with_holes, resample_closed  # noqa: E402
+import stub  # noqa: E402
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else '/tmp/da40-wing-raw.glb'
 
@@ -220,13 +221,20 @@ def root_rib(s):
     yle = le_y(X) + 0.004
     yte = max(rear_web_te(X) + 0.03, 0.76)
     # передняя часть: от носка до переднего лонжерона, гнездо болта A
-    p = P(f'Root rib front part {tag}', f'Передняя часть корневой нервюры {gen} крыла: гнездо болта A (передаёт подъёмную силу на центроплан)',
-          'gfrp', 'AMM 57-10 2.C, Корнеев рис. 2.7')
+    p = P(f'Root rib front part {tag}', f'Передняя часть корневой нервюры {gen} крыла: гнездо болта A (передаёт подъёмную силу на центроплан); '
+          'во втулках сквозь неё проходят жгут крыла' + (' и шланги ПВД, сигнализатора сваливания' if s > 0 else ''),
+          'gfrp', 'AMM 57-10 2.C, 2.B(8), (9), Корнеев рис. 2.7')
     outer = S.ring(X, 0.0, n=48, rc=0.02, y0=yle, y1=yf - 0.007)
-    plate_with_hole(p, outer, None, (1, 0, 0), 0.005, 0)
+    passes = stub.passes('root', s)
+    plate_with_holes(p, outer, [stub.circle(c, r + stub.GROMMET, 16) for c, r in passes], (1, 0, 0), 0.005, 0)
     a = V((X, -0.025, -0.065))
     cyl(p, a - V((s * 0.03, 0, 0)), a + V((s * 0.02, 0, 0)), 0.018, p.m(M['insert']), segs=20)
     p.done()
+    g = P(f'Root rib grommets {tag}', f'Резиновые втулки трасс в передней части корневой нервюры {gen} крыла',
+          'rubber', 'AMM 57-10 2.B(8), (9)')
+    for c, r in passes:
+        ring_tube(g, c, V((1, 0, 0)), r + stub.GROMMET + 0.003, r + 0.0018, 0.010, 0, segs=16)
+    g.done()
     # средняя часть: люк для снятия бака, крышка на 11 шпильках
     p = P(f'Root rib middle part {tag}', f'Средняя часть корневой нервюры {gen} крыла: большой овальный люк — через него снимают бак',
           'gfrp', 'AMM 57-10 2.C, 28-10 2.A(3)')

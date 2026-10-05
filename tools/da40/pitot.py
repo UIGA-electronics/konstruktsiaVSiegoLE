@@ -27,6 +27,7 @@ import lib  # noqa: E402
 import ref  # noqa: E402
 from lib import Part, basis, box, cyl, fillet, ring_tube, screw, sphere, sweep  # noqa: E402
 import cabin  # noqa: E402
+import stub  # noqa: E402
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else '/tmp/da40-pitot-raw.glb'
 
@@ -153,8 +154,8 @@ def stall_warning():
     start = inner + aft * 0.02
     # в носке вдоль передней стенки лонжерона к корню, сквозь переднюю часть корневой нервюры, к разъёму под креслом
     joint = LH_SEAT_TRAPS + V((0.06, 0.02, 0.02))
-    wing = [start, start + aft * 0.03, V((2.36, -0.12, 0.03)), V((1.60, -0.09, -0.03)), V((1.26, -0.08, -0.06)),
-            V((1.10, -0.10, -0.09)), V((0.62, -0.12, -0.13)), joint]
+    wing = [start, start + aft * 0.03, V((2.36, -0.12, 0.03)), V((1.60, -0.10, -0.03)), V((1.30, -0.14, -0.058))] + \
+        list(reversed(stub.run('stall'))) + [V((0.62, -0.15, -0.09)), joint]
     back = HORN + V((0, -0.062, 0))
     cab = route(joint, (-1, -0.3, 0), back, (0, 1, 0), 0.005, (0.0, -1.18, -0.23), (0.56, 0.05, 0.45), relax=[(back, 0.03)])
     pts = wing + cab[1:]
@@ -209,22 +210,29 @@ def pitot():
     box(p, rl - up * 0.014, (0.05, 0.04, 0.003), Matrix.Identity(3), p.m(M['alu']))
     p.done()
     # шланги: к передней стенке лонжерона, сквозь неё в носок и вдоль к корню
-    def run(start, dz, mat, name, ru):
+    def run(start, dz, key, mat, name, ru):
+        # в носке крыла к корню; сквозь корневую, наружную и внутреннюю нервюры центроплана во втулках (stub.py)
+        r_in, r_out, r_root = stub.through(key)
         pts = [start, start + up * 0.02, V((x - 0.02, 0.10, start.z + 0.03)), V((x - 0.08, 0.02 + dz, start.z + 0.02)),
                V((x - 0.2, -0.05 + dz, start.z - 0.005)), V((3.2, -0.07 + dz, 0.05)), V((2.2, -0.10 + dz, 0.00)),
-               V((1.26, -0.09 + dz, -0.07)), V((0.62, -0.11 + dz, -0.12)), LH_SEAT_TRAPS + V((0.03, 0.04, 0.0 + dz))]
+               V((1.30, r_root.y + 0.008, r_root.z + 0.002))] + list(reversed(stub.run(key))) + [V((0.62, r_in.y + 0.005, -0.105)),
+               LH_SEAT_TRAPS + V((0.03, 0.04, 0.0 + dz))]
         return hose(name, ru, pts, 0.004, 0.05, mat, 'AMM 34-10, 57-10 2.B(9)', joints=(0.02, 0.9),
                     clamps=[(f, V((0, 1, 0))) for f in (0.2, 0.35, 0.5, 0.65)])
-    run(ports['pitot'], 0.0, 'green', 'Pitot hose (green) probe to LH seat',
+    run(ports['pitot'], 0.0, 'pitot', 'green', 'Pitot hose (green) probe to LH seat',
         'Шланг полного давления, зелёный 8 мм: ПВД — носок левого крыла — разъём под креслом пилота')
-    run(ports['static'], 0.012, 'blue', 'Probe static hose (blue) to LH seat',
+    run(ports['static'], 0.012, 'static', 'blue', 'Probe static hose (blue) to LH seat',
         'Статический шланг от ПВД (на схеме AMM — «not in use», штуцер заглушён у приборов)')
     # провода обогрева к жгуту крыла
     for mat, dz, key in (('wire_r', 0.02, '+'), ('wire_k', 0.026, '-')):
-        p = P(f'Pitot heat wire {key}', f'Провод обогрева ПВД ({key}) к жгуту крыла, разъём P2400 под креслом пилота',
+        p = P(f'Pitot heat wire {key}', f'Провод обогрева ПВД ({key}) вместе с жгутом крыла сквозь нервюры центроплана к разъёму P2400 под креслом пилота',
               mat, 'AMM 34-10, 57-10 2.B(8)')
+        oy = V((0, -0.0022 if key == '+' else 0.0022, 0))
+        ox = V((-0.006 if key == '+' else 0.006, 0, 0))
         pts = [rl + V((0, 0.015, 0)), V((x - 0.05, 0.14, rl.z + 0.01)), V((x - 0.2, -0.03, rl.z + 0.0)), V((3.2, -0.05, 0.07 + dz)),
-               V((1.26, -0.07, -0.05 + dz)), V((0.62, -0.09, -0.10 + dz)), V((0.36, -0.02, -0.12))]
+               V((1.30, -0.095, -0.045)) + oy] + [q + oy for q in reversed(stub.run('pitot_heat'))] + [V((0.60, -0.09, -0.075)) + oy,
+               V((0.52, -0.04, -0.092)) + ox, V((0.45, -0.045, -0.092)) + ox,
+               V((0.45, -0.066, -0.092)) + ox]          # к заднему торцу разъёма P2400 (electrical.py)
         sweep(p, fillet(pts, 0.05), 0.0013, 0, segs=6)
         p.done()
 

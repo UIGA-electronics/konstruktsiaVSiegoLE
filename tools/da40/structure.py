@@ -17,6 +17,7 @@ AMM 6.02.15 Rev. 3: 53-10 (рис. 1–4) — перегородка, профи
 import json
 import math
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -26,7 +27,8 @@ from mathutils import Matrix, Vector as V  # noqa: E402
 import lib  # noqa: E402
 import ref  # noqa: E402
 from lib import Part, box, cyl, hexa, ring_tube  # noqa: E402
-from sections import ellipse, loft, plate_with_hole  # noqa: E402
+from sections import ellipse, loft, plate_with_hole, plate_with_holes  # noqa: E402
+import stub  # noqa: E402
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else '/tmp/da40-structure-raw.glb'
 
@@ -44,6 +46,7 @@ M = dict(
     fw=lib.mat('DA40 firewall stainless', (0.70, 0.71, 0.72), 1.0, 0.35, ru='лист нержавеющей стали'),
     blanket=lib.mat('DA40 ceramic fire blanket', (0.90, 0.88, 0.82), 0.0, 0.95, ru='керамический огнестойкий мат'),
     bearing=lib.mat('DA40 spherical bearing (steel)', (0.45, 0.46, 0.48), 1.0, 0.3, ru='сферический подшипник'),
+    rubber=lib.mat('DA40 rubber grommet', (0.03, 0.03, 0.035), 0.0, 0.7, ru='резиновая втулка'),
 )
 
 T_SH = 0.006          # обшивка фюзеляжа (GFRP) — внутренняя поверхность чуть глубже наружной
@@ -56,6 +59,136 @@ def P(name, ru, m, doc):
 # ── Сечения по обшивке ────────────────────────────────────────────────────
 
 _last_bz = {}
+
+
+# ── Проходы трасс сквозь стенки силового набора ──────────────────────────
+# Шланги, жгуты и воздуховоды соседних слоёв проходят сквозь стенки «шляпы» и главных
+# шпангоутов центроплана — в настоящем самолёте через вырезы с резиновой окантовкой. Вырезы
+# ставятся там, где трасса пересекает плоскость стенки (по рёбрам её сетки), поэтому всегда
+# совпадают с трассами; пересекающиеся вырезы сливаются в один.
+LINE_LAYERS = ('fuel', 'brakes', 'pitot', 'air', 'electrical', 'instruments', 'radio', 'bonding')
+LINE_RE = re.compile(r'hose|cable|harness|duct|wire|coax|tube|pipe|conductor|braid|jumper|fuel (supply|return|vent)|line', re.I)
+NOT_LINE = re.compile(r'clamp|grommet|fitting|outlet|nozzle|grille|valve|connector|tee\b|trap|seal|bracket|lug|terminal|adapter|inlet duct', re.I)
+_LINES = None
+
+
+def lines():
+    """[(имя, вершины, рёбра)] трасс соседних слоёв (из LAYERS) в координатах исходника."""
+    global _LINES
+    if _LINES is not None:
+        return _LINES
+    _LINES = []
+    layers = os.environ.get('LAYERS', '/home/user/da40src/out2')
+    for g in LINE_LAYERS:
+        f = os.path.join(layers, f'da40-{g}-raw.glb')
+        if not os.path.exists(f):
+            continue
+        before = set(bpy.data.objects)
+        bpy.ops.import_scene.gltf(filepath=f)
+        got = [o for o in bpy.data.objects if o not in before]
+        for o in got:
+            if o.parent is None:
+                o.location.z -= R.lift
+        bpy.context.view_layer.update()
+        for o in got:
+            if o.type == 'MESH' and LINE_RE.search(o.name) and not NOT_LINE.search(o.name):
+                mw = o.matrix_world
+                _LINES.append((o.name, [mw @ v.co for v in o.data.vertices], [tuple(e.vertices) for e in o.data.edges]))
+        for o in got:
+            bpy.data.objects.remove(o, do_unlink=True)
+    # тяги и тросы управления из исходной модели: им тоже нужны вырезы (с запасом на ход — gap в wall_cuts)
+    for c in bpy.data.collections['DA40 Systems'].children:
+        if c.name != 'Flight controls':
+            continue
+        for o in c.all_objects:
+            if o.type == 'MESH' and re.search(r'push rod|cable', o.name, re.I):
+                mw = o.matrix_world
+                _LINES.append((o.name, [mw @ v.co for v in o.data.vertices], [tuple(e.vertices) for e in o.data.edges]))
+    print('LINES', len(_LINES))
+    return _LINES
+
+
+def wall_cuts(axis, pos, inside, room, gap=0.004):
+    """Вырезы в стенке — плоскости {axis = pos}: [(центр, радиус выреза, имена трасс)];
+    room(c) — сколько места от точки c до края стенки (вырез не выходит за контур)."""
+    cuts = []
+    for name, vs, es in lines():
+        hits = []
+        for a, b in es:
+            da, db = vs[a][axis] - pos, vs[b][axis] - pos
+            if (da < 0) != (db < 0):
+                q = vs[a].lerp(vs[b], da / (da - db))
+                if inside(q):
+                    hits.append(q)
+        groups = []                                  # сечения трассы: связные группы точек
+        for q in hits:
+            near = [g for g in groups if any((q - w).length < 0.02 for w in g)]
+            for g in near[1:]:
+                near[0].extend(g)
+                groups.remove(g)
+            (near[0] if near else (groups.append([]) or groups[-1])).append(q)
+        for g in groups:
+            if len(g) < 4:
+                continue
+            c = sum(g, V()) / len(g)
+            r = max((q - c).length for q in g)
+            if r > 0.05:
+                print(f'CUT ALONG {name}: сечение {r * 2:.3f} м — трасса идёт вдоль стенки, выреза нет')
+                continue
+            cuts.append([c, r + (gap * 2 if re.search(r'push rod|cable', name, re.I) and 'Bowden' not in name else gap), [name]])
+    merged = True
+    while merged:
+        merged = False
+        for i in range(len(cuts)):
+            for j in range(i + 1, len(cuts)):
+                (ci, ri, ni), (cj, rj, nj) = cuts[i], cuts[j]
+                d = (ci - cj).length
+                if d < ri + rj + 0.004:
+                    if d + rj <= ri:
+                        new = [ci, ri, ni + nj]
+                    elif d + ri <= rj:
+                        new = [cj, rj, ni + nj]
+                    else:
+                        rr = (d + ri + rj) / 2
+                        new = [ci + (cj - ci).normalized() * (rr - ri), rr, ni + nj]
+                    cuts[i] = new
+                    cuts.pop(j)
+                    merged = True
+                    break
+            if merged:
+                break
+    for cut in cuts:
+        c, r, names = cut
+        lim = room(c) - 0.004
+        if r > lim:
+            print(f'CUT EDGE {"xyz"[axis]}={pos:+.3f} at ({c.x:+.3f},{c.y:+.3f},{c.z:+.3f}): нужно {r * 1000:.0f} мм, есть {lim * 1000:.0f} — {names[0][:40]}')
+            cut[1] = r = max(0.004, lim)
+        print(f'CUT {"xyz"[axis]}={pos:+.3f} at ({c.x:+.3f},{c.y:+.3f},{c.z:+.3f}) r {r * 1000:.0f} mm: {", ".join(n[:40] for n in names)}')
+    return cuts
+
+
+def cut_loop(c, r, axis, n=20):
+    """Контур круглого выреза в плоскости, перпендикулярной оси axis."""
+    u, w = [(1, 2), (0, 2), (0, 1)][axis]
+    out = []
+    for i in range(n):
+        a = 2 * math.pi * i / n
+        q = c.copy()
+        q[u] += r * math.cos(a)
+        q[w] += r * math.sin(a)
+        out.append(q)
+    return out
+
+
+def grommets(name, ru, cuts, axis, doc):
+    """Резиновая окантовка вырезов."""
+    if not cuts:
+        return
+    g = P(name, ru, 'rubber', doc)
+    d = V([1 if i == axis else 0 for i in range(3)])
+    for c, r, _ in cuts:
+        ring_tube(g, c, d, r + 0.003, r - 0.0025, 0.010, 0, segs=20)
+    g.done()
 
 
 def bottom_z(x, y):
@@ -228,21 +361,29 @@ def top_hat():
           'frame', 'AMM 53-10 2.C, рис. 1')
     ys = [HAT_Y[0] + (HAT_Y[1] - HAT_Y[0]) * i / 24 for i in range(25)]
     t = 0.005
+    all_cuts = []
     for k, xw in enumerate(HAT_X):
         s = -1 if k == 0 else 1
-        wall, flange = [], []
+        flange = []
         for y in ys:
             zb = bottom_z(xw, y) + T_SH
             zf = bottom_z(xw + s * 0.03, y) + T_SH
-            zt = hat_top(y) - t
-            wall.append([V((xw, y, zb)), V((xw + s * t, y, zb)), V((xw + s * t, y, zt)), V((xw, y, zt))])
             flange.append([V((xw, y, zb)), V((xw + s * 0.03, y, zf)), V((xw + s * 0.03, y, zf + t)), V((xw, y, zb + t))])
-        loft(p, wall, 0, smooth=False)
         loft(p, flange, 0, smooth=False)
+        # стенка — плоская плита x = const; вырезы под трассы, которые идут поперёк «шляпы»
+        xm = xw + s * t / 2
+        outline = [V((xm, y, bottom_z(xw, y) + T_SH)) for y in ys] + [V((xm, y, hat_top(y) - t)) for y in reversed(ys)]
+        cuts = wall_cuts(0, xm, lambda q, xw=xw: HAT_Y[0] + 0.01 < q.y < HAT_Y[1] - 0.01 and
+                         bottom_z(xw, q.y) + T_SH + 0.012 < q.z < hat_top(q.y) - t - 0.012,
+                         lambda c, xw=xw: min(c.z - bottom_z(xw, c.y) - T_SH, hat_top(c.y) - t - c.z, c.y - HAT_Y[0], HAT_Y[1] - c.y))
+        plate_with_holes(p, outline, [cut_loop(c, r, 0) for c, r, _ in cuts], (1, 0, 0), t, 0)
+        all_cuts += cuts
     cap = [[V((HAT_X[0] - 0.005, y, hat_top(y) - t)), V((HAT_X[1] + 0.005, y, hat_top(y) - t)), V((HAT_X[1] + 0.005, y, hat_top(y))),
             V((HAT_X[0] - 0.005, y, hat_top(y)))] for y in ys]
     loft(p, cap, 0, smooth=False)
     p.done()
+    grommets('Top hat profile grommets', 'Резиновая окантовка вырезов в стенках «шляпы»: сквозь них поперёк канала идут шланги, жгуты и воздуховод пассажиров',
+             all_cuts, 0, 'AMM 53-10 2.C')
     q = P('Top hat profile nose gear inserts', 'Монолитные вставки в стенках «шляпы» под опорные пластины подшипников носовой стойки',
           'insert', 'AMM 53-10 2.C, 32-20')
     for xw, s in ((HAT_X[0], -1), (HAT_X[1], 1)):
@@ -272,14 +413,17 @@ def main_bulkhead(tag, ru_name, y0, y1, bolt, doc_extra=''):
     t, tc = 0.006, 0.006
     p = P(f'{tag} main bulkhead', f'{ru_name} главный шпангоут центроплана: коробка из стеклопластика от торца до торца центроплана; '
           'в неё входят комли лонжеронов крыла, сквозь стенки — главные болты' + doc_extra, 'frame', 'AMM 53-10 2.E, рис. 2')
-    fr, rr = [], []
-    for x in xs:
-        zb, zt = stub_bot(x, (y0 + y1) / 2), stub_top(x, (y0 + y1) / 2)
-        fr.append([V((x, y0, zb)), V((x, y0 + t, zb)), V((x, y0 + t, zt)), V((x, y0, zt))])
-        rr.append([V((x, y1 - t, zb)), V((x, y1, zb)), V((x, y1, zt)), V((x, y1 - t, zt))])
-    loft(p, fr, 0, smooth=False)
-    loft(p, rr, 0, smooth=False)
+    ym = (y0 + y1) / 2
+    all_cuts = []
+    for yw in (y0 + t / 2, y1 - t / 2):
+        outline = [V((x, yw, stub_bot(x, ym))) for x in xs] + [V((x, yw, stub_top(x, ym))) for x in reversed(xs)]
+        cuts = wall_cuts(1, yw, lambda q: abs(q.x) < STUB_X - 0.01 and stub_bot(q.x, ym) + 0.014 < q.z < stub_top(q.x, ym) - 0.014,
+                         lambda c: min(c.z - stub_bot(c.x, ym), stub_top(c.x, ym) - c.z, STUB_X - abs(c.x)))
+        plate_with_holes(p, outline, [cut_loop(c, r, 1) for c, r, _ in cuts], (0, 1, 0), t, 0)
+        all_cuts += cuts
     p.done()
+    grommets(f'{tag} main bulkhead grommets', f'Резиновая окантовка вырезов в стенках {ru_name.lower()[:-2]}ого главного шпангоута под шланги и жгуты',
+             all_cuts, 1, 'AMM 53-10 2.E')
     c = P(f'{tag} main bulkhead carbon caps', f'Верхняя и нижняя полки {ru_name.lower()[:-2]}ого главного шпангоута: слои углеткани дают прочность и жёсткость',
           'cfrp', 'AMM 53-10 2.E')
     top, bot = [], []
@@ -299,8 +443,9 @@ def main_bulkhead(tag, ru_name, y0, y1, bolt, doc_extra=''):
     b.done()
 
 
-def rib_plate(name, ru, x, y0, y1, doc, hole=None, n=24, m='frame'):
-    """Нервюра центроплана в плоскости x = const между y0 и y1 по высоте профиля."""
+def rib_plate(name, ru, x, y0, y1, doc, hole=None, n=24, m='frame', passes=()):
+    """Нервюра центроплана в плоскости x = const между y0 и y1 по высоте профиля;
+    passes — [(центр, радиус трассы)]: круглые вырезы под резиновые втулки трасс."""
     ys = [y0 + (y1 - y0) * i / n for i in range(n + 1)]
     bot = [V((x, y, stub_bot(x, y))) for y in ys]
     top = [V((x, y, stub_top(x, y))) for y in reversed(ys)]
@@ -312,8 +457,18 @@ def rib_plate(name, ru, x, y0, y1, doc, hole=None, n=24, m='frame'):
         zs = [q.z for q in outer]
         # обход тот же, что у контура: от передней нижней точки назад по низу
         inner = ellipse(c, (y1 - y0) * hole, (max(zs) - min(zs)) * 0.30, len(outer), phase=1.25 * math.pi)
-    plate_with_hole(p, outer, inner, (1, 0, 0), 0.005, 0)
+    if passes:
+        cuts = ([inner] if inner else []) + [stub.circle(c, r + stub.GROMMET, 16) for c, r in passes]
+        plate_with_holes(p, outer, cuts, (1, 0, 0), 0.005, 0)
+    else:
+        plate_with_hole(p, outer, inner, (1, 0, 0), 0.005, 0)
     p.done()
+    if passes:
+        g = P(name + ' grommets', 'Резиновые втулки трасс крыла в нервюре: жгут, провода и шланги проходят сквозь неё, не касаясь краёв выреза',
+              'rubber', 'AMM 57-10 2.B(8), (9)')
+        for c, r in passes:
+            ring_tube(g, c, V((1, 0, 0)), r + stub.GROMMET + 0.003, r + 0.0018, 0.010, 0, segs=16)
+        g.done()
 
 
 FRONT_MB = (0.012, 0.118)      # передний главный шпангоут: комель переднего лонжерона 0,02…0,11 внутри
@@ -330,8 +485,10 @@ def centre_section():
         tag = 'LH' if s > 0 else 'RH'
         gen = 'левого' if s > 0 else 'правого'
         X = s * STUB_X
-        rib_plate(f'Front outer rib {tag}', f'Передняя наружная нервюра центроплана {gen} борта: торец носка центроплана перед передним шпангоутом',
-                  X, -0.245, FRONT_MB[0], 'AMM 53-10 2.E')
+        rib_plate(f'Front outer rib {tag}', f'Передняя наружная нервюра центроплана {gen} борта: торец носка центроплана перед передним шпангоутом'
+                  + ('; она же наружная замыкающая нервюра короба-коллектора воздуха пассажиров' if s > 0 else '')
+                  + '; во втулках сквозь неё проходят жгут крыла' + (' и шланги ПВД, сигнализатора сваливания' if s > 0 else ''),
+                  X, -0.245, FRONT_MB[0], 'AMM 53-10 2.E, 21-00 2.B(2)', passes=stub.passes('outer', s))
         rib_plate(f'Middle outer rib {tag}', f'Средняя наружная нервюра центроплана {gen} борта между главными шпангоутами: большой вырез напротив люка корневой нервюры крыла — через него снимают бак',
                   X, FRONT_MB[1], REAR_MB[0], 'AMM 53-10 2.E, 28-10', hole=0.40)
         rib_plate(f'Rear outer rib {tag}', f'Задняя наружная нервюра центроплана {gen} борта: от заднего шпангоута до задней стенки',
