@@ -45,6 +45,7 @@ from mathutils.bvhtree import BVHTree  # noqa: E402
 import lib  # noqa: E402
 import ref  # noqa: E402
 import cabin  # noqa: E402
+import stub  # noqa: E402
 from lib import Part, basis, box, cyl, fillet, sweep, ring_tube  # noqa: E402
 
 OUT_DIR = sys.argv[1] if len(sys.argv) > 1 else '/tmp'
@@ -932,11 +933,14 @@ def build():
     YL = -0.035
     lo, hi = R.wing_section(-3.90, YL)
     wing = [gmu_c, gmu_c + V((0.02, -0.06, 0.02)), V((-3.90, YL, (lo + hi) / 2 - 0.005))]
-    for x in (-3.6, -3.2, -2.8, -2.4, -2.0, -1.6, -1.3, -1.0, -0.8):
+    for x in (-3.6, -3.2, -2.8, -2.4, -2.0, -1.6):
         lo, hi = R.wing_section(x, YL)
         wing.append(V((x, YL, (lo + hi) / 2 - 0.005)))
-    root = V((-0.60, YL, wing[-1].z))
-    pts = route(root, (1, 0, 0), grs_conn + V((0.0, 0.0, -0.03)), (0, 1, 0), 0.003, (-0.62, -0.1, -0.26), (0.30, 2.6, 0.45), step=0.02)
+    # у корня — вперёд от головки переднего главного болта и сквозь корневую, наружную и внутреннюю
+    # нервюры центроплана во втулках, рядом с жгутом огней (stub.py)
+    wing += list(reversed(stub.run('gmu', -1))) + [V((-0.62, -0.10, -0.06))]
+    root = V((-0.60, -0.095, -0.06))
+    pts = route(root, (1, 0.2, 0), grs_conn + V((0.0, 0.0, -0.03)), (0, 1, 0), 0.003, (-0.62, -0.12, -0.26), (0.30, 2.6, 0.45), step=0.02)
     cable('GMU 44 cable (RS-485) → GRS 77', 'Кабель магнитометра GMU 44: по правой консоли между лонжеронами, под полом — к GRS 77', wing + pts, 0.003, 'shield')
     # рулевые машины — к стойке авионики
     for key, ru in (('roll', 'крена'), ('pitch', 'тангажа'), ('trim', 'триммера')):

@@ -14,19 +14,19 @@
   {
     "file": "da40-wing-structure.glb",
     "title": "Силовой набор крыла",
-    "parts": 108,
-    "meshes": 108,
+    "parts": 110,
+    "meshes": 110,
     "clips": [],
-    "mb": 0.38,
+    "mb": 0.41,
     "built": "tools/da40/wing.py"
   },
   {
     "file": "da40-structure.glb",
     "title": "Силовой набор фюзеляжа и оперения",
-    "parts": 65,
-    "meshes": 65,
+    "parts": 70,
+    "meshes": 70,
     "clips": [],
-    "mb": 0.26,
+    "mb": 0.37,
     "built": "tools/da40/structure.py"
   },
   {
@@ -59,10 +59,10 @@
   {
     "file": "da40-electrical.glb",
     "title": "Электрика",
-    "parts": 45,
-    "meshes": 45,
+    "parts": 49,
+    "meshes": 49,
     "clips": [],
-    "mb": 0.43,
+    "mb": 0.45,
     "built": "tools/da40/electrical.py"
   },
   {
@@ -71,7 +71,7 @@
     "parts": 10,
     "meshes": 10,
     "clips": [],
-    "mb": 0.09,
+    "mb": 0.1,
     "built": "tools/da40/bonding.py"
   },
   {
@@ -80,7 +80,7 @@
     "parts": 38,
     "meshes": 38,
     "clips": [],
-    "mb": 0.2,
+    "mb": 0.22,
     "built": "tools/da40/avionics.py"
   },
   {
@@ -89,7 +89,7 @@
     "parts": 47,
     "meshes": 47,
     "clips": [],
-    "mb": 0.27,
+    "mb": 0.29,
     "built": "tools/da40/avionics.py"
   },
   {
@@ -113,10 +113,10 @@
   {
     "file": "da40-air.glb",
     "title": "Вентиляция и отопление",
-    "parts": 38,
-    "meshes": 38,
+    "parts": 37,
+    "meshes": 37,
     "clips": [],
-    "mb": 0.57,
+    "mb": 0.56,
     "built": "tools/da40/air.py"
   },
   {
@@ -125,7 +125,7 @@
     "parts": 40,
     "meshes": 40,
     "clips": [],
-    "mb": 0.21,
+    "mb": 0.23,
     "built": "tools/da40/pitot.py"
   },
   {
