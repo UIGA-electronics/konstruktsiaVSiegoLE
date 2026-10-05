@@ -49,8 +49,10 @@
 
   /* Пол: тёмный круг, к краю уходит в цвет фона; поверх — сетка через
      1 м и более заметные линии через 5 м, тоже гаснут к краю. */
+  /* На планшете и телефоне пол 1024: видеопамять там дороже резкости разметки. */
+  var FLOOR_PX = (window.matchMedia && window.matchMedia('(hover: none)').matches) ? 1024 : 2048;
   function floorCanvas(R, meter) {
-    var S = 2048, c = canvas(S, S), g = c.getContext('2d'), h = S / 2;
+    var S = FLOOR_PX, c = canvas(S, S), g = c.getContext('2d'), h = S / 2;
     var gr = g.createRadialGradient(h, h, 0, h, h, h);
     gr.addColorStop(0, 'rgba(42,45,50,1)');
     gr.addColorStop(0.35, 'rgba(31,34,38,1)');
