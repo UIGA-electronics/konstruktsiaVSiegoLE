@@ -55,24 +55,47 @@ var Figures = (function () {
      невидимые циклы rAF (лишний расход батареи на телефоне). */
   function loop(frame, step) {
     if (reduced) { step(0); return; }
-    var visible = true, raf = null, t = 0;
+    var visible = true, raf = null, t = 0, io = null, dead = false;
 
     if (window.IntersectionObserver) {
-      new IntersectionObserver(function (entries) {
+      io = new IntersectionObserver(function (entries) {
         visible = entries[0].isIntersecting;
         if (visible) start();
-      }, { rootMargin: '80px' }).observe(frame);
+      }, { rootMargin: '80px' });
+      io.observe(frame);
     }
+    function stop() {
+      dead = true;
+      if (raf) cancelAnimationFrame(raf);
+      raf = null;
+      if (io) { io.disconnect(); io = null; }
+    }
+    onUnmount(frame, stop);
 
     function frameFn() {
-      if (!frame.isConnected) { raf = null; return; }
+      if (dead || !frame.isConnected) { stop(); return; }
       if (!visible) { raf = null; return; }
       t += 1;
       step(t);
       raf = requestAnimationFrame(frameFn);
     }
-    function start() { if (!raf) raf = requestAnimationFrame(frameFn); }
+    function start() { if (!raf && !dead) raf = requestAnimationFrame(frameFn); }
     start();
+  }
+
+  /* Уборка при уходе со страницы: роутер очищает main, но WebGL-контекст,
+     геометрия и текстуры сами не освобождаются — на них держатся обработчики
+     окна. На планшете после нескольких разделов видеопамять кончалась:
+     текстуры приходили чёрными, вкладка падала. app.js зовёт unmountAll
+     перед тем, как показать следующий раздел. */
+  var disposers = [];
+  function onUnmount(frame, fn) { disposers.push({ frame: frame, fn: fn }); }
+  function unmountAll(root) {
+    disposers = disposers.filter(function (d) {
+      if (root && d.frame.isConnected && !root.contains(d.frame)) return true;
+      try { d.fn(); } catch (e) { console.warn('уборка схемы:', e); }
+      return false;
+    });
   }
 
   /* ═══════════════════════════════════════════════════════
@@ -2142,9 +2165,34 @@ var Figures = (function () {
 
   /* Подсказка по управлению зависит от того, чем читатель управляет:
      на телефоне нет ни колеса, ни правой кнопки, и старый текст врал. */
-  var M3_HINT = (window.matchMedia && window.matchMedia('(hover: none)').matches)
-    ? 'палец — поворот · два пальца — сдвиг и приближение'
+  var TOUCH = !!(window.matchMedia && window.matchMedia('(hover: none)').matches);
+  var M3_HINT = TOUCH
+    ? 'палец — поворот · два пальца — сдвиг и приближение · касание детали — что это'
     : 'перетащить — поворот · правая кнопка — сдвиг · колесо — приближение';
+
+  /* Планшеты и телефоны: видеопамяти мало и её делят все вкладки. Им —
+     облегчённые копии моделей с текстурами вдвое меньше (tools/lite-textures.js),
+     пиксели не плотнее 1,5 и тень 1024. На iPad раздел с салоном просил
+     больше гигабайта, текстуры приходили чёрными, вкладка падала. */
+  var LITE = TOUCH || !!(navigator.deviceMemory && navigator.deviceMemory <= 4);
+  var LITE_FILES = { 'models/da40/da40-airframe.glb': 1, 'models/da40/da40-cabin.glb': 1 };
+  function liteSrc(src) {
+    return LITE && LITE_FILES[src] ? src.replace(/\.glb$/, '-lite.glb') : src;
+  }
+
+  /* Освободить всё, что объект держит на видеокарте. */
+  function disposeTree(obj) {
+    obj.traverse(function (o) {
+      if (o.geometry) o.geometry.dispose();
+      var mm = !o.material ? [] : Array.isArray(o.material) ? o.material : [o.material];
+      mm.forEach(function (m) {
+        Object.keys(m).forEach(function (k) {
+          if (m[k] && m[k].isTexture) m[k].dispose();
+        });
+        m.dispose();
+      });
+    });
+  }
 
   /* Сцена собирается из одного или нескольких .glb.
 
@@ -2186,9 +2234,21 @@ var Figures = (function () {
 
     var bar = controls(frame, '<span class="fig-readout m3-info">—</span>');
     var info = bar.querySelector('.m3-info');
+    /* Страницу закрыли — всё, что ещё грузится, по приходу сразу освобождаем. */
+    var dead = false, cleanup = null;
+    onUnmount(frame, function () { dead = true; if (cleanup) cleanup(); });
+    /* Разделы практикума для кнопки «Другая система» — их кладёт app.js. */
+    var pageNav = window.__pageNav || null;
 
     ensureThree().then(function () {
+      if (dead) return;
       var THREE = window.THREE;
+      /* Обработчики окна и документа держат сцену живой — снимаем их при уборке. */
+      var offs = [];
+      function listen(t, type, fn, o) {
+        t.addEventListener(type, fn, o);
+        offs.push(function () { t.removeEventListener(type, fn, o); });
+      }
       /* На телефоне кадр 16:10 делает модель крошечной: ширина 343 px даёт
          высоту 213 px, и механизм не разглядеть. На узком экране берём почти
          квадрат, на широком оставляем привычную пропорцию. */
@@ -2199,7 +2259,7 @@ var Figures = (function () {
       var w = box.clientWidth || 600, h = Math.round(w * ratio(w));
 
       var renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      renderer.setPixelRatio(Math.min(devicePixelRatio, LITE ? 1.5 : 2));
       renderer.setSize(w, h);
       renderer.outputEncoding = THREE.sRGBEncoding;
       /* Самолёт белый, и при линейной кривой светлые борта выбивает в лист
@@ -2241,7 +2301,7 @@ var Figures = (function () {
         renderer.shadowMap.autoUpdate = false;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         key.castShadow = true;
-        key.shadow.mapSize.set(2048, 2048);
+        key.shadow.mapSize.set(LITE ? 1024 : 2048, LITE ? 1024 : 2048);
         key.shadow.bias = -0.0004;
         key.shadow.normalBias = 0.02;
       }
@@ -2523,7 +2583,8 @@ var Figures = (function () {
       function loadFile(f) {
         if (f.promise) return f.promise;
         f.promise = new Promise(function (res, rej) {
-          loader.load(withV(f.src), function (gltf) {
+          loader.load(withV(liteSrc(f.src)), function (gltf) {
+            if (dead) { disposeTree(gltf.scene); rej(new Error('страница закрыта')); return; }
             f.scene = gltf.scene;
             f.scene.visible = f.on;
             root.add(f.scene);
@@ -2546,6 +2607,7 @@ var Figures = (function () {
         box.appendChild(renderer.domElement);
         build();
       }).catch(function (err) {
+        if (dead) return;
         box.innerHTML = '<div class="model3d-note">Не удалось загрузить модель ' +
           '<code>' + Render.esc(first.map(function (f) { return f.src; }).join(', ')) +
           '</code></div>';
@@ -2691,7 +2753,10 @@ var Figures = (function () {
           var gy = (opts.groundY != null ? opts.groundY : bb.min.y) - mid.y;
           var env = Scenery.showroom(THREE, scene, renderer, r, gy, 1);
           floorY = gy + r * 0.02;
-          if (env) scene.environment = env;
+          if (env) {
+            if (scene.environment) scene.environment.dispose();
+            scene.environment = env;
+          }
           var sc = key.shadow.camera, sr = r * 0.62;
           key.position.set(3, 5, 4).setLength(r * 3);
           sc.left = -sr; sc.right = sr; sc.top = sr; sc.bottom = -sr;
@@ -2754,6 +2819,7 @@ var Figures = (function () {
               b.classList.add('is-on');
               elDef = +b.dataset.el < 0 ? null : elDefs[+b.dataset.el];
               select(null);
+              hideCard();
               applyParts();
               render();
               info.textContent = elDef ? (elDef.hint || elDef.title) : (opts.hint || M3_HINT);
@@ -2896,6 +2962,34 @@ var Figures = (function () {
         });
         bar.appendChild(rb);
 
+        /* Другая система: список разделов практикума прямо у модели — не нужно
+           листать к оглавлению, и работает во весь экран. */
+        if (pageNav && pageNav.length > 1) {
+          var nb = document.createElement('button');
+          nb.type = 'button';
+          nb.className = 'fig-btn fig-nav-btn';
+          nb.textContent = 'Другая система';
+          nb.setAttribute('aria-expanded', 'false');
+          var navBox = document.createElement('div');
+          navBox.className = 'fig-row fig-nav';
+          navBox.hidden = true;
+          navBox.innerHTML = pageNav.map(function (n) {
+            return '<a class="fig-btn' + (n.cur ? ' is-on" aria-current="page' : '') + '" href="#' + Render.esc(n.id) + '">' +
+              Render.esc(n.title) + '</a>';
+          }).join('');
+          nb.addEventListener('click', function () {
+            navBox.hidden = !navBox.hidden;
+            nb.classList.toggle('is-on', !navBox.hidden);
+            nb.setAttribute('aria-expanded', navBox.hidden ? 'false' : 'true');
+          });
+          navBox.addEventListener('click', function (e) {
+            if (!e.target.closest('a')) return;
+            var fe = document.fullscreenElement || document.webkitFullscreenElement;
+            if (fe) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+          });
+          bar.appendChild(nb);
+        }
+
         /* Во весь экран. В ленте страницы модель всегда мелкая, особенно
            на телефоне; разворачиваем кадр целиком — вместе с кнопками,
            иначе в полноэкранном режиме нечем переключать сценарии. */
@@ -2913,7 +3007,7 @@ var Figures = (function () {
             }
           });
           bar.appendChild(fsb);
-          document.addEventListener('fullscreenchange', function () {
+          listen(document, 'fullscreenchange', function () {
             var on = document.fullscreenElement === frame;
             fsb.textContent = on ? 'Свернуть' : 'Во весь экран';
             fsb.classList.toggle('is-on', on);
@@ -2921,6 +3015,9 @@ var Figures = (function () {
             setTimeout(fit, 60);
           });
         }
+
+        /* список разделов — отдельной строкой в конце панели */
+        if (navBox) bar.appendChild(navBox);
 
         applyShell();
         applyParts();
@@ -3027,28 +3124,96 @@ var Figures = (function () {
             if (k < 1) requestAnimationFrame(step);
           })();
         }
-        var down = null;
-        renderer.domElement.addEventListener('pointerdown', function (e) { down = [e.clientX, e.clientY]; });
-        renderer.domElement.addEventListener('click', function (e) {
-          /* после поворота мышью клик не считается выбором */
-          if (down && Math.abs(e.clientX - down[0]) + Math.abs(e.clientY - down[1]) > 6) return;
-          var h = pick(e.clientX, e.clientY);
-          if (!h) { if (selEl) { select(null); info.textContent = opts.hint || M3_HINT; } return; }
-          select(h.el === selEl ? null : h.el);
-          if (!selEl) { info.textContent = opts.hint || M3_HINT; return; }
+        /* Карточка выбранной детали поверх модели — для касаний: строка
+           под моделью на планшете далеко от пальца, а в полноэкранном режиме
+           её не видно вовсе. */
+        var card = document.createElement('div');
+        card.className = 'm3-card';
+        card.hidden = true;
+        box.appendChild(card);
+        function hideCard() { card.hidden = true; }
+        function showCard(h) {
+          /* «Название: пояснение» — название крупно, пояснение строкой ниже */
+          var k = h.title.indexOf(': ');
+          card.innerHTML = '<button class="m3-card-x" type="button" aria-label="Закрыть">×</button>' +
+            (k > 0 ? '<b>' + Render.esc(h.title.slice(0, k)) + '</b><p>' + Render.esc(h.title.slice(k + 2)) + '</p>'
+                   : '<b>' + Render.esc(h.title) + '</b>') +
+            (h.mat || h.layer ? '<span>' + Render.esc([h.mat, h.layer].filter(Boolean).join(' · ')) + '</span>' : '') +
+            '<small>двойное касание — показать крупно</small>';
+          card.hidden = false;
+        }
+        card.addEventListener('click', function (e) {
+          if (!e.target.closest('.m3-card-x')) return;
+          select(null);
+          hideCard();
+          info.textContent = opts.hint || M3_HINT;
+        });
+
+        /* Выбор детали: щелчок мышью или короткое касание без сдвига. */
+        function choose(cx, cy, touch) {
+          var h = pick(cx, cy);
+          if (!h || h.el === selEl) {
+            if (selEl) select(null);
+            hideCard();
+            info.textContent = opts.hint || M3_HINT;
+            return;
+          }
+          select(h.el);
           info.innerHTML = '<b class="m3-sel">' + Render.esc(h.title) + '</b>' +
             (h.mat ? ' <i>· ' + Render.esc(h.mat) + '</i>' : '') +
             (h.layer ? ' <i>· ' + Render.esc(h.layer) + '</i>' : '') +
-            ' <i class="m3-how">— двойной щелчок: показать крупно</i>';
+            ' <i class="m3-how">— ' + (touch ? 'двойное касание' : 'двойной щелчок') + ': показать крупно</i>';
+          if (touch) showCard(h);
+        }
+        var cv = renderer.domElement;
+        var down = null, tap = null, fingers = 0, tapAt = 0, lastTap = null;
+        /* время самого касания, а не обработки: пока планшет считает кадр
+           после первого касания, второе ждёт в очереди и иначе «опаздывает» */
+        function stamp(e) { return e.timeStamp || performance.now(); }
+        cv.addEventListener('pointerdown', function (e) {
+          down = [e.clientX, e.clientY];
+          if (e.pointerType === 'mouse') return;
+          fingers++;
+          if (fingers === 1) tap = { x: e.clientX, y: e.clientY, t: stamp(e), multi: false };
+          else if (tap) tap.multi = true;
         });
-        renderer.domElement.addEventListener('dblclick', function (e) {
+        /* OrbitControls гасит touchstart (preventDefault), и браузер не
+           присылает click после касания — касание ловим по pointerup сами. */
+        function fingerUp(e) {
+          if (e.pointerType === 'mouse') return;
+          fingers = Math.max(0, fingers - 1);
+          var t = tap;
+          if (!fingers) tap = null;
+          if (e.type !== 'pointerup' || !t || t.multi) return;
+          var now = stamp(e);
+          if (Math.abs(e.clientX - t.x) + Math.abs(e.clientY - t.y) > 12 || now - t.t > 500) return;
+          tapAt = performance.now();
+          if (lastTap && selEl && now - lastTap.t < 380 &&
+              Math.abs(e.clientX - lastTap.x) + Math.abs(e.clientY - lastTap.y) < 36) {
+            lastTap = null;
+            frameOn(selEl);
+            return;
+          }
+          lastTap = { x: e.clientX, y: e.clientY, t: now };
+          choose(e.clientX, e.clientY, true);
+        }
+        cv.addEventListener('pointerup', fingerUp);
+        cv.addEventListener('pointercancel', fingerUp);
+        cv.addEventListener('click', function (e) {
+          if (performance.now() - tapAt < 700) return;          /* касание уже обработано */
+          /* после поворота мышью клик не считается выбором */
+          if (down && Math.abs(e.clientX - down[0]) + Math.abs(e.clientY - down[1]) > 6) return;
+          choose(e.clientX, e.clientY, false);
+        });
+        cv.addEventListener('dblclick', function (e) {
+          if (performance.now() - tapAt < 700) return;
           var h = pick(e.clientX, e.clientY);
           if (!h) return;
           if (h.el !== selEl) select(h.el);
           frameOn(h.el);
         });
         frame.addEventListener('keydown', function (e) {
-          if (e.key === 'Escape' && selEl) { select(null); info.textContent = opts.hint || M3_HINT; }
+          if (e.key === 'Escape' && selEl) { select(null); hideCard(); info.textContent = opts.hint || M3_HINT; }
         });
 
         /* Во весь экран подпись всплывает у курсора: кадр большой, и
@@ -3095,7 +3260,7 @@ var Figures = (function () {
         renderer.domElement.addEventListener('pointerleave', hideTip);
         renderer.domElement.addEventListener('pointerdown', hideTip);
         renderer.domElement.addEventListener('wheel', hideTip, { passive: true });
-        document.addEventListener('fullscreenchange', hideTip);
+        listen(document, 'fullscreenchange', hideTip);
 
         info.textContent = opts.hint || M3_HINT;
         /* Для проверки из консоли и автотестов: камера, управление, сцена. */
@@ -3161,9 +3326,29 @@ var Figures = (function () {
         camera.updateProjectionMatrix();
         render();
       }
-      if (window.ResizeObserver) new ResizeObserver(fit).observe(box);
-      window.addEventListener('resize', fit);
+      var ro = null;
+      if (window.ResizeObserver) { ro = new ResizeObserver(fit); ro.observe(box); }
+      listen(window, 'resize', fit);
       fit();
+
+      cleanup = function () {
+        cleanup = null;
+        offs.forEach(function (off) { off(); });
+        if (ro) ro.disconnect();
+        files.forEach(function (f) {
+          if (f.mixer) { f.mixer.stopAllAction(); if (f.scene) f.mixer.uncacheRoot(f.scene); }
+        });
+        if (ctrl) ctrl.dispose();
+        disposeTree(scene);
+        if (scene.environment) scene.environment.dispose();
+        if (scene.background && scene.background.dispose) scene.background.dispose();
+        renderer.renderLists.dispose();
+        renderer.dispose();
+        if (renderer.forceContextLoss) renderer.forceContextLoss();
+        if (renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement);
+        frame.__m3 = null;
+      };
+      if (dead) cleanup();
     }).catch(function (e) {
       box.innerHTML = '<div class="model3d-note">Не удалось загрузить Three.js. ' +
         'Проверьте подключение к сети.</div>';
@@ -3190,5 +3375,5 @@ var Figures = (function () {
     }
   }
 
-  return { mountAll: mountAll, register: function (k, f) { reg[k] = f; } };
+  return { mountAll: mountAll, unmountAll: unmountAll, register: function (k, f) { reg[k] = f; } };
 })();

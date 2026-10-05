@@ -250,6 +250,14 @@ a:hover{ color:var(--amber-2); text-decoration-color:var(--amber); }
 .page-head h1{ margin:0 0 16px; color:#fff; font-size:clamp(30px,5vw,46px); font-weight:650; line-height:1.06; letter-spacing:-.022em; }
 .page-lead{ margin:0; font-size:18.5px; line-height:1.58; color:var(--text-2); }
 .page-src{ margin-top:18px; font-family:var(--mono); font-size:12px; color:var(--text-4); line-height:1.55; }
+/* Разделы 3D-практикума одной строкой: другая система — одним касанием */
+.sys-nav{ display:flex; gap:6px; margin:-8px 0 18px; padding:12px 0 12px; overflow-x:auto; scrollbar-width:thin;
+  border-bottom:1px solid var(--line); -webkit-overflow-scrolling:touch; }
+.sys-nav a{ flex:none; display:inline-flex; align-items:center; padding:7px 12px; border:1px solid var(--line-2); border-radius:3px;
+  background:var(--panel-2); color:var(--text-2); text-decoration:none; font-size:14px; white-space:nowrap; transition:border-color .15s, color .15s; }
+.sys-nav a:hover{ border-color:var(--text-3); color:#fff; }
+.sys-nav a.is-cur{ background:#e9e5da; border-color:#e9e5da; color:#15130f; }
+.sys-nav a.is-cur::before{ content:''; width:6px; height:6px; margin-right:8px; border-radius:50%; background:var(--amber); }
 
 .article{ padding-bottom:6px; counter-reset:h2; }
 .article h2{ counter-increment:h2; position:relative; margin:60px 0 16px; padding-top:18px; border-top:1px solid var(--line);
@@ -421,6 +429,24 @@ tbody tr:hover td{ background:rgba(255,255,255,.02); }
 .m3-tip b{ display:block; font-weight:600; }
 .m3-tip span{ display:block; font-family:var(--mono); font-size:11.5px; color:var(--text-3); margin-top:2px; }
 .m3-tip[hidden]{ display:none; }
+/* Карточка детали после касания (планшет, телефон): внизу кадра, крестик закрывает */
+.m3-card{ position:absolute; left:10px; right:10px; bottom:10px; z-index:6; max-width:520px; padding:10px 40px 11px 13px;
+  background:rgba(14,16,19,.94); color:var(--text); border:1px solid var(--line-2); border-left:2px solid var(--amber);
+  font-size:14.5px; line-height:1.4; box-shadow:0 10px 28px rgba(0,0,0,.45); }
+.m3-card b{ display:block; font-weight:600; }
+.m3-card p{ margin:3px 0 0; font-size:13.5px; color:var(--text-2); max-height:7.2em; overflow-y:auto; }
+.m3-card span{ display:block; font-family:var(--mono); font-size:12px; color:var(--text-3); margin-top:4px; }
+.m3-card small{ display:block; font-family:var(--mono); font-size:11px; color:var(--text-4); margin-top:5px; letter-spacing:.02em; }
+.m3-card[hidden]{ display:none; }
+.m3-card-x{ position:absolute; top:4px; right:4px; width:32px; height:32px; border:0; background:none; color:var(--text-3);
+  font-size:22px; line-height:1; cursor:pointer; border-radius:3px; }
+.m3-card-x:hover{ color:#fff; background:var(--panel-2); }
+/* «Другая система»: разделы практикума строкой в панели модели */
+.fig-nav{ padding-top:8px; margin-top:2px; border-top:1px dashed var(--line); }
+.fig-nav[hidden]{ display:none; }
+.fig-nav .fig-btn{ text-decoration:none; }
+.fig-nav-btn::after{ content:'▾'; margin-left:7px; font-size:11px; color:var(--text-3); }
+.fig-nav-btn.is-on::after{ content:'▴'; color:#15130f; }
 
 /* Во весь экран */
 .figure-frame:fullscreen{ background:#0c0e11; border:0; border-radius:0; display:flex; flex-direction:column; justify-content:center; padding:0; margin:0; }

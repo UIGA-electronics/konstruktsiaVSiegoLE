@@ -291,6 +291,17 @@
 
   /* ── Экран: страница контента ──────────────────────────── */
 
+  /* Тема, в которую входит экран (по списку экранов темы). */
+  function topicOf(id) {
+    var hit = null;
+    MENU.parts.forEach(function (p) {
+      p.topics.forEach(function (t) {
+        (t.screens || []).forEach(function (s) { if (s.id === id) hit = t; });
+      });
+    });
+    return hit;
+  }
+
   function viewPage(data) {
     var wrap = el('div', 'wrap');
 
@@ -299,6 +310,27 @@
       '<h1>' + data.title + '</h1>' +
       (data.lead ? '<p class="page-lead">' + Render.inline(data.lead) + '</p>' : '') +
       (data.source ? '<div class="page-src">' + Render.inline(data.source) + '</div>' : '')));
+
+    /* 3D-практикум: разделы-системы одной строкой над моделью — другую систему
+       выбирают одним касанием, не возвращаясь к оглавлению. Тот же список
+       получает кнопка «Другая система» у модели (window.__pageNav). */
+    var topic = topicOf(data.id);
+    window.__pageNav = null;
+    if (topic && topic.num === '3D') {
+      window.__pageNav = topic.screens.map(function (s) {
+        return { id: s.id, title: s.short || s.title, cur: s.id === data.id };
+      });
+      var nav = el('nav', 'sys-nav', window.__pageNav.map(function (n) {
+        return '<a href="#' + n.id + '"' + (n.cur ? ' class="is-cur" aria-current="page"' : '') + '>' + Render.esc(n.title) + '</a>';
+      }).join(''));
+      nav.setAttribute('aria-label', 'Разделы практикума');
+      wrap.appendChild(nav);
+      /* текущий раздел — в поле зрения, если строка шире экрана */
+      setTimeout(function () {
+        var cur = nav.querySelector('.is-cur');
+        if (cur) nav.scrollLeft = cur.offsetLeft - (nav.clientWidth - cur.offsetWidth) / 2;
+      }, 0);
+    }
 
     var art = el('article', 'article');
     Render.blocks(data.blocks || [], art);
@@ -341,8 +373,15 @@
 
   /* ── Роутер ────────────────────────────────────────────── */
 
-  function show(node, title) {
+  /* Перед сменой раздела освобождаем схемы старого: 3D-сцена держит
+     видеопамять, пока её не отпустить явно. */
+  function clearMain() {
+    Figures.unmountAll(main);
     main.textContent = '';
+  }
+
+  function show(node, title) {
+    clearMain();
     main.appendChild(node);
     document.title = title;
     Figures.mountAll(main);
@@ -383,7 +422,7 @@
       return;
     }
 
-    main.textContent = '';
+    clearMain();
     main.appendChild(el('div', 'loading', 'Загрузка…'));
 
     getJSON('content/' + id + '.json').then(function (data) {
