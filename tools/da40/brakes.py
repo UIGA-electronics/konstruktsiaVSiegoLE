@@ -60,6 +60,8 @@ def pedal_parts():
 
 
 RT.solids = list(RT.solids) + [ref._bvh(pedal_parts())]
+# продольная труба молниеотвода (bonding.py) под креслом пилота идёт по заданным точкам — шланги её обходят
+RT.solids += cabin.layer_bvh(R, 'bonding', ('Lightning conductor tube (firewall',))
 
 M = dict(
     mc=lib.mat('DA40 brake master cylinder (black anodised)', (0.07, 0.07, 0.08), 0.6, 0.4, ru='алюминиевый сплав, чёрное анодирование'),
@@ -190,7 +192,8 @@ def parking_valve():
     box(p, lever, (0.004, 0.014, 0.05), Matrix.Identity(3), p.m(M['steel']), bevel=0.001)
     p.done()
     f = P('Control bulkhead bottom flange (valve mount)', 'Нижняя полка пультовой переборки под клапаном стояночного тормоза', 'black', 'AMM 32-40 рис. 8')
-    box(f, VALVE + V((0, 0.0, -0.020)), (0.09, 0.07, 0.005), Matrix.Identity(3), 0, bevel=0.001)
+    # полка — по ширине клапана: снаружи (x > 0,245) под креслом пилота стоит влагоотстойник статики (pitot.py)
+    box(f, VALVE + V((-0.004, 0.0, -0.020)), (0.075, 0.07, 0.005), Matrix.Identity(3), 0, bevel=0.001)
     f.done()
     tip = lever + V((0, -0.012, 0.018))
     a = PB_HANDLE + V((0, 0, -0.03))

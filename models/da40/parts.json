@@ -23,10 +23,10 @@
   {
     "file": "da40-structure.glb",
     "title": "Силовой набор фюзеляжа и оперения",
-    "parts": 70,
-    "meshes": 70,
+    "parts": 72,
+    "meshes": 72,
     "clips": [],
-    "mb": 0.37,
+    "mb": 0.38,
     "built": "tools/da40/structure.py"
   },
   {
@@ -59,28 +59,28 @@
   {
     "file": "da40-electrical.glb",
     "title": "Электрика",
-    "parts": 49,
-    "meshes": 49,
+    "parts": 55,
+    "meshes": 55,
     "clips": [],
-    "mb": 0.45,
+    "mb": 0.53,
     "built": "tools/da40/electrical.py"
   },
   {
     "file": "da40-bonding.glb",
     "title": "Молниезащита и металлизация",
-    "parts": 10,
-    "meshes": 10,
+    "parts": 25,
+    "meshes": 25,
     "clips": [],
-    "mb": 0.1,
+    "mb": 0.14,
     "built": "tools/da40/bonding.py"
   },
   {
     "file": "da40-instruments.glb",
     "title": "Приборное оборудование",
-    "parts": 38,
-    "meshes": 38,
+    "parts": 37,
+    "meshes": 37,
     "clips": [],
-    "mb": 0.22,
+    "mb": 0.2,
     "built": "tools/da40/avionics.py"
   },
   {
@@ -98,7 +98,7 @@
     "parts": 21,
     "meshes": 21,
     "clips": [],
-    "mb": 0.17,
+    "mb": 0.16,
     "built": "tools/da40/brakes.py"
   },
   {
@@ -122,8 +122,8 @@
   {
     "file": "da40-pitot-static.glb",
     "title": "ПВД, статика, сваливание",
-    "parts": 40,
-    "meshes": 40,
+    "parts": 41,
+    "meshes": 41,
     "clips": [],
     "mb": 0.23,
     "built": "tools/da40/pitot.py"

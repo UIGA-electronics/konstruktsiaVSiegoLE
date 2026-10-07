@@ -51,6 +51,7 @@ M = dict(
     brass=lib.mat('DA40 brass', (0.78, 0.60, 0.28), 1.0, 0.35, ru='латунь'),
     black=lib.mat('DA40 black anodised', (0.05, 0.05, 0.06), 0.6, 0.4, ru='алюминий, чёрное анодирование'),
     red=lib.mat('DA40 red marking', (0.78, 0.06, 0.05), 0.0, 0.4, ru='красная краска'),
+    rubber=lib.mat('DA40 rubber grommet', (0.03, 0.03, 0.035), 0.0, 0.7, ru='резиновая втулка'),
     wire_r=lib.mat('DA40 wire red (+)', (0.70, 0.08, 0.06), 0.0, 0.5, ru='провод питания'),
     wire_k=lib.mat('DA40 wire black (-)', (0.05, 0.05, 0.05), 0.0, 0.5, ru='провод массы'),
     relay=lib.mat('DA40 relay housing', (0.12, 0.12, 0.13), 0.1, 0.5, ru='корпус реле'),
@@ -217,8 +218,10 @@ def pitot():
                V((x - 0.2, -0.05 + dz, start.z - 0.005)), V((3.2, -0.07 + dz, 0.05)), V((2.2, -0.10 + dz, 0.00)),
                V((1.30, r_root.y + 0.008, r_root.z + 0.002))] + list(reversed(stub.run(key))) + [V((0.62, r_in.y + 0.005, -0.105)),
                LH_SEAT_TRAPS + V((0.03, 0.04, 0.0 + dz))]
-        return hose(name, ru, pts, 0.004, 0.05, mat, 'AMM 34-10, 57-10 2.B(9)', joints=(0.02, 0.9),
+        path = hose(name, ru, pts, 0.004, 0.05, mat, 'AMM 34-10, 57-10 2.B(9)', joints=(0.02, 0.9),
                     clamps=[(f, V((0, 1, 0))) for f in (0.2, 0.35, 0.5, 0.65)])
+        SPAR_LINES.append((path, 0.004))
+        return path
     run(ports['pitot'], 0.0, 'pitot', 'green', 'Pitot hose (green) probe to LH seat',
         'Шланг полного давления, зелёный 8 мм: ПВД — носок левого крыла — разъём под креслом пилота')
     run(ports['static'], 0.012, 'static', 'blue', 'Probe static hose (blue) to LH seat',
@@ -233,8 +236,28 @@ def pitot():
                V((1.30, -0.095, -0.045)) + oy] + [q + oy for q in reversed(stub.run('pitot_heat'))] + [V((0.60, -0.09, -0.075)) + oy,
                V((0.52, -0.04, -0.092)) + ox, V((0.45, -0.045, -0.092)) + ox,
                V((0.45, -0.066, -0.092)) + ox]          # к заднему торцу разъёма P2400 (electrical.py)
-        sweep(p, fillet(pts, 0.05), 0.0013, 0, segs=6)
+        path = fillet(pts, 0.05)
+        sweep(p, path, 0.0013, 0, segs=6)
         p.done()
+        SPAR_LINES.append((path, 0.0035))
+    spar_grommets()
+
+
+# стенка переднего лонжерона левого крыла у приёмника: шланги и провода от ПВД (он позади лонжерона)
+# проходят сквозь неё в носок — в резиновых втулках
+SPAR_WEB_Y = 0.059
+SPAR_LINES = []
+
+
+def spar_grommets():
+    p = P('Front spar web grommets (Pitot lines)', 'Резиновые втулки в стенке переднего лонжерона левого крыла: сквозь неё '
+          'шланги полного и статического давления и провода обогрева идут от ПВД в носок крыла', 'rubber', 'AMM 34-10, 57-10')
+    for path, r in SPAR_LINES:
+        for a, b in zip(path, path[1:]):
+            if a.x > 4.0 and (a.y - SPAR_WEB_Y) * (b.y - SPAR_WEB_Y) < 0:
+                q = a.lerp(b, (SPAR_WEB_Y - a.y) / (b.y - a.y))
+                ring_tube(p, q, (b - a).normalized(), r + 0.0045, r + 0.0008, 0.009, 0, segs=16)
+    p.done()
 
 
 # ── Статика ───────────────────────────────────────────────────────────────

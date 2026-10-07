@@ -53,8 +53,9 @@ I3 = Matrix.Identity(3)
 
 ref.open_source()
 R = ref.Ref()
-KEEP = ('Engine power lever sensor (ECU reads the POWER lever)', 'POWER lever → power lever sensor (push rod)',
-        'Power lever sensor → EECU (through the firewall)')
+# датчик рычага POWER и тяга к нему — из исходника; провод датчика к EECU прокладывает electrical.py (ветвь жгута EECU
+# к блоку под креслом пилота, AMM 76-00): провод исходника шёл к перегородке, где блока нет
+KEEP = ('Engine power lever sensor (ECU reads the POWER lever)', 'POWER lever → power lever sensor (push rod)')
 COL_I = lib.collection('DA40 Instrument equipment (AMM 22, 31-40, 34)')
 COL_R = lib.collection('DA40 Radio equipment (AMM 23, 25-60, 34-50)')
 for n in KEEP:                                    # датчик РУД — остаётся, переезжает в приборный слой
@@ -82,7 +83,8 @@ def _miny(o):
 # внутрь от борта: углами они выходили за обшивку)
 ELEC_CABLES = ('Battery (', 'External power cable', 'Starter cable', 'Main wiring harness', 'Alternator output', 'Alternator cable',
                'Alternator field', 'Alternator regulator control', 'ECU backup battery cable', 'ECU backup battery ground',
-               'ECU backup relay', 'Engine harness', 'Cabin light feed', 'Wing lighting harness', 'Light feed')
+               'ECU backup relay', 'Engine harness', 'Cabin light feed', 'Wing lighting harness', 'Light feed', 'EECU harness:',
+               'ECU bus →')
 LATER = {'pitot': lambda o: 'hose' in o.name.lower() or o.name.startswith(('Stall warning horn', 'GDC 74A pneumatic port', 'Water trap', 'Pitot heat wire')),
          'electrical': lambda o: o.name.startswith(ELEC_CABLES + ('Main battery', 'Relay junction box'))}
 TRIM, SYS, RT = cabin.setup(R, ('instruments', 'radio'), step=0.015, extra=GONE, skip=LATER)
@@ -327,6 +329,7 @@ GEA = (0.205, 0.048, 0.170)
 GEA_C = V((-0.1675, SHELF_Y, SHELF_Z + 0.006 + GEA[2] / 2))
 FRAME_Y = 2.265                      # рама багажного отсека (направляющая тяги руля высоты)
 ECU_RELAY = V((0.0, -0.848, SHELF_Z + 0.020))   # реле резервной батареи EECU на полке (electrical.py)
+ECU_COCKPIT = V((0.165, -1.155, 0.285))          # второй разъём жгута EECU в кабине у перегородки (electrical.py: ECU_COCKPIT[1])
 HANDWHEEL = V((0.0, -0.2005, 0.153)) # ось штурвальчика триммера (MSFS HANDLING_Wheel_ElevatorTrim_Pitch)
 
 
@@ -952,10 +955,10 @@ def build():
     # датчик температуры → GDC
     pts = route(oat_c, oat_d, gdc_conn + V((0.0, 0.02, -0.02)), (1, 0, 0), 0.0025, *CAB, step=0.02)
     cable('GTP 59 OAT probe cable → GDC 74A', 'Кабель датчика температуры наружного воздуха к GDC 74A', pts, 0.0025, 'shield')
-    # EECU → GEA 71 (данные двигателя)
-    eecu = V((-0.22, -1.10, 0.19))          # свободный разъём EECU (electrical.py: 1-й и 3-й заняты)
-    pts = route(eecu, (0, 1, 0), gea_conn + V((0, 0.012, 0.0)), (-1, 0, 0), 0.003, (-0.40, -1.12, 0.12), (0.30, -0.70, 0.50), step=0.01)
-    cable('EECU → GEA 71 engine data', 'Кабель данных двигателя: EECU — GEA 71', pts, 0.003, 'shield')
+    # EECU → GEA 71 (данные двигателя): от переднего торца разъёма жгута EECU в кабине (сам блок — под креслом пилота)
+    eecu = ECU_COCKPIT - V((0.046, -0.004, -0.004))           # внутренняя вилка разъёма (к консоли)
+    pts = route(eecu, (-1, 0, 0), gea_conn + V((0, 0.012, 0.0)), (-1, 0, 0), 0.003, (-0.40, -1.19, 0.12), (0.30, -0.70, 0.50), step=0.01)
+    cable('EECU cockpit connector → GEA 71 engine data', 'Кабель данных двигателя: разъём жгута EECU за приборной доской — GEA 71', pts, 0.003, 'shield')
 
     # ── коаксиальные кабели ──
     rh = ports['rh']
