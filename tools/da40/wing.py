@@ -281,9 +281,12 @@ def end_rib(s):
         c = sum(outer, V()) / len(outer)
         pos = q + (c - q).normalized() * 0.012 + V((s * 0.004, 0, 0))
         hexa(p, pos, pos + V((s * 0.005, 0, 0)), 0.008, p.m(M['steel']))
-    tp = V((X, 0.293, S.lo_in(X, 0.293) + 0.02))
-    box(p, tp - V((s * 0.012, 0, 0)), (0.024, 0.04, 0.04), Matrix.Identity(3), p.m(M['insert']), bevel=0.003)
-    cyl(p, tp, tp - V((0, 0, 0.03)), 0.006, p.m(M['steel']), segs=12)
+    # узел швартовки (AMM 10-20 рис. 1): вставка на наружной стороне нервюры, резьбовая втулка — над кольцом
+    # швартовки модели MSFS (x ±5,567, y 0,293); кольцо ввёрнуто снизу у стыка с законцовкой
+    ring = V((s * 5.567, 0.293, 0.214))
+    tp = V((ring.x, ring.y, S.lo_in(X, ring.y) + 0.02))
+    box(p, V(((X + ring.x) / 2 + s * 0.006, ring.y, tp.z)), (abs(ring.x - X) + 0.024, 0.04, 0.04), Matrix.Identity(3), p.m(M['insert']), bevel=0.003)
+    cyl(p, tp, ring + V((0, 0, 0.002)), 0.006, p.m(M['steel']), segs=12)
     p.done()
 
 

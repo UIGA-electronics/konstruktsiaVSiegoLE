@@ -72,6 +72,26 @@ def hull_bvh(R):
     return ref._bvh(shell + glass)
 
 
+def layer_bvh(R, g, keep):
+    """[BVH] деталей слоя g (из LAYERS), имена которых начинаются с keep, — как препятствие трассам
+    слоя, который строится раньше g (например, трубы молниезащиты с заданными точками); [] — слоя нет."""
+    f = os.path.join(LAYERS, f'da40-{g}-raw.glb')
+    if not os.path.exists(f):
+        return []
+    before = set(bpy.data.objects)
+    bpy.ops.import_scene.gltf(filepath=f)
+    got = [o for o in bpy.data.objects if o not in before]
+    for o in got:
+        if o.parent is None:
+            o.location.z -= R.lift
+    bpy.context.view_layer.update()
+    keepo = [o for o in got if o.type == 'MESH' and o.name.startswith(keep)]
+    bvh = ref._bvh(keepo) if keepo else None
+    for o in got:
+        bpy.data.objects.remove(o, do_unlink=True)
+    return [bvh] if bvh else []
+
+
 def setup(R, own, step=0.010, extra=(), skip=None):
     """(отделка, соседние системы, планировщик) для слоя own."""
     trim = trim_bvh()

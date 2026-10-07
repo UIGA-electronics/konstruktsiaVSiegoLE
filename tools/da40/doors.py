@@ -148,7 +148,7 @@ def micro_switch(name, ru, c):
 PIVOT = bpy.data.objects['Canopy'].matrix_world.translation.copy()   # ось открытия фонаря (исходная модель)
 FW_REAR = -1.176                                                     # задняя грань перегородки
 HINGE_X = 0.30
-HINGE_Z = 0.41                                                       # выше блока EECU на перегородке
+HINGE_Z = 0.41                                                       # ось петель фонаря на перегородке
 ATTACH = [V((s * 0.26, -1.064, 0.432)) for s in (1, -1)]             # передние приливы рамы фонаря
 
 
