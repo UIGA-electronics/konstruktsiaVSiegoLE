@@ -68,10 +68,10 @@
   {
     "file": "da40-bonding.glb",
     "title": "Молниезащита и металлизация",
-    "parts": 25,
-    "meshes": 25,
+    "parts": 33,
+    "meshes": 33,
     "clips": [],
-    "mb": 0.14,
+    "mb": 0.16,
     "built": "tools/da40/bonding.py"
   },
   {
