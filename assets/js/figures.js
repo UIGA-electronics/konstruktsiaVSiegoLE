@@ -2213,7 +2213,8 @@ var Figures = (function () {
     /* Сцена раздела закреплена за разделом: читатель меняет только вид
        (прозрачность, подсветку, салон), а не набор систем.
          opts.src     — основа: планер и колёса;
-         opts.system  — система раздела [{ src, title, plain }]: видна всегда;
+         opts.system  — система раздела [{ src, title, plain, match }]: видна
+                        всегда; с match — только совпавшие детали файла;
          opts.context — соседние детали для привязки [{ src, title, match }]:
                         видны всегда, серые, только совпавшие с match;
          opts.extras  — то, что можно включить для наглядности ([{ src, title }],
@@ -2453,7 +2454,8 @@ var Figures = (function () {
           return keepWith[i].srcs.some(function (s) {
             /* соседний слой, показанный частично (моторама из двигателя), не в счёт */
             return files.some(function (f) {
-              return f.src === s && f.on && (f.role !== 'extra' || !!f.scene) && !(f.role === 'context' && f.match);
+              return f.src === s && f.on && (f.role !== 'extra' || !!f.scene) &&
+                !((f.role === 'context' || f.role === 'system') && f.match);
             });
           });
         }
@@ -2494,7 +2496,10 @@ var Figures = (function () {
         files.push({ src: o.src, role: 'base', on: true, title: o.title || opts.srcTitle });
       });
       sysDefs.forEach(function (d) {
-        files.push({ src: d.src, role: 'system', on: true, title: d.title, plain: !!d.plain });
+        /* match — из чужого слоя берём только свои детали: нервюры центроплана,
+           построенные вместе с воздуховодами или с узлами шасси */
+        files.push({ src: d.src, role: 'system', on: true, title: d.title, plain: !!d.plain,
+          match: d.match ? new RegExp(d.match, 'i') : null });
       });
       ctxDefs.forEach(function (d) {
         files.push({ src: d.src, role: 'context', on: true, title: d.title, plain: true,
@@ -2541,6 +2546,10 @@ var Figures = (function () {
       function adopt(f, sceneNode) {
         sceneNode.traverse(function (o) {
           if (!o.isMesh) return;
+          /* Из слоя, взятого частично (match), лишние детали не входят ни в систему,
+             ни в обшивку: воздуховоды с материалом «Fuselage» иначе считались бы
+             обшивкой и просвечивали вместе с ней. */
+          if (f.match && !f.match.test(nameOf(o))) { o.visible = false; o.__dim = true; return; }
           dequantize(o.geometry);
           if (o.material && !Array.isArray(o.material)) {
             var base = o.material;
@@ -2677,7 +2686,7 @@ var Figures = (function () {
       function applyParts() {
         parts.forEach(function (o) {
           var f = o.__file || {};
-          if (f.role === 'context' && f.match && !f.match.test(nameOf(o))) {
+          if ((f.role === 'context' || f.role === 'system') && f.match && !f.match.test(nameOf(o))) {
             o.visible = false; o.__dim = true; return;
           }
           var on = !(elDef && f.role === 'system') || inElement(elDef, o);

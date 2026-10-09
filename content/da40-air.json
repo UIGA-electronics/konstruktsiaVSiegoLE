@@ -68,7 +68,7 @@
           },
           {
             "src": "models/da40/da40-structure.glb",
-            "title": "Перегородка, наружная нервюра коллектора, «шляпа»",
+            "title": "Перегородка, внешняя нервюра коллектора, прямоугольный профиль («шляпа»)",
             "match": "^firewall|^front outer rib lh|^top hat profile",
             "opacity": 0.35
           }
