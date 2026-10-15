@@ -262,13 +262,13 @@ def build():
         s, tag = sd.s, ('LH' if sd.s > 0 else 'RH')
         gen = 'левого' if s > 0 else 'правого'
         # кронштейн закрылка
-        p = P(f'Flap horn {tag}', f'Кронштейн (качалка) {gen} закрылка: к нему короткая тяга от качалки в крыле', 'alu', 'AMM 27-50 рис. 2')
+        p = P(f'Flap horn {tag}', f'Кабанчик {gen} закрылка: к нему короткая тяга от качалки закрылка в крыле', 'alu', 'AMM 27-50 рис. 2')
         foot = sd.hc + V((0, -0.01, -0.02))
         box(p, (foot + sd.h0) / 2, (0.006, 0.03, (sd.h0 - foot).length + 0.016), basis(sd.h0 - foot), 0, bevel=0.002)
         cyl(p, sd.h0 - V((0.012, 0, 0)), sd.h0 + V((0.012, 0, 0)), 0.004, p.m(M['steel']), segs=10)
         objs[('horn', s)] = pivot_obj(p, sd.hc)
         # качалка на нервюре управления закрылком
-        p = P(f'Flap bellcrank {tag}', f'Качалка {gen} закрылка на нервюре управления: длинная тяга вдоль размаха → короткая тяга назад к закрылку',
+        p = P(f'Flap bellcrank {tag}', f'Качалка {gen} закрылка на нервюре крепления качалки закрылка: длинная тяга вдоль размаха → короткая тяга назад к кабанчику',
               'alu', 'AMM 27-50 2.B, рис. 2')
         pb = [sd.B, sd.B + sd.a2, sd.B + sd.a1]
         c = sum(pb, V()) / 3
@@ -278,7 +278,7 @@ def build():
         for q in pb:
             cyl(p, q - sd.nb * 0.008, q + sd.nb * 0.008, 0.0065, p.m(M['steel']), segs=12)
         objs[('bc', s)] = pivot_obj(p, sd.B)
-        p = P(f'Flap bellcrank bracket (flap control rib) {tag}', f'Кронштейн качалки {gen} закрылка на нервюре управления закрылком (x = {X_RIB:.2f} м)',
+        p = P(f'Flap bellcrank bracket (flap control rib) {tag}', f'Кронштейн качалки {gen} закрылка на нервюре крепления качалки закрылка (x = {X_RIB:.2f} м)',
               'black', 'AMM 27-50 рис. 2, 57-10')
         lo, hi = R.wing_section(s * X_RIB, sd.B.y)          # в высоте профиля: у задней кромки он тонкий
         z0 = max(sd.B.z - 0.029, (lo if lo is not None else -9) + 0.005)
@@ -288,11 +288,11 @@ def build():
         p.done()
         # тяги
         f0 = frames[0][s]
-        objs[('short', s)] = rod(f'Flap short push rod {tag}', f'Короткая тяга {gen} закрылка: качалка — кронштейн закрылка',
+        objs[('short', s)] = rod(f'Flap short push rod {tag}', f'Короткая тяга {gen} закрылка: качалка — кабанчик закрылка',
                                  f0['a2'], f0['horn'], 0.0065, 'AMM 27-50 рис. 2')
-        objs[('long', s)] = rod(f'Flap long push rod {tag}', f'Длинная тяга {gen} закрылка в крыле: от корневой нервюры к качалке на нервюре управления',
+        objs[('long', s)] = rod(f'Flap long push rod {tag}', f'Длинная тяга {gen} закрылка в крыле: от корневой нервюры к качалке закрылка',
                                 f0['e'], f0['a1'], 0.009, 'AMM 27-50 2.B')
-        objs[('fus', s)] = rod(f'Flap push rod in the fuselage {tag}', f'Тяга {gen} закрылка в фюзеляже: промежуточная качалка — корневая нервюра',
+        objs[('fus', s)] = rod(f'Flap push rod in the fuselage {tag}', f'Тяга {gen} закрылка в фюзеляже: промежуточный рычаг — корневая нервюра',
                                idler_pin(s, frames[0]['ps']), f0['e'], 0.009, 'AMM 27-50 2.B, рис. 1')
         d = (f0['a1'] - f0['e']).normalized()
         roller_guide(f'Flap push rod guide (root rib) {tag}', f'Ролики тяги {gen} закрылка на корневой нервюре', s * X_ROOT, sd.G, d,
@@ -301,10 +301,10 @@ def build():
     for s in (1, -1):
         tag = 'LH' if s > 0 else 'RH'
         c, d = V((s * X_RIB, 0.553, 0.048)), V((s * 0.995, -0.03, 0.072))
-        roller_guide(f'Aileron push rod guide 2 (flap control rib) {tag}', f'Второй роликовый узел тяги {"левого" if s > 0 else "правого"} элерона — на нервюре управления закрылком',
+        roller_guide(f'Aileron push rod guide 2 (flap control rib) {tag}', f'Второй роликовый узел тяги {"левого" if s > 0 else "правого"} элерона — на нервюре крепления качалки закрылка',
                      s * X_RIB, c, d, 'AMM 27-10 2., рис. 2')
     # промежуточная качалка
-    p = P('Flap idler lever', 'Промежуточная качалка закрылков на задней главной переборке: шток привода и тяги к обоим крыльям', 'alu', 'AMM 27-50 рис. 1, 3')
+    p = P('Flap idler lever', 'Промежуточный рычаг закрылков на заднем лонжероне центроплана: тяга исполнительного механизма и тяги к обоим крыльям', 'alu', 'AMM 27-50 рис. 1, 3')
     cyl(p, IDLER - V((0, 0, 0.032)), IDLER + V((0, 0, 0.010)), 0.011, 0, segs=18)
     box(p, IDLER, (0.026, 2 * IDLER_D + 0.024, 0.006), Matrix.Identity(3), 0, bevel=0.002)
     box(p, IDLER - V((0, 0, 0.016)) + V((0, -IDLER_D, 0)), (0.02, 0.02, 0.005), Matrix.Identity(3), 0, bevel=0.002)
@@ -312,7 +312,7 @@ def build():
         q = idler_pin(s, 0.0)
         cyl(p, q - V((0, 0, 0.024)), q + V((0, 0, 0.008)), 0.004, p.m(M['steel']), segs=10)
     objs['idler'] = pivot_obj(p, IDLER)
-    p = P('Flap idler lever bearing brackets', 'Кронштейны оси промежуточной качалки на задней главной переборке', 'black', 'AMM 27-50 рис. 1')
+    p = P('Flap idler lever bearing brackets', 'Кронштейны оси промежуточного рычага закрылков на заднем лонжероне центроплана', 'black', 'AMM 27-50 рис. 1')
     for dz in (-0.036, 0.014):
         box(p, IDLER + V((0, -0.035, dz)), (0.03, 0.07, 0.005), Matrix.Identity(3), 0, bevel=0.001)
     box(p, IDLER + V((0, -0.07, -0.011)), (0.05, 0.004, 0.06), Matrix.Identity(3), 0, bevel=0.001)
@@ -320,7 +320,7 @@ def build():
     # электропривод: мотор с редуктором на кронштейне левой задней замыкающей нервюры, корпус винта, шток
     pa0 = idler_pin(1, frames[0]['ps']) + V((0, 0, 0.016))
     d0 = (pa0 - SWIVEL).normalized()
-    p = P('Flap actuator (motor, gearbox, spindle tube)', 'Электропривод закрылков: мотор с редуктором, корпус винта, плата с пятью микровыключателями; под левым пассажирским креслом',
+    p = P('Flap actuator (motor, gearbox, spindle tube)', 'Исполнительный механизм (электропривод) закрылков: электродвигатель с редуктором и винтом, печатная плата с пятью микровыключателями; под левым пассажирским креслом',
           'motor', 'AMM 27-50 2.A, рис. 3')
     cyl(p, MOTOR - V((0, 0, 0.020)), MOTOR + V((0, 0, 0.020)), 0.034, 0, segs=32)
     cyl(p, MOTOR + V((0, 0, 0.020)), MOTOR + V((0, 0, 0.028)), 0.020, 0, segs=24)
@@ -331,9 +331,9 @@ def build():
     side = d0.cross(V((0, 0, 1))).normalized()
     box(p, SWIVEL + d0 * 0.2 + side * 0.022, (0.012, 0.012, 0.22), basis(d0), p.m(M['gfrp']), bevel=0.001)       # плата микровыключателей
     objs['act'] = pivot_obj(p, SWIVEL)
-    objs['act_rod'] = rod('Flap actuator control rod', 'Шток привода закрылков с кулачком микровыключателей: к промежуточной качалке',
+    objs['act_rod'] = rod('Flap actuator control rod', 'Тяга исполнительного механизма закрылков с кулачком микровыключателей: к промежуточному рычагу',
                           pa0, pa0 - d0 * 0.30, 0.007, 'AMM 27-50 рис. 3')
-    p = P('Flap actuator mounting bracket (LH rear closing rib)', 'Кронштейн привода закрылков на левой задней замыкающей нервюре, ось поворота привода',
+    p = P('Flap actuator mounting bracket (LH rear closing rib)', 'Монтажный кронштейн исполнительного механизма закрылков на задней части левой бортовой (замыкающей) нервюры, ось поворотного блока',
           'black', 'AMM 27-50 2.A, рис. 3')
     lo = R.skin(REAR_CLOSING_RIB_X - 0.003, SWIVEL.y, 'lower')[0]
     z0 = max(SWIVEL.z - 0.025, (lo.z if lo is not None else -9) + 0.006)   # не ниже обшивки: нижний край выходил наружу
@@ -400,10 +400,10 @@ def coil(p, a, b, R_, wire, pitch, mi=0):
 
 
 def pedal_adjusters():
-    hd = P('Rudder pedal adjuster handles', 'Ручки регулировки педалей на заднем торце педальных узлов: потянуть — фиксатор выходит '
-           'из нижней салазки, узел едет по салазкам к пилоту; отпустить и нажать на обе педали — фиксатор встаёт на место', 'black', 'AMM 27-20 2.A, рис. 2')
-    cb = P('Rudder pedal adjuster cables', 'Тросики от ручек регулировки к фиксаторам педальных узлов', 'black', 'AMM 27-20 рис. 2')
-    lt = P('Rudder pedal adjuster latches', 'Фиксаторы педальных узлов: подпружиненный штырь каретки входит в отверстие нижней салазки', 'steel', 'AMM 27-20 рис. 2')
+    hd = P('Rudder pedal adjuster handles', 'Ручки регулировки положения педалей на задней поверхности педальных узлов: потянуть — задвижка '
+           'расцепляется с нижней направляющей трубкой, узел смещается к креслу; отпустить и нажать на обе педали — задвижка фиксирует узел', 'black', 'AMM 27-20 2.A, рис. 2')
+    cb = P('Rudder pedal adjuster cables', 'Тросики от ручек регулировки к задвижкам педальных узлов', 'black', 'AMM 27-20 рис. 2')
+    lt = P('Rudder pedal adjuster latches', 'Регулирующие задвижки педальных узлов: подпружиненный штырь каретки входит в отверстие нижней направляющей трубки', 'steel', 'AMM 27-20 рис. 2')
     sp = P('Rudder pedal adjuster return springs', 'Возвратные пружины кареток педальных узлов (по две на узел, между передней опорой и кареткой)', 'steel', 'AMM 27-20 рис. 2')
     ft = P('Rudder pedal assembly floor attachments', 'Опорные пластины передней и задней опор педальных узлов; каждый узел крепится к полу шестью болтами', 'black', 'AMM 27-20 2., рис. 2')
     for s, xc in PEDAL_X.items():
@@ -433,6 +433,44 @@ def pedal_adjusters():
                     q = V((xc + dx, y + dy, z + 0.002))
                     hexa(ft, q, q + V((0, 0, 0.005)), 0.010, ft.m(M['steel']))
     for p in (hd, cb, lt, sp, ft):
+        p.done()
+
+
+# Длинная тяга руля высоты (исходник): оси наконечников; три роликовые направляющие — на шпангоуте крепления
+# багажного отсека и кольцевых шпангоутах 1 и 2 (AMM 27-30 2., рис. 2; structure.py: BAGGAGE_Y, RING_Y)
+ELEV_ROD_A, ELEV_ROD_B, ELEV_ROD_R = V((0.1, 0.059, -0.0405)), V((0.0, 4.812, 0.0605)), 0.010
+ELEV_GUIDES = ((1.745, 'baggage compartment frame', 'на шпангоуте крепления багажного отсека'),
+               (2.250, 'ring frame 1', 'на кольцевом шпангоуте 1'),
+               (3.150, 'ring frame 2', 'на кольцевом шпангоуте 2'))
+
+
+def elevator_rod_guides():
+    d = (ELEV_ROD_B - ELEV_ROD_A).normalized()
+    for y, tag, ru in ELEV_GUIDES:
+        c = ELEV_ROD_A + d * ((y - ELEV_ROD_A.y) / d.y)
+        face = y + 0.0025                                      # задняя грань стенки шпангоута
+        p = P(f'Elevator push rod guide ({tag}, 3 rollers)',
+              f'Роликовая направляющая длинной тяги руля высоты {ru}: пластина на задней стороне стенки с окном под тягу, '
+              'три капроновых ролика через 120° держат тягу по оси и дают ей ход вперёд-назад', 'alu', 'AMM 27-30 2., рис. 2')
+        q = V((c.x, face + 0.002, c.z))
+        # пластина с окном (рамка из четырёх полос)
+        for dx, dz, w, h in ((0, 0.026, 0.07, 0.018), (0, -0.026, 0.07, 0.018), (0.026, 0, 0.018, 0.034), (-0.026, 0, 0.018, 0.034)):
+            box(p, q + V((dx, 0, dz)), (w, 0.004, h), Matrix.Identity(3), 0, bevel=0.001)
+        up = (V((0, 0, 1)) - d * d.z).normalized()
+        side = d.cross(up).normalized()
+        rr = 0.0075
+        for k in range(3):
+            a = math.radians(90 + 120 * k)
+            rad = (up * math.sin(a) + side * math.cos(a)).normalized()
+            ax = d.cross(rad).normalized()                      # ось ролика: поперёк тяги и радиуса
+            rc = c + d * ((face + 0.016 - c.y) / d.y) + rad * (ELEV_ROD_R + rr + 0.0005)
+            cyl(p, rc - ax * 0.006, rc + ax * 0.006, rr, p.m(M['nylon']), segs=16)
+            cyl(p, rc - ax * 0.010, rc + ax * 0.010, 0.0022, p.m(M['steel']), segs=8)
+            # вилка ролика: две щёки от пластины назад до оси ролика
+            foot = V((c.x, face + 0.004, c.z)) + rad * 0.026
+            for sg in (-1, 1):
+                a0, a1 = foot + ax * sg * 0.0095, rc + ax * sg * 0.0095
+                cyl(p, a0, a1, 0.0035, 0, segs=6)
         p.done()
 
 
@@ -482,6 +520,7 @@ def check(objs):
 
 objs, frames = build()
 pedal_adjusters()
+elevator_rod_guides()
 if os.environ.get('CHECK'):
     check(objs)
 dup = [o.name for o in COL.all_objects if '.0' in o.name[-4:]]

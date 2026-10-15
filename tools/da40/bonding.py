@@ -226,14 +226,14 @@ def build():
     pts = route(FW_IN, A, TUBE_R, (0.0, -1.20, -0.27), (0.55, -0.12, 0.0)) + [B] + \
         route(C, J + V((0, -0.022, 0)), TUBE_R, (0.0, -0.10, -0.27), (0.55, 0.30, 0.0), relax=mb_holes(FRONT_MB, 0.30, -0.18))
     tube('Lightning conductor tube (firewall → cabin floor)', 'Продольная ветвь молниеотвода: от противопожарной перегородки '
-         'под полом кабины вдоль центральной консоли, сквозь передний главный шпангоут к узлу под передними креслами', pts)
+         'под полом кабины вдоль центрального пульта, сквозь передний главный шпангоут к узлу под передними креслами', pts)
     # узел → сквозь задний главный шпангоут → рама багажника → хвост → низ киля; здесь канала «шляпы» нет,
     # и пол — препятствие, как остальная отделка
     pts = route(J + V((0, 0.022, 0)), BAG, TUBE_R, (-0.55, 0.15, -0.27), (0.55, 2.30, 0.45), step=0.02,
                 relax=mb_holes(REAR_MB, 0.25, -0.18), floor=True)
     pts2 = route(BAG, FIN_BASE, TUBE_R, (-0.30, 2.15, -0.25), (0.30, 4.60, 0.60), step=0.02, hidden=False)
-    tube('Lightning conductor tube (cabin → rear fuselage)', 'Продольная ветвь молниеотвода: под полом кабины, сквозь раму '
-         'багажника и шпангоуты хвостовой части к килю', pts + pts2[1:])
+    tube('Lightning conductor tube (cabin → rear fuselage)', 'Продольная ветвь молниеотвода: под полом кабины, сквозь шпангоут '
+         'крепления багажного отсека и кольцевые шпангоуты к килю', pts + pts2[1:])
     # вертикальная труба в киле к главному кронштейну стабилизатора
     pts = route(FIN_BASE, STAB_BRACKET - V((0, 0, 0.02)), TUBE_R, (-0.12, 4.30, 0.0), (0.12, 4.98, 1.25), step=0.012, hidden=False)
     tube('Lightning conductor vertical tube (fin)', 'Вертикальная труба молниеотвода в киле: от хвостовой части к главному '
@@ -319,7 +319,7 @@ def jumpers():
     tubes = _tube_pts()
     jobs = [
         # моторный отсек — к мотораме (п. 2.A: heating cooler, oil cooler, water cooler, inter cooler — case)
-        ('Cabin heat exchanger', frame, 'теплообменника отопления', 'heating cooler'),
+        ('Cabin heat exchanger', frame, 'теплообменника обогрева кабины', 'heating cooler'),
         ('Engine oil cooler', frame, 'маслоохладителя', 'oil cooler'),
         ('Coolant radiator', frame, 'радиатора охлаждающей жидкости', 'water cooler'),
         ('Intercooler', frame, 'интеркулера', 'inter cooler'),
