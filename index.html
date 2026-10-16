@@ -3,14 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#F1F1EE">
+<meta name="theme-color" content="#0b0c0c">
 <meta name="description" content="Интерактивное учебное пособие по конструкции и лётной эксплуатации воздушных судов. Глава 6 «Системы управления полётом» и практикум: самолёт DA 40 NG по системам в 3D по AFM и AMM.">
 <title>КиЛЭ ВС — интерактивное учебное пособие</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="assets/img/icon.svg" type="image/svg+xml">
-<link rel="preload" href="assets/fonts/sofia-sans-condensed-cyr.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="assets/fonts/sofia-sans-cyr.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="assets/css/style.css?v=51">
+<link rel="preload" href="assets/fonts/pt-sans-cyrillic-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/pt-sans-cyrillic-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="assets/css/style.css?v=60">
 </head>
 <body>
 
@@ -18,15 +18,7 @@
 
 <header class="top" id="topbar">
   <div class="top-in">
-    <a class="brand" href="#home" aria-label="КиЛЭ ВС — на главную">
-      <b>КиЛЭ ВС</b>
-      <small>Конструкция и лётная эксплуатация воздушных судов</small>
-    </a>
-    <nav class="nav" id="nav" aria-label="Разделы">
-      <a href="#home" data-nav="home">Пособие</a>
-      <a href="#fc-intro" data-nav="ch">Глава 6</a>
-      <a href="#model-da40" data-nav="lab">Практикум DA 40 NG</a>
-    </nav>
+    <a class="brand" href="#home"><b>КиЛЭ ВС</b><small>Конструкция и лётная эксплуатация воздушных судов · УИ ГА</small></a>
     <div class="top-sp"></div>
     <button class="top-btn" id="btn-toc" type="button" aria-expanded="false" aria-controls="toc-drawer">
       <span>Содержание</span>
@@ -34,6 +26,14 @@
     </button>
   </div>
 </header>
+<nav class="nav" aria-label="Разделы">
+  <div class="nav-in" id="nav">
+    <a href="#home" data-nav="home">Главная</a>
+    <a href="#fc-intro" data-nav="ch">Глава 6</a>
+    <a href="#model-da40" data-nav="lab">Практикум DA 40 NG</a>
+    <a href="#fc-quiz" data-nav="quiz">Тесты</a>
+  </div>
+</nav>
 
 <div class="reading-progress" id="reading-progress"><i></i></div>
 
@@ -54,16 +54,18 @@
 
 <footer class="sitefoot">
   <div class="foot-in">
-    <div class="foot-a"><span class="k">Пособие</span><b>Конструкция и лётная эксплуатация воздушных судов</b> — проект по дисциплине, УИ ГА им. Б. П. Бугаева, 2026.</div>
-    <div class="foot-b"><span class="k">Источники</span>Глава 6 следует учебному пособию М. Н. Морозова (Ульяновск, 2026); практикум — учебному пособию В. М. Корнеева по DA 40 NG (2012), РЛЭ (AFM) и руководству по ТО (AMM). Изложено своими словами, первоисточники не воспроизводятся — даны ссылки на разделы.</div>
-    <div class="foot-c"><span class="k">Модель</span>3D-модель DA 40 NG собрана по AMM; системы сверены с разделами ATA 21–80.</div>
+    <h2>О пособии</h2>
+    <p>Интерактивное учебное пособие по дисциплине «Конструкция и лётная эксплуатация воздушных судов», Ульяновский институт гражданской авиации им. Б. П. Бугаева, 2026.</p>
+    <p>Глава 6 следует учебному пособию М. Н. Морозова (Ульяновск, 2026); практикум — учебному пособию В. М. Корнеева по DA 40 NG (2012), РЛЭ (AFM) и руководству по техническому обслуживанию (AMM). Текст изложен своими словами, первоисточники не воспроизводятся — даны ссылки на разделы.</p>
+    <hr>
+    <p>3D-модель DA 40 NG собрана по руководству по ТО; системы сверены с главами ATA 21–80.</p>
   </div>
 </footer>
 
-<script src="assets/js/scenery.js?v=51"></script>
-<script src="assets/js/figures.js?v=51"></script>
-<script src="assets/js/render.js?v=51"></script>
-<script src="assets/js/plan.js?v=51"></script>
-<script src="assets/js/app.js?v=51"></script>
+<script src="assets/js/scenery.js?v=60"></script>
+<script src="assets/js/figures.js?v=60"></script>
+<script src="assets/js/render.js?v=60"></script>
+<script src="assets/js/plan.js?v=60"></script>
+<script src="assets/js/app.js?v=60"></script>
 </body>
 </html>
