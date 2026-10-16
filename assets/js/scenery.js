@@ -1,6 +1,6 @@
 /* Окружение для 3D-моделей.
 
-   Scenery.showroom — тёмный демонстрационный зал для самолёта: графитовый
+   Scenery.showroom — тёмный демонстрационный зал для самолёта: нейтральный графитовый
    фон с мягким светом сверху, матовый пол с тонкой метровой сеткой, которая
    растворяется к краям, и тень под самолётом. Без нарисованных пейзажей:
    крупные растровые картинки в 3D всегда выглядят мыльно, а ровный градиент
@@ -12,8 +12,8 @@
 (function () {
   'use strict';
 
-  var BG_TOP = '#262a30', BG_MID = '#16191d', BG_LOW = '#0e1013';
-  var FOG = 0x101215;
+  var BG_TOP = '#2c2e31', BG_MID = '#1f2023', BG_LOW = '#161719';
+  var FOG = 0x18191b;
 
   function canvas(w, h) {
     var c = document.createElement('canvas');
@@ -54,10 +54,10 @@
   function floorCanvas(R, meter) {
     var S = FLOOR_PX, c = canvas(S, S), g = c.getContext('2d'), h = S / 2;
     var gr = g.createRadialGradient(h, h, 0, h, h, h);
-    gr.addColorStop(0, 'rgba(42,45,50,1)');
-    gr.addColorStop(0.35, 'rgba(31,34,38,1)');
-    gr.addColorStop(0.8, 'rgba(20,22,26,1)');
-    gr.addColorStop(1, 'rgba(16,18,21,1)');
+    gr.addColorStop(0, 'rgba(46,47,50,1)');
+    gr.addColorStop(0.35, 'rgba(36,37,40,1)');
+    gr.addColorStop(0.8, 'rgba(26,27,29,1)');
+    gr.addColorStop(1, 'rgba(24,25,27,1)');
     g.fillStyle = gr;
     g.fillRect(0, 0, S, S);
     var px = S / (2 * R) * meter;                 /* пикселей на метр */
@@ -65,15 +65,15 @@
     for (var k = -n; k <= n; k++) {
       var major = k % 5 === 0;
       var x = h + k * px;
-      g.strokeStyle = major ? 'rgba(170,178,188,0.12)' : 'rgba(150,158,168,0.055)';
+      g.strokeStyle = major ? 'rgba(190,190,186,0.10)' : 'rgba(170,170,166,0.045)';
       g.lineWidth = major ? 2 : 1;
       g.beginPath(); g.moveTo(x, 0); g.lineTo(x, S); g.stroke();
       g.beginPath(); g.moveTo(0, x); g.lineTo(S, x); g.stroke();
     }
     /* гасим сетку к краю: накладываем фон с радиальной прозрачностью */
     var fade = g.createRadialGradient(h, h, h * 0.25, h, h, h);
-    fade.addColorStop(0, 'rgba(16,18,21,0)');
-    fade.addColorStop(1, 'rgba(16,18,21,1)');
+    fade.addColorStop(0, 'rgba(24,25,27,0)');
+    fade.addColorStop(1, 'rgba(24,25,27,1)');
     g.fillStyle = fade;
     g.fillRect(0, 0, S, S);
     grain(g, S, S, 2.5);

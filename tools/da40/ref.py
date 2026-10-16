@@ -36,6 +36,54 @@ def _bvh(objs):
     return BVHTree.FromPolygons(verts, polys)
 
 
+
+def swept_bvh(objs, samples=5):
+    """BVH деталей во всех положениях: неподвижные — как есть, анимированные (дорожки NLA, как их
+    создаёт импорт glTF) — в нейтрали и в samples кадрах каждого клипа. Трассы соседних систем
+    обходят не только нейтраль, но и весь ход ручек, тяг и качалок."""
+    sc = bpy.context.scene
+    f0 = sc.frame_current
+    verts, polys = [], []
+
+    def add(o):
+        dg = bpy.context.evaluated_depsgraph_get()
+        e = o.evaluated_get(dg)
+        m = e.to_mesh()
+        M = o.matrix_world
+        base = len(verts)
+        verts.extend(M @ v.co for v in m.vertices)
+        polys.extend([base + i for i in p.vertices] for p in m.polygons)
+        e.to_mesh_clear()
+
+    for o in objs:
+        add(o)
+    anim = [o for o in objs if o.animation_data and o.animation_data.nla_tracks]
+    names = sorted({t.name.split('.')[0] for o in anim for t in o.animation_data.nla_tracks})
+    for nm in names:
+        acts, rng = {}, None
+        for o in anim:
+            for t in o.animation_data.nla_tracks:
+                if t.name.split('.')[0] == nm and t.strips and t.strips[0].action:
+                    a = t.strips[0].action
+                    acts[o] = a
+                    r = a.frame_range
+                    rng = (min(rng[0], r[0]), max(rng[1], r[1])) if rng else (r[0], r[1])
+        if not acts:
+            continue
+        keep = {o: o.animation_data.action for o in acts}
+        for o, a in acts.items():
+            o.animation_data.action = a
+        for i in range(samples):
+            sc.frame_set(int(round(rng[0] + (rng[1] - rng[0]) * i / (samples - 1))))
+            bpy.context.view_layer.update()
+            for o in acts:
+                add(o)
+        for o, a in keep.items():
+            o.animation_data.action = a
+    sc.frame_set(f0)
+    bpy.context.view_layer.update()
+    return BVHTree.FromPolygons(verts, polys)
+
 # Детали MSFS, которые заменены построенными по документам: из планера они
 # вырезаются при нарезке (tools/split-da40.js), обшивку под ними берём без них.
 with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'replaced.json')) as _f:
@@ -90,12 +138,13 @@ class Ref:
         return (f.y if f else None), (r.y if r else None)
 
 
-def export(col, path, lift, anim=False):
+def export(col, path, lift, anim=False, mode='ACTIONS'):
     """Экспорт одной коллекции в GLB в системе координат сайта.
 
     Всё вешается на пустышку «DA40 ROOT», поднятую на lift: так колёса
     стоят на нуле, как в остальных файлах, и слои совпадают. anim=True —
-    с анимацией (ключи объектов; время = кадр / fps, как в клипах исходника)."""
+    с анимацией (ключи объектов; время = кадр / fps, как в клипах исходника); mode='NLA_TRACKS' —
+    клип на каждое имя дорожки NLA (все детали с дорожкой этого имени в одном клипе)."""
     root = bpy.data.objects.new('DA40 ROOT', None)
     col.objects.link(root)
     root.location = (0, 0, lift)
@@ -110,7 +159,7 @@ def export(col, path, lift, anim=False):
         o.select_set(True)
     kw = dict(filepath=path, export_format='GLB', use_selection=True, export_apply=True,
               export_yup=True, export_materials='EXPORT', export_animations=anim,
-              export_animation_mode='ACTIONS', export_force_sampling=True, export_frame_range=False,
+              export_animation_mode=mode, export_force_sampling=True, export_frame_range=False,
               export_anim_slide_to_zero=False, export_optimize_animation_size=False,
               export_cameras=False, export_lights=False, export_extras=False)
     valid = set(bpy.ops.export_scene.gltf.get_rna_type().properties.keys())

@@ -1,0 +1,78 @@
+{
+ "+1.205": [
+  {
+   "rod": "Aileron long push rod in the LH wing",
+   "y": 0.6,
+   "z": -0.0679,
+   "r": 0.0141
+  },
+  {
+   "rod": "Flap long push rod LH",
+   "y": 0.625,
+   "z": -0.155,
+   "r": 0.013
+  }
+ ],
+ "+2.800": [
+  {
+   "rod": "Aileron long push rod in the LH wing",
+   "y": 0.5532,
+   "z": 0.0516,
+   "r": 0.015
+  }
+ ],
+ "+3.250": [
+  {
+   "rod": "Aileron long push rod in the LH wing",
+   "y": 0.54,
+   "z": 0.0853,
+   "r": 0.0153
+  }
+ ],
+ "+3.880": [
+  {
+   "rod": "Aileron long push rod in the LH wing",
+   "y": 0.5215,
+   "z": 0.1325,
+   "r": 0.0157
+  }
+ ],
+ "-3.880": [
+  {
+   "rod": "Aileron long push rod in the RH wing",
+   "y": 0.5215,
+   "z": 0.1325,
+   "r": 0.0157
+  }
+ ],
+ "-3.250": [
+  {
+   "rod": "Aileron long push rod in the RH wing",
+   "y": 0.54,
+   "z": 0.0853,
+   "r": 0.0153
+  }
+ ],
+ "-2.800": [
+  {
+   "rod": "Aileron long push rod in the RH wing",
+   "y": 0.5532,
+   "z": 0.0516,
+   "r": 0.015
+  }
+ ],
+ "-1.205": [
+  {
+   "rod": "Aileron long push rod in the RH wing",
+   "y": 0.6,
+   "z": -0.0679,
+   "r": 0.0141
+  },
+  {
+   "rod": "Flap long push rod RH",
+   "y": 0.625,
+   "z": -0.155,
+   "r": 0.013
+  }
+ ]
+}

@@ -382,7 +382,7 @@ def shelf_units():
                         ('external power receptacle', V((0.35, 1.86, 0.04)), (0.12, 0.07, 0.07)),
                         ('ECU backup battery', V((0.150, 2.390, 0.055)), (0.17, 0.17, 0.12)),
                         ('main static line down the LH side', V((0.33, 1.782, 0.39)), (0.05, 0.04, 0.48)),
-                        ('LH seat water traps', V((0.31, -0.25, -0.16)), (0.16, 0.22, 0.12))):
+                        ('LH seat water traps', V((0.31, -0.16, -0.16)), (0.16, 0.22, 0.12))):
         r = Part(name + ' (reserved)', None, M['black'], RESERVED)
         box(r, c, sz, I3, 0)
         r.done()
@@ -540,8 +540,11 @@ def servo(name, ru, doc, cap_c, cap_axis, rod_dir, rod_p, body_dir, col=None):
 
 def servos():
     out = {}
+    # оси тяг в нейтрали пишет controls.py (слой управления собирается раньше)
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'controls-lines.json')) as f:
+        lines = {k: [V(q) for q in v] for k, v in json.load(f).items()}
     # крен: за задним главным шпангоутом справа, трос на тяге правого элерона в центроплане
-    A, B = V((0.0, 0.574, -0.104)), V((-1.2, 0.600, -0.068))       # оси наконечников тяги (исходник)
+    A, B = lines['aileron_cs_RH']
     rd = (B - A).normalized()
     x = -0.34
     rp = A + rd * ((x - A.x) / rd.x)
@@ -549,7 +552,7 @@ def servos():
     out['roll'] = servo('GSA 81 roll servo', 'Рулевая машина крена GSA 81 автопилота GFC 700 за задним главным шпангоутом справа; трос-уздечка на тяге правого элерона',
                         'AMM 22-10 2.B, рис. 2', cap, (0, 1, 0), rd, rp, (0, 1, 0))
     # тангаж: за шпангоутом крепления багажного отсека, трос на длинной тяге руля высоты
-    A, B = V((0.1, 0.059, -0.0405)), V((0.0, 4.812, 0.0605))
+    A, B = lines['elevator_long']
     rd = (B - A).normalized()
     y = 2.665
     rp = A + rd * ((y - A.y) / rd.y)

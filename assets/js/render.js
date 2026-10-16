@@ -21,7 +21,7 @@ var Render = (function () {
     warn: '<svg viewBox="0 0 24 24"><path d="M12 3l9.5 16.5h-19z"/><path d="M12 9v4M12 16h.01"/></svg>',
     key:  '<svg viewBox="0 0 24 24"><path d="M4 12.5l5 5L20 6.5"/></svg>'
   };
-  var TITLES = { fact: 'А вы знали', note: 'Пояснение', warn: 'Важно', key: 'Главное' };
+  var TITLES = { fact: 'К сведению', note: 'Примечание', warn: 'Внимание', key: 'Главное' };
 
   function esc(s) {
     return String(s == null ? '' : s)

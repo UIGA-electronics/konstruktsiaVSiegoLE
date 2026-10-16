@@ -2257,7 +2257,11 @@ var Figures = (function () {
         if (opts.tall) return cw < 520 ? 1.15 : 0.74;
         return cw < 520 ? 0.95 : 0.62;
       }
-      var w = box.clientWidth || 600, h = Math.round(w * ratio(w));
+      /* На странице практикума окно модели — колонка во всю высоту экрана
+         (app.js, .ws-view): высоту задаёт раскладка, а не пропорция. */
+      var inPane = !!frame.closest('.ws-view');
+      var w = box.clientWidth || 600;
+      var h = inPane ? (box.clientHeight || Math.round(w * 0.75)) : Math.round(w * ratio(w));
 
       var renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.setPixelRatio(Math.min(devicePixelRatio, LITE ? 1.5 : 2));
@@ -2796,6 +2800,12 @@ var Figures = (function () {
            странице двигателя незачем целиться в середину крыла.
            zoom < 1 подводит камеру ближе. */
         var fc = opts.focus || [0, 0, 0], zm = opts.zoom || 1;
+        /* Ракурсы из JSON подобраны под кадр 16:10. Колонка практикума выше и
+           уже: отводим камеру так, чтобы по ширине влезало столько же. */
+        if (inPane) {
+          var aw = box.clientWidth || w, ah = box.clientHeight || h;
+          zm *= Math.max(1, (1 / ratio(aw)) / (aw / ah));
+        }
         var tgt = new THREE.Vector3(size.x * fc[0], size.y * fc[1], size.z * fc[2]);
         camera.position.set(tgt.x + r * vm[0] * zm, tgt.y + r * vm[1] * zm, tgt.z + r * vm[2] * zm);
         camera.near = r / 100;
@@ -2814,8 +2824,39 @@ var Figures = (function () {
           names = files[0].animations.map(function (c) { return { clip: c.name, title: c.name }; });
         }
 
-        /* Элементы системы раздела: «Вся система» и по кнопке на каждый узел. */
-        if (elDefs.length) {
+        /* Состав системы — позиции с номерами в колонке текста (app.js кладёт
+           туда пустой .legend и пишет его id в data-legend), как перечень
+           к рисунку в каталоге деталей. Без колонки — строка кнопок, как раньше. */
+        var legendHost = frame.dataset.legend ? document.getElementById(frame.dataset.legend) : null;
+        function pickEl(i) {
+          elDef = i < 0 ? null : elDefs[i];
+          select(null);
+          hideCard();
+          applyParts();
+          render();
+          info.textContent = elDef ? (elDef.hint || elDef.title) : (opts.hint || M3_HINT);
+        }
+        if (elDefs.length && legendHost) {
+          var lh = '<span class="label"><span>Состав системы</span><span>' + elDefs.length + ' поз.</span></span><ol>' +
+            '<li><button type="button" class="is-all is-on" data-el="-1" aria-pressed="true"><span class="no">—</span><span class="t">Вся система</span>' +
+            '<span class="h">' + Render.esc(opts.hint || 'Все детали системы раздела в цвете; соседние — серые, для привязки.') + '</span></button></li>';
+          elDefs.forEach(function (d, i) {
+            lh += '<li><button type="button" data-el="' + i + '" aria-pressed="false"><span class="no">' + (i + 1) + '</span>' +
+              '<span class="t">' + Render.esc(d.title) + '</span>' + (d.hint ? '<span class="h">' + Render.esc(d.hint) + '</span>' : '') + '</button></li>';
+          });
+          legendHost.innerHTML = lh + '</ol>';
+          legendHost.querySelectorAll('[data-el]').forEach(function (b) {
+            b.addEventListener('click', function () {
+              legendHost.querySelectorAll('[data-el]').forEach(function (x) {
+                x.classList.remove('is-on');
+                x.setAttribute('aria-pressed', 'false');
+              });
+              b.classList.add('is-on');
+              b.setAttribute('aria-pressed', 'true');
+              pickEl(+b.dataset.el);
+            });
+          });
+        } else if (elDefs.length) {
           var eh = '<span class="fig-label">Элементы</span>' +
             '<button class="fig-btn is-on" data-el="-1" type="button">Вся система</button>';
           elDefs.forEach(function (d, i) {
@@ -2826,12 +2867,7 @@ var Figures = (function () {
             b.addEventListener('click', function () {
               bar.querySelectorAll('[data-el]').forEach(function (x) { x.classList.remove('is-on'); });
               b.classList.add('is-on');
-              elDef = +b.dataset.el < 0 ? null : elDefs[+b.dataset.el];
-              select(null);
-              hideCard();
-              applyParts();
-              render();
-              info.textContent = elDef ? (elDef.hint || elDef.title) : (opts.hint || M3_HINT);
+              pickEl(+b.dataset.el);
             });
           });
         }
@@ -2842,11 +2878,16 @@ var Figures = (function () {
             ch += '<button class="fig-btn' + (i || multi ? '' : ' is-on') +
               '" data-clip="' + Render.esc(s.clip) + '" type="button">' + Render.esc(s.title) + '</button>';
           });
-          bar.insertAdjacentHTML('afterbegin', '<div class="fig-row">' + ch + '</div>');
-          bar.querySelectorAll('[data-clip]').forEach(function (b) {
+          if (legendHost) {
+            legendHost.insertAdjacentHTML('beforeend', '<div class="acts">' + ch.replace('Сценарий', 'Показать работу') + '</div>');
+          } else {
+            bar.insertAdjacentHTML('afterbegin', '<div class="fig-row">' + ch + '</div>');
+          }
+          var clipRoot = legendHost || bar;
+          clipRoot.querySelectorAll('[data-clip]').forEach(function (b) {
             b.addEventListener('click', function () {
               var again = b.classList.contains('is-on');
-              bar.querySelectorAll('[data-clip]').forEach(function (x) { x.classList.remove('is-on'); });
+              clipRoot.querySelectorAll('[data-clip]').forEach(function (x) { x.classList.remove('is-on'); });
               /* В сборке повторное нажатие останавливает сценарий: иначе
                  закрылки качаются всё время, пока читаешь про топливо. */
               if (again && multi) {
@@ -2869,7 +2910,7 @@ var Figures = (function () {
 
         /* Обзорная страница: вместо систем — ссылки на разделы, где каждая
            система показана отдельно. */
-        if (opts.sections && opts.sections.length) {
+        if (opts.sections && opts.sections.length && !inPane) {
           var sh2 = '<span class="fig-label">Разделы</span>';
           opts.sections.forEach(function (d) {
             sh2 += '<a class="fig-btn fig-link" href="' + Render.esc(d.href) + '">' + Render.esc(d.title) + '</a>';
@@ -3327,9 +3368,10 @@ var Figures = (function () {
       function fit() {
         var nw = Math.round(box.clientWidth);
         if (nw < 40) return;              /* ещё нет раскладки — ждём */
-        var nh = document.fullscreenElement === frame
-          ? Math.max(200, frame.clientHeight - bar.offsetHeight - 1)
-          : Math.round(nw * ratio(nw));
+        var nh = inPane ? Math.max(200, Math.round(box.clientHeight))
+          : document.fullscreenElement === frame
+            ? Math.max(200, frame.clientHeight - bar.offsetHeight - 1)
+            : Math.round(nw * ratio(nw));
         renderer.setSize(nw, nh);
         camera.aspect = nw / nh;
         camera.updateProjectionMatrix();

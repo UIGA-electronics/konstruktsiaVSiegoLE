@@ -58,7 +58,7 @@ def systems_bvh(R, own, extra=(), skip=None):
         if o.parent is None:
             o.location.z -= R.lift
     bpy.context.view_layer.update()
-    bvh = ref._bvh(objs + keep)
+    bvh = ref.swept_bvh(objs + keep)          # тяги, качалки и ручки — во всём их ходе
     for o in new:
         bpy.data.objects.remove(o, do_unlink=True)
     return bvh

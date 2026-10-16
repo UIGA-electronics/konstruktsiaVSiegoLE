@@ -68,8 +68,8 @@ _last_bz = {}
 # шпангоутов центроплана — в настоящем самолёте через вырезы с резиновой окантовкой. Вырезы
 # ставятся там, где трасса пересекает плоскость стенки (по рёбрам её сетки), поэтому всегда
 # совпадают с трассами; пересекающиеся вырезы сливаются в один.
-LINE_LAYERS = ('fuel', 'brakes', 'pitot', 'air', 'electrical', 'instruments', 'radio', 'bonding')
-LINE_RE = re.compile(r'hose|cable|harness|duct|wire|coax|tube|pipe|conductor|braid|jumper|fuel (supply|return|vent)|line', re.I)
+LINE_LAYERS = ('fuel', 'brakes', 'pitot', 'air', 'electrical', 'instruments', 'radio', 'bonding', 'controls-addon')
+LINE_RE = re.compile(r'hose|cable|harness|duct|wire|coax|tube|pipe|conductor|braid|jumper|fuel (supply|return|vent)|line|push rod', re.I)
 NOT_LINE = re.compile(r'clamp|grommet|fitting|outlet|nozzle|grille|valve|connector|tee\b|trap|seal|bracket|lug|terminal|adapter|inlet duct', re.I)
 _LINES = None
 LINE_R = {}                    # радиус трасс-кривых (у них в сечении одна точка)
@@ -105,6 +105,8 @@ def lines():
         if c.name != 'Flight controls':
             continue
         for o in c.all_objects:
+            if o.name in ref.REPLACED:
+                continue
             if o.type == 'MESH' and re.search(r'push rod|cable', o.name, re.I):
                 mw = o.matrix_world
                 _LINES.append((o.name, [mw @ v.co for v in o.data.vertices], [tuple(e.vertices) for e in o.data.edges]))
@@ -441,6 +443,7 @@ def firewall():
 FW_CLIP_Y = -1.172             # по обшивке за задней гранью перегородки
 HAT_X = (-0.078, 0.154)       # стенки снаружи опорных пластин подшипников носовой стойки (gear.py)
 HAT_Y = (-1.17, 0.012)
+HAT_LEVER_SLOT = (0.092, 0.108, -0.395, -0.298)   # прорезь в верхней полке под рычаг руля высоты (controls.py: EL_LEVER)
 FLOOR = 'Plane.378'           # пол кабины в модели MSFS: z −0,094 у перегородки … −0,127 у переднего главного шпангоута
 _floor_bvh = None
 
@@ -477,9 +480,16 @@ def top_hat():
                          lambda c, xw=xw: min(c.z - bottom_z(xw, c.y) - T_SH, hat_top(c.y) - t - c.z, c.y - HAT_Y[0], HAT_Y[1] - c.y))
         plate_with_holes(p, outline, [cut_loop(c, r, 0) for c, r, _ in cuts], (1, 0, 0), t, 0)
         all_cuts += cuts
-    cap = [[V((HAT_X[0] - 0.005, y, hat_top(y) - t)), V((HAT_X[1] + 0.005, y, hat_top(y) - t)), V((HAT_X[1] + 0.005, y, hat_top(y))),
-            V((HAT_X[0] - 0.005, y, hat_top(y)))] for y in ys]
-    loft(p, cap, 0, smooth=False)
+    # верхняя полка; прорезь — под рычаг руля высоты на валу ручек (ход ручек по тангажу ±10°)
+    def cap(xa, xb, ya, yb, n):
+        loft(p, [[V((xa, y, hat_top(y) - t)), V((xb, y, hat_top(y) - t)), V((xb, y, hat_top(y))), V((xa, y, hat_top(y)))]
+                 for y in [ya + (yb - ya) * i / n for i in range(n + 1)]], 0, smooth=False)
+    sx0, sx1, sy0, sy1 = HAT_LEVER_SLOT
+    xa, xb = HAT_X[0] - 0.005, HAT_X[1] + 0.005
+    cap(xa, xb, HAT_Y[0], sy0, 18)
+    cap(xa, xb, sy1, HAT_Y[1], 8)
+    cap(xa, sx0, sy0, sy1, 3)
+    cap(sx1, xb, sy0, sy1, 3)
     p.done()
     grommets('Top hat profile grommets', 'Резиновая окантовка вырезов в стенках прямоугольного профиля: сквозь них поперёк профиля идут шланги, жгуты и воздуховод пассажиров',
              all_cuts, 0, 'AMM 53-10 2.C')
@@ -556,9 +566,10 @@ def main_bulkhead(tag, ru_name, ru_gen, y0, y1, bolt, doc_extra=''):
     b.done()
 
 
-def rib_plate(name, ru, x, y0, y1, doc, hole=None, n=24, m='frame', passes=()):
+def rib_plate(name, ru, x, y0, y1, doc, hole=None, n=24, m='frame', passes=(), holes=()):
     """Нервюра центроплана в плоскости x = const между y0 и y1 по высоте профиля;
-    passes — [(центр, радиус трассы)]: круглые вырезы под резиновые втулки трасс."""
+    passes — [(центр, радиус трассы)]: круглые вырезы под резиновые втулки трасс; holes — [(центр, радиус)]:
+    вырезы без втулок (под тяги управления)."""
     ys = [y0 + (y1 - y0) * i / n for i in range(n + 1)]
     bot = [V((x, y, stub_bot(x, y))) for y in ys]
     top = [V((x, y, stub_top(x, y))) for y in reversed(ys)]
@@ -570,8 +581,8 @@ def rib_plate(name, ru, x, y0, y1, doc, hole=None, n=24, m='frame', passes=()):
         zs = [q.z for q in outer]
         # обход тот же, что у контура: от передней нижней точки назад по низу
         inner = ellipse(c, (y1 - y0) * hole, (max(zs) - min(zs)) * 0.30, len(outer), phase=1.25 * math.pi)
-    if passes:
-        cuts = ([inner] if inner else []) + [stub.circle(c, r + stub.GROMMET, 16) for c, r in passes]
+    if passes or holes:
+        cuts = ([inner] if inner else []) + [stub.circle(c, r + stub.GROMMET, 16) for c, r in passes] + [stub.circle(c, r, 16) for c, r in holes]
         plate_with_holes(p, outer, cuts, (1, 0, 0), 0.005, 0)
     else:
         plate_with_hole(p, outer, inner, (1, 0, 0), 0.005, 0)
@@ -590,6 +601,16 @@ REAR_WEB_Y = 0.685             # задняя стенка центроплан�
 REAR_CLOSING_X = 0.660         # задняя замыкающая нервюра (controls.py)
 
 
+def rod_holes(X):
+    """Вырезы под тяги управления (слой controls-addon) в нервюре x = X за задним лонжероном центроплана."""
+    def inside(q):
+        return REAR_MB[1] + 0.008 < q.y < REAR_WEB_Y - 0.008 and stub_bot(q.x, q.y) + 0.008 < q.z < stub_top(q.x, q.y) - 0.008
+
+    def room(c):
+        return min(c.y - REAR_MB[1], REAR_WEB_Y - c.y, c.z - stub_bot(c.x, c.y), stub_top(c.x, c.y) - c.z)
+    return [(c, r) for c, r, names in wall_cuts(0, X, inside, room) if any('push rod' in n for n in names)]
+
+
 def centre_section():
     main_bulkhead('Front', 'Передний', 'переднего', *FRONT_MB, V((1.044, 0, -0.064)))
     main_bulkhead('Rear', 'Задний', 'заднего', *REAR_MB, V((1.044, 0, -0.098)),
@@ -605,11 +626,11 @@ def centre_section():
                   X, -0.245, FRONT_MB[0], 'AMM 53-10 2.E, 21-00 2.B(2)', passes=stub.passes('outer', s))
         rib_plate(f'Middle outer rib {tag}', f'Средняя часть внешней нервюры центроплана {gen} борта между лонжеронами центроплана: большой вырез напротив люка корневой нервюры крыла — через него снимают топливный бак',
                   X, FRONT_MB[1], REAR_MB[0], 'AMM 53-10 2.E, 28-10', hole=0.40)
-        rib_plate(f'Rear outer rib {tag}', f'Задняя часть внешней нервюры центроплана {gen} борта: от заднего лонжерона центроплана до задней перегородки',
-                  X, REAR_MB[1], REAR_WEB_Y, 'AMM 53-10 2.E')
+        rib_plate(f'Rear outer rib {tag}', f'Задняя часть внешней нервюры центроплана {gen} борта: от заднего лонжерона центроплана до задней перегородки; '
+                  'в вырезах проходят тяги элерона и закрылка', X, REAR_MB[1], REAR_WEB_Y, 'AMM 53-10 2.E', holes=rod_holes(X))
         rib_plate(f'Rear closing rib {tag}', f'Задняя замыкающая нервюра центроплана {gen} борта (rear closing rib): от заднего лонжерона центроплана до задней перегородки'
                   + ('; на ней кронштейн привода закрылков' if s > 0 else ''),
-                  s * REAR_CLOSING_X, REAR_MB[1], REAR_WEB_Y, 'AMM 53-10 2.E, 27-50')
+                  s * REAR_CLOSING_X, REAR_MB[1], REAR_WEB_Y, 'AMM 53-10 2.E, 27-50', holes=rod_holes(s * REAR_CLOSING_X))
         # задняя стенка центроплана между замыкающей и наружной нервюрами
         xs = [s * (REAR_CLOSING_X + (STUB_X - REAR_CLOSING_X) * i / 12) for i in range(13)]
         p = P(f'Centre section rear web {tag}', f'Задняя перегородка центроплана {gen} борта (rear web): закрывает центроплан сзади, перед закрылком',
@@ -620,13 +641,24 @@ def centre_section():
             rings.append([V((x, REAR_WEB_Y - 0.003, zb)), V((x, REAR_WEB_Y + 0.003, zb)), V((x, REAR_WEB_Y + 0.003, zt)), V((x, REAR_WEB_Y - 0.003, zt))])
         loft(p, rings, 0, smooth=False)
         p.done()
-    # кронштейн качалки элеронов на задней стенке заднего главного шпангоута, посередине
-    p = P('Control bellcrank mounting bracket', 'Монтажный кронштейн качалки управления (элеронов): приклеен к задней поверхности заднего лонжерона центроплана посередине',
-          'alu', 'AMM 53-10 2.E, 27-10')
-    c = V((-0.045, REAR_MB[1] + 0.003, -0.10))
-    box(p, c, (0.07, 0.006, 0.07), Matrix.Identity(3), 0, bevel=0.002)
-    for dz in (-0.022, 0.022):
-        box(p, c + V((0, 0.022, dz)), (0.04, 0.04, 0.005), Matrix.Identity(3), 0, bevel=0.0015)
+    # кронштейн качалки элеронов на задней стенке заднего главного шпангоута, посередине: ось качалки
+    # (controls.py: RB_C) в 52 мм за стенкой; полки подходят к оси справа, где у качалки нет плеч
+    p = P('Control bellcrank mounting bracket', 'Монтажный кронштейн качалки управления (элеронов): приклеен к задней поверхности заднего лонжерона центроплана посередине; '
+          'две полки держат вертикальный болт оси задней качалки', 'alu', 'AMM 53-10 2.E, 27-10')
+    # профиль «П», открытый вперёд: полки над и под качалкой, стенка за осью; полки приклеены к лонжерону
+    # отогнутыми лапками выше и ниже — между полками от оси в стороны уходят тяги к крыльям и тяга от
+    # промежуточного рычага
+    piv = V((0.0, 0.630, -0.098))
+    y0 = REAR_MB[1]
+    yb = piv.y + 0.025
+    for dz in (0.026, -0.026):
+        z = piv.z + dz
+        sg = 1 if dz > 0 else -1
+        box(p, V((0, (y0 + yb) / 2, z)), (0.024, yb - y0, 0.005), Matrix.Identity(3), 0, bevel=0.0015)            # полка
+        box(p, V((0, y0 + 0.003, z + sg * 0.012)), (0.024, 0.006, 0.029), Matrix.Identity(3), 0, bevel=0.0015)   # лапка на лонжероне
+        cyl(p, V((0, piv.y, z - 0.0025)), V((0, piv.y, z + 0.0025)), 0.012, 0, segs=18)
+    box(p, V((0, yb + 0.0025, piv.z)), (0.024, 0.005, 0.057), Matrix.Identity(3), 0, bevel=0.0015)                  # стенка
+    cyl(p, piv - V((0, 0, 0.032)), piv + V((0, 0, 0.032)), 0.004, p.m(M['steel']), segs=10)
     p.done()
 
 
@@ -721,6 +753,7 @@ def web_plate(p, pts_yz, t=0.006):
 FIN_LOW_Z = 0.36               # низ киля над хвостовой балкой
 FIN_TOP_Z = 1.235              # под нижней обшивкой стабилизатора (1,245)
 FW_BOT_Y, FW_TOP_Y = 4.560, 4.840
+ELEV_VROD_Y_LOW_RIB = 4.929    # вертикальная тяга руля высоты (controls.py) на высоте нижней нервюры киля
 REAR_WEB_LOW_Z = 0.124         # над нижним кронштейном руля направления (верх 0,108) и тросом триммера
 
 
@@ -736,12 +769,39 @@ def fin():
     zs = [FIN_LOW_Z - 0.32 + (FIN_TOP_Z - FIN_LOW_Z + 0.32) * i / 30 for i in range(31)]
     p = P('Vertical stabilizer front web', 'Передняя стенка киля: приклеена к обшивке, к передней и задней частям нижней нервюры киля и к верху задней стенки; верх — жёсткий швеллер со вставками из стеклопластика, на нём монтажные кронштейны стабилизатора',
           'frame', 'AMM 53-10 2.M, рис. 4')
+    # ниже нижней нервюры киля стенка плоская (y = FW_BOT_Y): в ней вырез под длинную тягу руля высоты
+    lo_z = [z for z in zs if z <= FIN_LOW_Z]
+    ym = FW_BOT_Y
+    left, right = [], []
+    for z in lo_z:
+        hw = fin_half(ym, z)
+        if hw is None:
+            continue
+        h, xc = hw
+        left.append(V((xc + h, ym, z)))
+        right.append(V((xc - h, ym, z)))
+    half = {round(q.z, 4): (q.x, w.x) for q, w in zip(left, right)}
+
+    def in_web(q):
+        z0, z1 = min(half), max(half)
+        if not z0 + 0.012 < q.z < z1 - 0.012:
+            return False
+        a, b = half[min(half, key=lambda z: abs(z - q.z))]
+        return b + 0.010 < q.x < a - 0.010
+
+    def room(c):
+        a, b = half[min(half, key=lambda z: abs(z - c.z))]
+        return min(a - c.x, c.x - b, c.z - min(half), max(half) - c.z)
+    fw_cuts = wall_cuts(1, ym, in_web, room)
+    plate_with_holes(p, left + list(reversed(right)), [cut_loop(c, r, 1) for c, r, _ in fw_cuts], (0, 1, 0), 0.006, 0)
     pts = []
-    for z in zs:
+    for z in [FIN_LOW_Z] + [z for z in zs if z > FIN_LOW_Z]:
         t = max(0.0, (z - FIN_LOW_Z) / (FIN_TOP_Z - FIN_LOW_Z))
         pts.append((FW_BOT_Y + (FW_TOP_Y - FW_BOT_Y) * t, z))
     web_plate(p, pts)
     p.done()
+    grommets('Vertical stabilizer front web grommets', 'Окантовка выреза в нижней части передней стенки киля: сквозь него проходит длинная тяга руля высоты',
+             fw_cuts, 1, 'AMM 53-10 2.M')
     # швеллер наверху передней стенки — площадка под кронштейны стабилизатора
     c = P('Vertical stabilizer front web top channel', 'Швеллер наверху передней стенки киля со вставками из стеклопластика: к нему четырьмя болтами каждый крепятся передний и задний монтажные кронштейны стабилизатора',
           'insert', 'AMM 53-10 2.M, 55-10')
@@ -780,8 +840,8 @@ def fin():
         outer = left + list(reversed(right))
         inner = None
         if slot:
-            cy = (y0 + y1) / 2
-            inner = [V((0.018 * math.cos(a), cy + 0.06 * math.sin(a), FIN_LOW_Z)) for a in
+            cy = ELEV_VROD_Y_LOW_RIB
+            inner = [V((0.018 * math.cos(a), cy + 0.05 * math.sin(a), FIN_LOW_Z)) for a in
                      [-math.pi / 4 + 2 * math.pi * i / len(outer) for i in range(len(outer))]]
         plate_with_hole(p, outer, inner, (0, 0, 1), 0.005, 0)
         p.done()
@@ -1074,7 +1134,7 @@ def stabilizer():
 # втулкой — упор хода руля вверх: на него ложится передний выступ кронштейна руля.
 # Упор вниз — стеклопластиковый блок, вклеенный под верхнюю обшивку. Упоры не регулируются.
 
-TB_Y0, TB_Y1 = 5.245, 5.285
+TB_Y0, TB_Y1 = 5.262, 5.296           # болт упора — под передним выступом кабанчика руля высоты (controls.py)
 TB_Z = 1.262                    # низ полки: на уровне нижней обшивки у нервюр
 
 
@@ -1092,12 +1152,12 @@ def trim_bracket_and_stops(ez):
             hexa(p, q, q + V((s * 0.004, 0, 0)), 0.007, p.m(M['steel']))              # болты в нервюру
     # проушины упора посередине
     for s in (1, -1):
-        box(p, V((s * 0.016, yc, TB_Z + 0.011)), (0.003, 0.018, 0.014), None, 0, bevel=0.0006)
+        box(p, V((s * 0.016, yc, TB_Z + 0.0095)), (0.003, 0.018, 0.011), None, 0, bevel=0.0006)
     p.done()
     p = P('Elevator up stop (bolt and bush)', 'Ограничитель отклонения руля высоты вверх: поперечный болт с втулкой в монтажном кронштейне исполнительного механизма триммера; '
           'при полном отклонении руля вверх в неё упирается передняя часть кабанчика руля высоты. Регулировать запрещается',
           'steel', 'AMM 27-30 2., 27-38 рис. 2')
-    q = V((0, yc, TB_Z + 0.013))
+    q = V((0, yc, TB_Z + 0.0105))
     cyl(p, q - V((0.021, 0, 0)), q + V((0.021, 0, 0)), 0.0025, 0, segs=10)
     cyl(p, q - V((0.0145, 0, 0)), q + V((0.0145, 0, 0)), 0.0065, p.m(M['alu']), segs=16)
     hexa(p, q + V((0.0175, 0, 0)), q + V((0.022, 0, 0)), 0.007, 0)
@@ -1109,7 +1169,7 @@ def trim_bracket_and_stops(ez):
     p = P('Elevator down stop (GFRP block)', 'Ограничитель отклонения руля высоты вниз: колодка из стеклопластика, вклеенная изнутри в верхнюю '
           'обшивку стабилизатора; при полном отклонении руля вниз в неё упирается передняя часть кабанчика руля высоты. Регулировать запрещается',
           'insert', 'AMM 27-30 2.')
-    box(p, V((0, yc, zt - 0.008)), (0.03, 0.03, 0.016), None, 0, bevel=0.002)
+    box(p, V((0, yc, zt - 0.005)), (0.03, 0.03, 0.010), None, 0, bevel=0.002)
     p.done()
 
 
