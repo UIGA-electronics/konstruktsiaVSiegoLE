@@ -2,14 +2,14 @@
   {
     "file": "da40-controls.glb",
     "title": "Управление",
-    "parts": 188,
-    "meshes": 118,
+    "parts": 176,
+    "meshes": 109,
     "clips": [
       "Закрылки UP → LDG",
       "Элероны влево → вправо",
       "Руль высоты"
     ],
-    "mb": 0.71
+    "mb": 0.7
   },
   {
     "file": "da40-wing-structure.glb",
@@ -19,33 +19,6 @@
     "clips": [],
     "mb": 0.41,
     "built": "tools/da40/wing.py"
-  },
-  {
-    "file": "da40-structure.glb",
-    "title": "Силовой набор фюзеляжа и оперения",
-    "parts": 72,
-    "meshes": 72,
-    "clips": [],
-    "mb": 0.38,
-    "built": "tools/da40/structure.py"
-  },
-  {
-    "file": "da40-doors.glb",
-    "title": "Фонарь и задняя дверь",
-    "parts": 24,
-    "meshes": 24,
-    "clips": [],
-    "mb": 0.11,
-    "built": "tools/da40/doors.py"
-  },
-  {
-    "file": "da40-equipment.glb",
-    "title": "Ремни, энергопоглощающие элементы, крепление сидений, багажная сетка",
-    "parts": 30,
-    "meshes": 30,
-    "clips": [],
-    "mb": 0.08,
-    "built": "tools/da40/equipment.py"
   },
   {
     "file": "da40-fuel.glb",
@@ -62,17 +35,8 @@
     "parts": 55,
     "meshes": 55,
     "clips": [],
-    "mb": 0.53,
+    "mb": 0.52,
     "built": "tools/da40/electrical.py"
-  },
-  {
-    "file": "da40-bonding.glb",
-    "title": "Молниезащита и металлизация",
-    "parts": 33,
-    "meshes": 33,
-    "clips": [],
-    "mb": 0.16,
-    "built": "tools/da40/bonding.py"
   },
   {
     "file": "da40-instruments.glb",
@@ -102,21 +66,12 @@
     "built": "tools/da40/brakes.py"
   },
   {
-    "file": "da40-gear.glb",
-    "title": "Шасси: узлы крепления",
-    "parts": 18,
-    "meshes": 18,
-    "clips": [],
-    "mb": 0.09,
-    "built": "tools/da40/gear.py"
-  },
-  {
     "file": "da40-air.glb",
     "title": "Вентиляция и отопление",
     "parts": 37,
     "meshes": 37,
     "clips": [],
-    "mb": 0.56,
+    "mb": 0.57,
     "built": "tools/da40/air.py"
   },
   {
