@@ -377,8 +377,11 @@ def shelf_units():
     box(p, V((0.03, -0.928, SHELF_Z + 0.014)), (0.52, 0.004, 0.028), I3, 0)       # отбортовка вдоль передней кромки
     p.done()
     for name, c, sz in (('ECU backup relay', ECU_RELAY, (0.056, 0.046, 0.044)),          # места деталей, которые ставят
-                        ('main battery', V((0.133, 2.408, 0.115)), (0.145, 0.185, 0.21)),  # electrical.py и pitot.py
-                        ('relay junction box', V((0.20, 2.300, 0.235)), (0.15, 0.075, 0.14)),
+                        ('main battery', V((0.240, 1.892, 0.035)), (0.15, 0.19, 0.18)),    # electrical.py и pitot.py
+                        ('relay junction box', V((0.240, 1.787, 0.165)), (0.15, 0.08, 0.14)),
+                        ('external power receptacle', V((0.35, 1.86, 0.04)), (0.12, 0.07, 0.07)),
+                        ('ECU backup battery', V((0.150, 2.390, 0.055)), (0.17, 0.17, 0.12)),
+                        ('main static line down the LH side', V((0.33, 1.782, 0.39)), (0.05, 0.04, 0.48)),
                         ('LH seat water traps', V((0.31, -0.25, -0.16)), (0.16, 0.22, 0.12))):
         r = Part(name + ' (reserved)', None, M['black'], RESERVED)
         box(r, c, sz, I3, 0)
@@ -795,18 +798,20 @@ def antennas():
     out = {}
     # COM 1 — сверху за кабиной, штырь с наклоном назад (MSFS Cylinder.009)
     c, n = skin(0.0, 2.205, 'upper')
+    cb, nb = skin(0.0, 2.19, 'upper')               # основание — перед кольцевым шпангоутом 1 (y 2,25)
     p = P('COM 1 antenna', 'Антенна COM 1 сверху фюзеляжа за кабиной; крепится тремя гайками, доступ из заднего багажного отсека',
           'whip', 'AMM 23-10 2., рис. 1', COL_R)
-    s, f = base_plate(p, c, n, V((0, 1, 0)), 0.15, 0.05, p.m(M['white']))
+    s, f = base_plate(p, cb, nb, V((0, 1, 0)), 0.10, 0.05, p.m(M['white']))
     lib.cyl(p, c + n * 0.006 + f * 0.03, V((0.0, 2.52, 0.80)), 0.009, 0, segs=12, r1=0.006)
     lib.cyl(p, V((0.0, 2.52, 0.80)), V((0.0, 2.71, 0.99)), 0.006, 0, segs=10, r1=0.003)
     p.done()
     out['com1'] = c - n * 0.01
     # COM 2 — снизу за кабиной, изогнутый штырь (MSFS Cylinder.001)
     c, n = skin(0.0, 1.705, 'lower')
+    cb, nb = skin(0.0, 1.69, 'lower')               # основание — перед шпангоутом багажного отсека (y 1,745)
     p = P('COM 2 antenna', 'Антенна COM 2 снизу фюзеляжа за кабиной, изогнутый штырь; доступ из заднего багажного отсека',
           'whip', 'AMM 23-10 2., рис. 1', COL_R)
-    base_plate(p, c, n, V((0, 1, 0)), 0.12, 0.045, p.m(M['white']))
+    base_plate(p, cb, nb, V((0, 1, 0)), 0.09, 0.045, p.m(M['white']))
     pth = fillet([c + n * 0.005, V((0, 1.72, -0.34)), V((0, 1.80, -0.372)), V((0, 2.23, -0.372))], 0.06)
     sweep(p, pth, 0.006, 0, segs=10)
     p.done()
