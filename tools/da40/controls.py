@@ -933,8 +933,8 @@ def build_sticks_and_chains():
                                 EI_C, [EI_LO, EI_HI], AX_X, w=0.020, rig=EI_C + (EI_HI - EI_C) * 0.5)
     objs['el_long'] = rod2('Elevator long push rod', 'Длинная тяга руля высоты: промежуточный рычаг — качалка в нижней части киля; держат три роликовые '
                            'направляющие', EI_HIe, FE_LONG, ELEV_ROD_R, 'AMM 27-30 2., рис. 2', eye=AX_X)
-    objs['fe'] = bellcrank_part('Elevator bellcrank (bottom of the fin)', 'Качалка руля высоты в нижней части киля: длинная тяга — к нижнему плечу, '
-                                'вертикальная тяга — к заднему; отверстие под стопорный штифт', 'AMM 27-30 2., рис. 2',
+    objs['fe'] = bellcrank_part('Elevator bellcrank (bottom of the fin)', 'Качалка руля высоты в нижней части киля: длинная тяга — к верхнему плечу, '
+                                'вертикальная тяга — к переднему; отверстие под стопорный штифт', 'AMM 27-30 2., рис. 2',
                                 FE_C, [FE_LONG, E['V0']], AX_X, t=0.008, w=0.022, rig=FE_C + (E['V0'] - FE_C) * 0.45)
     objs['el_vert'] = rod2('Elevator vertical push rod', 'Вертикальная тяга руля высоты в киле: качалка — кабанчик руля высоты',
                            E['V0'], E['H0'] + V((EYE_OFF, 0, 0)), 0.009, 'AMM 27-30 2., рис. 2', eye=AX_X)
