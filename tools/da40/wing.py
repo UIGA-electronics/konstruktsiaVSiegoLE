@@ -50,6 +50,10 @@ CONTROL_RIBS = [(2.80, 'Flap control rib', 'Нервюра крепления к
                 (3.25, 'Flap control rib 2 (push rod guide)', 'Вторая нервюра закрылка: направляющая тяги элерона с роликами'),
                 (3.88, 'Aileron control rib', 'Нервюра крепления качалки элерона: изгиб с жёсткой вставкой')]
 OUTER_RIBS = [4.49, 5.09]
+# вырезы под тяги управления в корневой нервюре и нервюрах управления: сечения тяг во всех клипах
+# слоя controls-addon (tools/da40/rodcross.py → wing-rod-holes.json)
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wing-rod-holes.json')) as _f:
+    ROD_HOLES = {float(k): v for k, v in json.load(_f).items()}
 SIDE = {+1: ('LH', 'левого'), -1: ('RH', 'правого')}
 SIDE_N = {+1: 'левое', -1: 'правое'}
 
@@ -179,19 +183,33 @@ def tank_rib(s, x, label):
     p.done()
 
 
+def rod_holes(X):
+    """Круглые вырезы под тяги управления в нервюре x = X: [(центр, радиус)]."""
+    return [(V((X, h['y'], h['z'])), h['r']) for h in ROD_HOLES.get(round(X, 3), [])]
+
+
 def control_rib(s, x, name, ru):
     tag, gen = SIDE[s]
     X = s * x
     y0, y1 = rear_web_spar(X) + 0.007, rear_web_te(X) - 0.004
     outer = rib_outline(X, y0, y1, n=40, rc=0.006)
     c = sum(outer, V()) / len(outer)
-    hole = ellipse(c, (y1 - y0) * 0.22, (max(q.z for q in outer) - min(q.z for q in outer)) * 0.22, 40)
-    p = P(f'{name} {tag}', f'{ru} ({SIDE_N[s]} крыло)', 'gfrp', 'AMM 57-10 2.E')
-    plate_with_hole(p, resample_closed(outer, 40), hole, (1, 0, 0), 0.004, 0)
+    hz = max(q.z for q in outer) - min(q.z for q in outer)
+    rods = rod_holes(X)
+    p = P(f'{name} {tag}', f'{ru} ({SIDE_N[s]} крыло)' + ('; в вырезе проходит длинная тяга элерона' if rods else ''), 'gfrp', 'AMM 57-10 2.E')
+    if rods:
+        # облегчающего выреза нет: через нервюру проходит тяга, вставка — впереди выреза под неё
+        plate_with_holes(p, resample_closed(outer, 40), [stub.circle(q, r, 20) for q, r in rods], (1, 0, 0), 0.004, 0)
+        yr = min(q.y - r for q, r in rods) - 0.004
+        ins = V((X, (y0 + 0.004 + yr) / 2, c.z))
+        size = (0.024, max(0.008, yr - y0 - 0.004), hz * 0.55)
+    else:
+        hole = ellipse(c, (y1 - y0) * 0.22, hz * 0.22, 40)
+        plate_with_hole(p, resample_closed(outer, 40), hole, (1, 0, 0), 0.004, 0)
+        ins = V((X, (y0 + y1) / 2 + 0.01, c.z))
+        size = (0.024, (y1 - y0) * 0.55, hz * 0.55)
     # изгиб с жёсткой вставкой под кронштейн качалки
-    ins = V((X, (y0 + y1) / 2 + 0.01, c.z))
-    box(p, ins + V((s * 0.012, 0, 0)), (0.024, (y1 - y0) * 0.55, (max(q.z for q in outer) - min(q.z for q in outer)) * 0.55),
-        Matrix.Identity(3), p.m(M['insert']), bevel=0.003)
+    box(p, ins + V((s * 0.012, 0, 0)), size, Matrix.Identity(3), p.m(M['insert']), bevel=0.003)
     flanges(p, X, y0, y1, s, 0)
     p.done()
 
@@ -256,15 +274,12 @@ def root_rib(s):
         hexa(q, pos, pos - V((s * 0.004, 0, 0)), 0.007, q.m(M['steel']))
     q.done()
     # задняя часть: гнездо болта B, ролики тяг закрылка и элерона
-    p = P(f'Root rib rear part {tag}', f'Задняя часть корневой нервюры {gen} крыла: гнездо болта B и направляющие ролики тяг закрылка и элерона',
-          'gfrp', 'AMM 57-10 2.C')
+    p = P(f'Root rib rear part {tag}', f'Задняя часть корневой нервюры {gen} крыла: гнездо болта B; в вырезах проходят тяги закрылка и элерона '
+          '(ролики направляющих — на кронштейнах нервюры)', 'gfrp', 'AMM 57-10 2.C')
     outer = S.ring(X, 0.0, n=40, rc=0.008, y0=yr + 0.009, y1=yte)
-    plate_with_hole(p, outer, None, (1, 0, 0), 0.005, 0)
+    plate_with_holes(p, outer, [stub.circle(q, r, 20) for q, r in rod_holes(X)], (1, 0, 0), 0.005, 0)
     b = V((X, 0.73, -0.125))
     cyl(p, b - V((s * 0.03, 0, 0)), b + V((s * 0.02, 0, 0)), 0.016, p.m(M['insert']), segs=20)
-    for dz, yy in ((0.0, 0.60), (-0.03, 0.62)):
-        rc = V((X + s * 0.012, yy, (S.up_in(X, yy) + S.lo_in(X, yy)) / 2 + dz))
-        cyl(p, rc - V((0, 0, 0.009)), rc + V((0, 0, 0.009)), 0.009, p.m(M['alu']), segs=16)
     p.done()
 
 
@@ -464,7 +479,7 @@ def hinges(s):
     hinge_bracket(s, s * 2.837, f'Flap control horn hinge bracket {tag}',
                   f'Кронштейн навески у кабанчика {gen} закрылка: стойка на задней стенке и лапка на нижней обшивке на трёх болтах; '
                   'гайки — через люк качалки', fl, 'flap horn')
-    hinge_bracket(s, s * 3.985, f'Aileron control horn hinge bracket {tag}',
+    hinge_bracket(s, s * 4.055, f'Aileron control horn hinge bracket {tag}',
                   f'Кронштейн навески у кабанчика {gen} элерона: палец фиксирует штифт', ai, 'ail horn')
     for k, x in enumerate(AIL_HINGES):
         nm = 'inner' if k == 0 else f'outer {k}'

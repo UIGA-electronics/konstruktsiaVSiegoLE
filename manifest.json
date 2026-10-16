@@ -1,14 +1,19 @@
 {
-  "name": "КиЛЭ ВС — интерактивная методичка",
+  "name": "КиЛЭ ВС — интерактивное учебное пособие",
   "short_name": "КиЛЭ ВС",
-  "description": "Учебное пособие по конструкции и основам эксплуатации летательных аппаратов. Тема «Сервоприводы».",
+  "description": "Учебное пособие по конструкции и лётной эксплуатации воздушных судов: глава 6 «Системы управления полётом» и практикум DA 40 NG по системам в 3D.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#0c0e11",
-  "theme_color": "#0c0e11",
+  "background_color": "#F1F1EE",
+  "theme_color": "#F1F1EE",
   "lang": "ru",
   "icons": [
-    { "src": "assets/img/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+    {
+      "src": "assets/img/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
   ]
 }
