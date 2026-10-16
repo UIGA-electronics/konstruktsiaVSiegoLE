@@ -17,7 +17,7 @@
   var drawer = document.getElementById('toc-drawer');
   var tocBody = document.getElementById('toc-body');
   var nav = document.getElementById('nav');
-  var progress = document.getElementById('reading-progress').firstElementChild;
+  var progress = document.getElementById('reading-progress').firstElementChild;  /* скрыт в оформлении */
 
   var MENU = null;
   var cache = {};
@@ -172,7 +172,7 @@
       n.classList.toggle('is-active', n.dataset.route === id);
     });
     var t = topicOf(id);
-    var cur = id === 'home' ? 'home' : isLab(t) ? 'lab' : t ? 'ch' : '';
+    var cur = id === 'home' ? 'home' : /quiz/.test(id) ? 'quiz' : isLab(t) ? 'lab' : t ? 'ch' : '';
     nav.querySelectorAll('[data-nav]').forEach(function (a) {
       a.classList.toggle('is-cur', a.dataset.nav === cur);
       if (a.dataset.nav === cur) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
@@ -202,7 +202,7 @@
   window.addEventListener('scroll', updateProgress, { passive: true });
   window.addEventListener('resize', updateProgress);
 
-  var toTop = el('button', 'to-top', ICON.up);
+  var toTop = el('button', 'to-top', ICON.up + '<span>Наверх</span>');
   toTop.type = 'button';
   toTop.setAttribute('aria-label', 'Вернуться к началу раздела');
   toTop.hidden = true;
@@ -255,20 +255,24 @@
     return box;
   }
 
+  /* Хлебные крошки, заголовок, вводный абзац и таблица сведений */
   function head(data, extra) {
-    var crumbs = String(data.crumb || '').split(' · ').filter(Boolean);
+    var t = topicOf(data.id);
     var h = el('header', 'doc-head');
-    h.innerHTML =
-      '<p class="crumbs"><a href="#home">Главная</a> / ' + crumbs.map(esc).join(' / ') + '</p>' +
+    var crumbs = '<li><a href="#home">Главная</a></li>';
+    if (t) crumbs += '<li><a href="#' + t.screens[0].id + '">' + (isLab(t) ? 'Практикум DA 40 NG' : 'Глава ' + esc(t.num)) + '</a></li>';
+    var s = screenOf(data.id);
+    var cap = t ? (isLab(t) ? 'Практикум DA 40 NG' : 'Глава ' + esc(t.num) + (s && screenNo(s) !== '—' ? ', раздел ' + screenNo(s) : '')) : '';
+    h.innerHTML = '<ol class="crumbs">' + crumbs + '</ol>' +
+      (cap ? '<span class="caption">' + cap + '</span>' : '') +
       '<h1>' + esc(data.title) + '</h1>' +
       (data.lead ? '<p class="lead">' + Render.inline(data.lead) + '</p>' : '');
-    var cells = (extra || []).filter(function (c) { return c && c[1]; });
-    if (data.source) cells.push(['Источник', Render.inline(data.source)]);
-    if (cells.length) {
-      var m = el('div', 'meta');
-      if (cells.length === 2) m.style.gridTemplateColumns = 'auto 1fr';
-      m.innerHTML = cells.map(function (c) { return '<div><span class="label">' + c[0] + '</span>' + c[1] + '</div>'; }).join('');
-      h.appendChild(m);
+    var rows = (extra || []).filter(function (c) { return c && c[1]; });
+    if (data.source) rows.push(['Источник', Render.inline(data.source)]);
+    if (rows.length) {
+      var dl = el('dl', 'summary');
+      dl.innerHTML = rows.map(function (c) { return '<div><dt>' + c[0] + '</dt><dd>' + c[1] + '</dd></div>'; }).join('');
+      h.appendChild(dl);
     }
     return h;
   }
@@ -276,8 +280,7 @@
   function doneBar(data) {
     var bar = el('div', 'done-bar');
     var on = isRead(data.id);
-    bar.innerHTML = '<p>Отметка хранится только в этом браузере.</p>';
-    var btn = el('button', 'done-btn' + (on ? ' is-on' : ''), ICON.check + '<span>' + (on ? 'Раздел прочитан' : 'Отметить как прочитанный') + '</span>');
+    var btn = el('button', 'done-btn' + (on ? ' is-on' : ''), ICON.check + '<span>Я прочитал этот раздел</span>');
     btn.type = 'button';
     btn.setAttribute('aria-pressed', on ? 'true' : 'false');
     btn.addEventListener('click', function () {
@@ -285,114 +288,91 @@
       setRead(data.id, on);
       btn.classList.toggle('is-on', on);
       btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-      btn.querySelector('span').textContent = on ? 'Раздел прочитан' : 'Отметить как прочитанный';
       refreshTocMarks();
-      var r = document.querySelector('.rail a[data-screen="' + data.id + '"]');
-      if (r) r.classList.toggle('is-read', on);
     });
     bar.appendChild(btn);
+    bar.appendChild(el('p', null, 'Отметка хранится только в этом браузере.'));
     return bar;
   }
 
   function pager(data) {
     var html = '';
-    if (data.prev) {
-      html += '<a class="p-prev" href="#' + data.prev.id + '"><span class="pager-ic">' + ICON.chevL + '</span>' +
-        '<span class="pager-tx"><small>Назад</small><b>' + esc(data.prev.title) + '</b></span></a>';
-    }
+    if (data.prev) html += '<a class="p-prev" href="#' + data.prev.id + '"><span class="pager-tx"><small>Предыдущий раздел</small><b>' + esc(data.prev.title) + '</b></span></a>';
     html += data.next
-      ? '<a class="p-next" href="#' + data.next.id + '"><span class="pager-tx"><small>Дальше</small><b>' + esc(data.next.title) + '</b></span>' +
-        '<span class="pager-ic">' + ICON.chevR + '</span></a>'
-      : '<a class="p-next" href="#home"><span class="pager-tx"><small>Дальше</small><b>На главную</b></span>' +
-        '<span class="pager-ic">' + ICON.chevR + '</span></a>';
+      ? '<a class="p-next" href="#' + data.next.id + '"><span class="pager-tx"><small>Следующий раздел</small><b>' + esc(data.next.title) + '</b></span></a>'
+      : '<a class="p-next" href="#home"><span class="pager-tx"><small>На главную</small><b>Содержание пособия</b></span></a>';
     return el('nav', 'pager', html);
+  }
+
+  /* Разделы темы со статусом — «список задач» */
+  function tasks(topic, curId) {
+    var lb = isLab(topic);
+    return '<ul class="tasks">' + topic.screens.map(function (s) {
+      var no = lb ? '' : screenNo(s);
+      var read = isRead(s.id);
+      return '<li><span>' + (no && no !== '—' ? '<span class="tn">' + no + '</span>' : '') +
+        (s.id === curId ? '<b>' + esc(s.title) + '</b>' : '<a href="#' + s.id + '">' + esc(s.title) + '</a>') + '</span>' +
+        '<span class="tm">' + (s.min ? s.min + ' мин' : '') +
+        (read ? '<strong class="tag is-green">Прочитан</strong>' : '<strong class="tag is-grey">Не начат</strong>') + '</span></li>';
+    }).join('') + '</ul>';
   }
 
   /* ── Главная ───────────────────────────────────────────── */
 
-  function entry(href, k, t, m) {
-    return '<a class="entry" href="' + href + '"><span class="entry-k">' + k + '</span><span class="entry-t">' + t + '</span>' +
-      '<span class="entry-m">' + m + '</span>' + ICON.arrowR + '</a>';
-  }
-
   function viewHome() {
-    var page = el('div', 'home');
+    var page = el('div', 'page');
     var ch = chapter(), lb = lab();
-
-    var cover = el('section', 'cover');
-    var entries = '';
-    if (ch) {
-      var done = readCount(ch), n = ch.screens.length;
-      entries += entry('#' + (done && done < n ? firstUnread(ch) : ch.screens[0].id), 'Глава ' + esc(ch.num), esc(ch.title),
-        n + ' разделов · ' + minutes(ch) + ' мин' + (done ? ' · прочитано ' + done + ' из ' + n : ''));
-    }
-    if (lb) entries += entry('#' + lb.screens[0].id, 'Практикум', 'DA 40 NG по системам', systems().length + ' систем в 3D · по AMM и AFM');
-    var quiz = ch && ch.screens.filter(function (s) { return /quiz/.test(s.id); })[0];
-    if (quiz) entries += entry('#' + quiz.id, 'Проверка', 'Тесты с разбором ответов', 'глава 6 — 8 вопросов · практикум — 12');
-    cover.innerHTML =
-      '<div class="cover-in">' +
-      '<div class="cover-text">' +
-      '<p class="eyebrow"><span>Учебное пособие</span><span>УИ ГА им. Б. П. Бугаева</span><span>2026</span></p>' +
+    var cols = el('div', 'cols');
+    var m = el('div', 'col-main');
+    var done = ch ? readCount(ch) : 0;
+    var startId = ch ? (done && done < ch.screens.length ? firstUnread(ch) : ch.screens[0].id) : 'home';
+    m.innerHTML =
       '<h1>' + esc(MENU.title1) + ' ' + esc(MENU.title2) + '</h1>' +
-      '<p class="lead">' + esc(MENU.lead) + '</p>' +
-      '</div>' +
-      '<nav class="entries" aria-label="Разделы пособия"><span class="label">Разделы пособия</span>' + entries + '</nav>' +
-      '<figure class="cover-photo"><img src="assets/img/da40-hero.webp" width="1600" height="617" alt="Учебный самолёт DA 40 NG (3D-модель практикума)"></figure>' +
-      '</div>';
-    page.appendChild(cover);
+      '<p class="lead">Интерактивное учебное пособие для курсантов УИ ГА им. Б. П. Бугаева.</p>' +
+      '<p>' + esc(MENU.lead) + '</p>' +
+      '<a class="btn is-start" href="#' + startId + '">' + (done && ch && done < ch.screens.length ? 'Продолжить чтение' : 'Начать с главы 6') +
+      '<svg viewBox="0 0 33 40" aria-hidden="true"><path d="M0 0h13l20 20-20 20H0l20-20z"/></svg></a>';
+    var side = el('aside', 'col-side');
+    side.innerHTML = '<div class="related"><h2>Быстрый переход</h2><ul>' +
+      (ch ? '<li><a href="#' + ch.screens[0].id + '">Глава 6. ' + esc(ch.title) + '</a></li>' : '') +
+      (lb ? '<li><a href="#' + lb.screens[0].id + '">Практикум: DA 40 NG по системам</a></li>' : '') +
+      '<li><a href="#fc-quiz">Тест по главе 6</a></li><li><a href="#da40-quiz">Тест по практикуму</a></li></ul></div>';
+    cols.appendChild(m); cols.appendChild(side);
+    page.appendChild(cols);
 
-    /* Практикум: план самолёта с системами */
-    if (lb) {
-      var sec = el('section', 'sec');
-      sec.id = 'lab';
-      sec.innerHTML = '<header class="sec-h"><span class="sec-k">Практикум · DA 40 NG</span>' +
-        '<h2>Системы самолёта на виде сверху</h2>' +
-        '<p>Наведите на систему в перечне или на чертеже — она подсветится. Щелчок открывает раздел с 3D-моделью.</p></header>';
-      var lq = lb.screens.filter(function (s) { return /quiz/.test(s.id); })[0];
-      planBox(sec, null, { dims: true, caption: '<span>Контуры и системы сняты с 3D-модели, нос — вверх. Размеры — по РЛЭ, разд. 1.</span>' +
-        '<span class="plan-links"><a class="go" href="#' + lb.screens[0].id + '">Самолёт целиком ' + ICON.arrowR + '</a>' +
-        (lq ? '<a class="go" href="#' + lq.id + '">Проверь себя ' + ICON.arrowR + '</a>' : '') + '</span>' });
-      var specs = el('dl', 'specs');
-      specs.innerHTML = [['Размах', '11,63', 'м'], ['Длина', '8,06', 'м'], ['Взлётная масса', '1 280', 'кг'],
-        ['Мощность', '123,5', 'кВт'], ['V<sub>NE</sub>', '172', 'уз'], ['Топливо', '2 × 56,8', 'л']]
-        .map(function (r) { return '<div><dt>' + r[0] + '</dt><dd>' + r[1] + '<span>' + r[2] + '</span></dd></div>'; }).join('');
-      sec.appendChild(specs);
-      sec.appendChild(el('p', 'specs-src', 'DA 40 NG · данные РЛЭ, разд. 1 и 2'));
+    if (ch) {
+      var sec = el('section');
+      sec.innerHTML = '<h2>Глава 6. ' + esc(ch.title) + '</h2>' +
+        '<p class="hint">' + ch.screens.length + ' разделов, около ' + minutes(ch) + ' минут чтения' + (done ? '. Прочитано ' + done + ' из ' + ch.screens.length : '') + '.</p>' +
+        tasks(ch);
       page.appendChild(sec);
     }
-
-    /* Глава 6 */
-    if (ch) {
-      var cs = el('section', 'sec');
-      var d2 = readCount(ch);
-      var rows = ch.screens.map(function (s, i) {
-        return '<li><a href="#' + s.id + '"' + (isRead(s.id) ? ' class="is-read"' : '') + '>' +
-          '<span class="no">' + esc(screenNo(s, i) || '—') + '</span>' +
-          '<span class="t">' + esc(s.title) + '</span>' +
-          '<span class="m">' + (s.min ? s.min + ' мин' : '') + '<span class="tick">' + ICON.check + '</span></span></a></li>';
-      }).join('');
-      cs.innerHTML = '<header class="sec-h"><span class="sec-k">Глава ' + esc(ch.num) + '</span><h2>' + esc(ch.title) + '</h2>' +
-        '<p>' + ch.screens.length + ' разделов, ' + minutes(ch) + ' мин чтения' + (d2 ? '. Прочитано ' + d2 + ' из ' + ch.screens.length : '') + '.</p></header>' +
-        (d2 && d2 < ch.screens.length ? '<div class="resume"><span>Вы остановились на разделе «' + esc(screenOf(firstUnread(ch)).title) + '»</span>' +
-          '<a class="go" href="#' + firstUnread(ch) + '">Продолжить ' + ICON.arrowR + '</a></div>' : '') +
-        '<ol class="rows">' + rows + '</ol>';
-      page.appendChild(cs);
+    if (lb) {
+      var ls = el('section');
+      ls.innerHTML = '<h2>Практикум: самолёт DA 40 NG по системам</h2>' +
+        '<p>Каждая система показана в 3D-модели, собранной по руководству по технической эксплуатации. Выберите систему в перечне или на виде сверху.</p>';
+      planBox(ls, null, { dims: true, caption: '<span>Вид сверху снят с 3D-модели. Размеры — по РЛЭ, раздел 1.</span>' +
+        '<span class="plan-links"><a href="#' + lb.screens[0].id + '">Самолёт целиком</a><a href="#da40-quiz">Тест по практикуму</a></span>' });
+      var tb = el('div', 'table-scroll');
+      tb.innerHTML = '<table><caption class="h-m" style="text-align:left;font-weight:700;font-size:24px;padding-bottom:10px">Основные данные DA 40 NG</caption><tbody>' +
+        [['Размах крыла', '11,63 м'], ['Длина', '8,06 м'], ['Максимальная взлётная масса', '1 280 кг'], ['Мощность двигателя', '123,5 кВт'],
+         ['Максимально допустимая скорость V<sub>NE</sub>', '172 уз'], ['Топливо (два бака)', '2 × 56,8 л']]
+          .map(function (r) { return '<tr><th scope="row">' + r[0] + '</th><td>' + r[1] + '</td></tr>'; }).join('') +
+        '</tbody></table>';
+      ls.appendChild(tb);
+      ls.appendChild(el('p', 'hint', 'Данные — по РЛЭ DA 40 NG, разделы 1 и 2.'));
+      page.appendChild(ls);
     }
-
-    /* Курс целиком */
-    var cc = el('section', 'sec');
+    var cc = el('section');
     var parts = MENU.parts.filter(function (p) { return !p.topics.some(isLab); });
-    cc.innerHTML = '<header class="sec-h"><span class="sec-k">Курс</span><h2>Содержание пособия</h2>' +
-      '<p>Темы курса по учебному пособию. Готовые открываются, остальные — в работе.</p></header>' +
-      '<div class="cols2">' + parts.map(function (p) {
-        return '<div><div class="part-h label">' + esc(p.name) + '</div><ol class="rows">' + p.topics.map(function (t) {
-          var ready = t.status === 'ready';
-          var inner = '<span class="no">' + esc(t.num) + '</span><span class="t">' + esc(t.title) + '</span>' +
-            '<span class="flag">' + (ready ? 'Открыть' : 'В работе') + '</span>';
-          return '<li>' + (ready ? '<a href="#' + (t.screens ? t.screens[0].id : t.id) + '">' + inner + '</a>'
-            : '<a href="#' + t.id + '" class="row is-soon">' + inner + '</a>') + '</li>';
-        }).join('') + '</ol></div>';
-      }).join('') + '</div>';
+    cc.innerHTML = '<h2>Все темы курса</h2>' + parts.map(function (p) {
+      return '<h3>' + esc(p.name) + '</h3><ul class="tasks">' + p.topics.map(function (t) {
+        var ready = t.status === 'ready';
+        return '<li><span><span class="tn">' + esc(t.num) + '</span>' +
+          (ready ? '<a href="#' + (t.screens ? t.screens[0].id : t.id) + '">' + esc(t.title) + '</a>' : esc(t.title)) + '</span>' +
+          '<span class="tm">' + (ready ? '<strong class="tag">Готово</strong>' : '<strong class="tag is-grey">В работе</strong>') + '</span></li>';
+      }).join('') + '</ul>';
+    }).join('');
     page.appendChild(cc);
     return page;
   }
@@ -400,89 +380,62 @@
   /* ── Тема «скоро» ──────────────────────────────────────── */
 
   function viewSoon(t) {
-    var wrap = el('div', 'doc');
-    var mainCol = el('div', 'doc-main');
-    mainCol.appendChild(head({ crumb: 'Тема ' + t.num, title: t.title, lead: '' }));
+    var page = el('div', 'page');
+    var cols = el('div', 'cols');
+    var m = el('div', 'col-main');
+    m.appendChild(head({ id: t.id, title: t.title, lead: '' }));
     var items = (t.sub || '').split(';').map(function (s) { return s.trim(); })
       .filter(Boolean).map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('');
     var ch = chapter();
-    mainCol.appendChild(el('div', 'soon',
-      '<h2>Раздел в работе</h2>' +
-      '<p>Тема входит в программу курса, но ещё не наполнена. Как будет выглядеть каждый раздел, показывает глава 6' +
-      (ch ? ' «' + esc(ch.title) + '»' : '') + '.</p>' +
-      (items ? '<ul>' + items + '</ul>' : '')));
-    mainCol.appendChild(pager({ next: ch ? { id: ch.screens[0].id, title: 'Глава 6. ' + ch.title } : null, prev: { id: 'home', title: 'На главную' } }));
-    wrap.appendChild(mainCol);
-    return wrap;
+    m.appendChild(el('div', 'soon',
+      '<p>Тема входит в программу курса, но ещё не наполнена.' + (ch ? ' Полностью готова <a href="#' + ch.screens[0].id + '">глава 6</a>.' : '') + '</p>' +
+      (items ? '<h2>Что войдёт в тему</h2><ul>' + items + '</ul>' : '')));
+    cols.appendChild(m);
+    page.appendChild(cols);
+    return page;
   }
 
-  /* ── Раздел главы (и тест практикума): текст и указатель ─ */
-
-  function rail(topic, curId) {
-    var r = el('div', 'rail');
-    var lb = isLab(topic);
-    var html = '<span class="label">' + (lb ? 'Практикум DA 40 NG' : 'Глава ' + esc(topic.num)) + '</span><ol>';
-    topic.screens.forEach(function (s, i) {
-      var no = lb ? (s.ata ? s.ata.split(',')[0] : '—') : (screenNo(s, i) || '—');
-      html += '<li><a href="#' + s.id + '" data-screen="' + s.id + '" class="' + (s.id === curId ? 'is-cur' : '') + (isRead(s.id) ? ' is-read' : '') + '"' +
-        (s.id === curId ? ' aria-current="page"' : '') + '><i>' + esc(no) + '</i><span>' +
-        esc(lb ? s.title : (s.short || s.title).replace(/^[\d.]+\s*·\s*/, '')) + '</span></a></li>';
-    });
-    r.innerHTML = html + '</ol>';
-    return r;
-  }
-
-  /* «На странице»: заголовки h2 раздела, текущий отмечается при прокрутке */
-  function pageToc(r, art) {
-    var hs = art.querySelectorAll('h2');
-    if (hs.length < 2) return;
-    var html = '<span class="label">На странице</span><ol class="toc-page">';
-    hs.forEach(function (h, i) {
-      h.id = h.id || 'h-' + (i + 1);
-      html += '<li><a href="#' + routeId() + '" data-h="' + h.id + '">' + esc(h.textContent) + '</a></li>';
-    });
-    r.insertAdjacentHTML('beforeend', html + '</ol>');
-    var links = r.querySelectorAll('[data-h]');
-    links.forEach(function (a) {
-      a.addEventListener('click', function (e) {
-        e.preventDefault();
-        var h = document.getElementById(a.dataset.h);
-        if (h) h.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      });
-    });
-    if (!window.IntersectionObserver) return;
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (en) {
-        if (!en.isIntersecting) return;
-        links.forEach(function (a) { a.classList.toggle('is-here', a.dataset.h === en.target.id); });
-      });
-    }, { rootMargin: '-15% 0px -70% 0px' });
-    hs.forEach(function (h) { io.observe(h); });
-    offPage.push(function () { io.disconnect(); });
-  }
+  /* ── Раздел главы: текст и «связанные разделы» сбоку ───── */
 
   function viewDoc(data, topic) {
-    var wrap = el('div', 'doc');
-    var aside = el('aside', 'doc-rail');
-    var r = topic ? rail(topic, data.id) : null;
-    if (r) aside.appendChild(r);
-    wrap.appendChild(aside);
-
-    var col = el('div', 'doc-main');
+    var page = el('div', 'page');
     var s = screenOf(data.id);
     var idx = topic ? topic.screens.indexOf(s) : -1;
-    col.appendChild(head(data, [
-      ['Чтение', s && s.min ? s.min + ' мин' : ''],
+    var cols = el('div', 'cols');
+    var m = el('div', 'col-main');
+    m.appendChild(head(data, [
+      ['Время чтения', s && s.min ? 'около ' + s.min + ' мин' : ''],
       ['Раздел', idx >= 0 ? (idx + 1) + ' из ' + topic.screens.length : '']
     ]));
     var art = el('article', 'article');
     Render.blocks(data.blocks || [], art);
-    col.appendChild(art);
-    col.appendChild(doneBar(data));
-    col.appendChild(pager(data));
-    wrap.appendChild(col);
-    if (r) pageToc(r, art);
-    return wrap;
+    m.appendChild(art);
+    m.appendChild(doneBar(data));
+    m.appendChild(pager(data));
+    var side = el('aside', 'col-side');
+    if (topic) {
+      var hs = art.querySelectorAll('h2');
+      var onPage = '';
+      if (hs.length > 1) {
+        onPage = '<h2>На этой странице</h2><ul>';
+        hs.forEach(function (h, i) { h.id = 'h-' + (i + 1); onPage += '<li><a href="#' + data.id + '" data-h="' + h.id + '">' + esc(h.textContent) + '</a></li>'; });
+        onPage += '</ul>';
+      }
+      side.innerHTML = '<div class="related">' + onPage + '<h2>' + (isLab(topic) ? 'Практикум DA 40 NG' : 'Глава ' + esc(topic.num)) + '</h2><ul>' +
+        topic.screens.map(function (x) {
+          return '<li class="' + (x.id === data.id ? 'is-cur' : '') + '"><a href="#' + x.id + '">' + esc(isLab(topic) ? x.title : x.title) + '</a></li>';
+        }).join('') + '</ul></div>';
+      side.querySelectorAll('[data-h]').forEach(function (a) {
+        a.addEventListener('click', function (e) {
+          e.preventDefault();
+          var h = document.getElementById(a.dataset.h);
+          if (h) h.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      });
+    }
+    cols.appendChild(m); cols.appendChild(side);
+    page.appendChild(cols);
+    return page;
   }
 
   /* ── Раздел практикума: рабочее место ──────────────────── */
@@ -540,13 +493,13 @@
     if (data.id !== 'model-da40') view.appendChild(map);     /* на обзоре план — в колонке текста */
 
     text.appendChild(head(data, [
-      ['ATA', s && s.ata ? esc(s.ata) : ''],
-      ['Чтение', s && s.min ? s.min + ' мин' : '']
+      ['Глава ATA', s && s.ata ? esc(s.ata) : ''],
+      ['Время чтения', s && s.min ? 'около ' + s.min + ' мин' : '']
     ]));
     /* обзор: перечень систем с планом вместо состава */
     if (data.id === 'model-da40') {
       var sec = el('div', 'legend');
-      sec.innerHTML = '<span class="label"><span>Системы самолёта</span><span>' + systems().length + '</span></span>';
+      sec.innerHTML = '<span class="label"><span>Системы самолёта</span></span>';
       planBox(sec, null, { compact: true });
       text.appendChild(sec);
     } else {
@@ -596,7 +549,7 @@
   }
 
   function fail(id, err) {
-    show(el('div', 'doc', '<div class="doc-main"><div class="soon" style="margin-top:52px">' +
+    show(el('div', 'page', '<div><div class="soon" style="margin-top:40px">' +
       '<h2>Страница не найдена</h2>' +
       '<p>Адрес <code>#' + esc(id) + '</code> не соответствует ни одному разделу.</p>' +
       '<p><a href="#home">На главную</a></p></div></div>'),
