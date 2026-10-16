@@ -259,7 +259,7 @@
     var crumbs = String(data.crumb || '').split(' · ').filter(Boolean);
     var h = el('header', 'doc-head');
     h.innerHTML =
-      '<p class="eyebrow">' + crumbs.map(function (c) { return '<span>' + esc(c) + '</span>'; }).join('') + '</p>' +
+      '<p class="crumbs"><a href="#home">Главная</a> / ' + crumbs.map(esc).join(' / ') + '</p>' +
       '<h1>' + esc(data.title) + '</h1>' +
       (data.lead ? '<p class="lead">' + Render.inline(data.lead) + '</p>' : '');
     var cells = (extra || []).filter(function (c) { return c && c[1]; });
@@ -336,7 +336,8 @@
       '<h1>' + esc(MENU.title1) + ' ' + esc(MENU.title2) + '</h1>' +
       '<p class="lead">' + esc(MENU.lead) + '</p>' +
       '</div>' +
-      '<nav class="entries" aria-label="С чего начать"><span class="label">С чего начать</span>' + entries + '</nav>' +
+      '<nav class="entries" aria-label="Разделы пособия"><span class="label">Разделы пособия</span>' + entries + '</nav>' +
+      '<figure class="cover-photo"><img src="assets/img/da40-hero.webp" width="1600" height="617" alt="Учебный самолёт DA 40 NG (3D-модель практикума)"></figure>' +
       '</div>';
     page.appendChild(cover);
 
