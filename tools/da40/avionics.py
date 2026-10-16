@@ -382,7 +382,7 @@ def shelf_units():
                         ('external power receptacle', V((0.35, 1.86, 0.04)), (0.12, 0.07, 0.07)),
                         ('ECU backup battery', V((0.150, 2.390, 0.055)), (0.17, 0.17, 0.12)),
                         ('main static line down the LH side', V((0.33, 1.782, 0.39)), (0.05, 0.04, 0.48)),
-                        ('LH seat water traps', V((0.31, -0.25, -0.16)), (0.16, 0.22, 0.12))):
+                        ('LH seat water traps', V((0.31, -0.16, -0.16)), (0.16, 0.22, 0.12))):
         r = Part(name + ' (reserved)', None, M['black'], RESERVED)
         box(r, c, sz, I3, 0)
         r.done()

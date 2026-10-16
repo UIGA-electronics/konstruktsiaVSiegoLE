@@ -291,18 +291,27 @@ def end_rib(s):
     p.done()
 
 
+HORN_WINDOW = (3.972, 4.034, 0.098, 0.146)          # окно в задней стенке под короткую тягу элерона (controls.py)
+
+
 def rear_web(s):
+    """Задняя стенка; у кабанчика элерона — окно под короткую тягу от качалки к кабанчику."""
     tag, gen = SIDE[s]
-    xs = [ROOT_X + (5.40 - ROOT_X) * i / 30 for i in range(31)]
-    rings = []
-    for x in xs:
+    w0, w1, wz0, wz1 = HORN_WINDOW
+    xs = sorted(set([ROOT_X + (5.40 - ROOT_X) * i / 30 for i in range(31)] + [w0, w1]))
+    p = P(f'Rear web {tag}', f'Задняя стенка {gen} крыла: закрывает заднюю кромку перед закрылком и элероном; в местах навесок — анкерные гайки; '
+          'у кабанчика элерона — окно под короткую тягу', 'gfrp', 'AMM 57-10 2.F')
+
+    def ring(x, zlo=None, zhi=None):
         X = s * x
         y = rear_web_te(X)
         zt, zb = S.up_in(X, y), S.lo_in(X, y)
-        rings.append([V((X, y - 0.004, zb)), V((X, y + 0.004, zb)), V((X, y + 0.004, zt)), V((X, y - 0.004, zt))])
-    p = P(f'Rear web {tag}', f'Задняя стенка {gen} крыла: закрывает заднюю кромку перед закрылком и элероном; в местах навесок — анкерные гайки',
-          'gfrp', 'AMM 57-10 2.F')
-    loft(p, rings, 0)
+        zb, zt = (zb if zlo is None else max(zb, zlo)), (zt if zhi is None else min(zt, zhi))
+        return [V((X, y - 0.004, zb)), V((X, y + 0.004, zb)), V((X, y + 0.004, zt)), V((X, y - 0.004, zt))]
+    loft(p, [ring(x) for x in xs if x <= w0], 0)
+    loft(p, [ring(x) for x in xs if x >= w1], 0)
+    for zlo, zhi in ((None, wz0), (wz1, None)):
+        loft(p, [ring(x, zlo, zhi) for x in (w0, (w0 + w1) / 2, w1)], 0)
     p.done()
 
 

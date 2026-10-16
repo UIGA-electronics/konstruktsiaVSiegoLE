@@ -310,7 +310,7 @@ def _nearest(src, dst):
 
 
 def jumpers():
-    targets = layer_objs(['air', 'oil', 'cooling', 'induction', 'gear', 'radio', 'fuel', 'engine'])
+    targets = layer_objs(['air', 'oil', 'cooling', 'induction', 'gear', 'radio', 'fuel', 'engine', 'controls-addon'])
     import re
     byname = {re.sub(r'\.\d{3}$', '', o.name): o for o in targets if o.type == 'MESH'}   # имена могут совпасть с исходником
     src = {o.name: o for c in bpy.data.collections['DA40 Systems'].children if c.name in cabin.SOURCE_SYSTEMS
@@ -332,7 +332,7 @@ def jumpers():
         ('Marker beacon antenna', tubes, 'пластины антенны маркерного приёмника', 'marker antenna'),
         ('ADF antenna AN 3500', tubes, 'антенны АРК', 'ADF antenna'),
         ('COM 2 antenna', tubes, 'пластины нижней антенны COM 2', 'COM #2 antenna'),
-        ('Aileron rear bellcrank (rear main bulkhead) (aluminium)', tubes, 'качалки элеронов на заднем главном шпангоуте', 'aileron lever'),
+        ('Aileron rear bellcrank', tubes, 'задней качалки элеронов на заднем лонжероне центроплана', 'aileron lever'),
     ]
     for name, dst, ru, amm in jobs:
         o = byname.get(name) or src.get(name)
