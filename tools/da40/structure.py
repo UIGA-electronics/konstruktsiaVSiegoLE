@@ -738,15 +738,23 @@ def fin_half(y, z):
     return (a.x - b.x) / 2 - T_SH, (a.x + b.x) / 2
 
 
-def web_plate(p, pts_yz, t=0.006):
-    """Стенка киля: по точкам (y, z) снизу вверх, ширина — между обшивками."""
+def web_plate(p, pts_yz, t=0.006, side=0, x_in=0.0):
+    """Стенка киля: по точкам (y, z) снизу вверх, ширина — между обшивками; side = ±1 — только полоса
+    сбоку от выреза |x| < x_in (левее или правее)."""
     rings = []
     for y, z in pts_yz:
         hw = fin_half(y, z)
         if hw is None:
             continue
         h, xc = hw
-        rings.append([V((xc - h, y - t / 2, z)), V((xc + h, y - t / 2, z)), V((xc + h, y + t / 2, z)), V((xc - h, y + t / 2, z))])
+        a, b = xc - h, xc + h
+        if side > 0:
+            a = max(a, x_in)
+        elif side < 0:
+            b = min(b, -x_in)
+        if b - a < 0.003:
+            continue
+        rings.append([V((a, y - t / 2, z)), V((b, y - t / 2, z)), V((b, y + t / 2, z)), V((a, y + t / 2, z))])
     loft(p, rings, 0, smooth=False)
 
 
@@ -754,6 +762,8 @@ FIN_LOW_Z = 0.36               # низ киля над хвостовой ба�
 FIN_TOP_Z = 1.235              # под нижней обшивкой стабилизатора (1,245)
 FW_BOT_Y, FW_TOP_Y = 4.560, 4.840
 ELEV_VROD_Y_LOW_RIB = 4.929    # вертикальная тяга руля высоты (controls.py) на высоте нижней нервюры киля
+ELEV_VROD_TRAVEL = 0.075         # сдвиг места, где вертикальная тяга пересекает заднюю стенку, за ход руля высоты
+ELEV_VROD_CUT_HW = 0.016         # полуширина выреза под неё
 REAR_WEB_LOW_Z = 0.124         # над нижним кронштейном руля направления (верх 0,108) и тросом триммера
 
 
@@ -811,11 +821,31 @@ def fin():
     for s in (1, -1):
         box(c, V((s * (hw - 0.003), (ch0 + ch1) / 2, FIN_TOP_Z - 0.025)), (0.006, ch1 - ch0, 0.045), Matrix.Identity(3), 0, bevel=0.001)
     c.done()
-    p = P('Vertical stabilizer rear web', 'Задняя стенка киля: приклеена к обшивке и передней стенке, замыкает киль сзади; в верхней части — верхний узел навески руля направления, к задней поверхности приклеена усиливающая нервюра',
+    p = P('Vertical stabilizer rear web', 'Задняя стенка киля: приклеена к обшивке и передней стенке, замыкает киль сзади; в верхней части — верхний узел навески руля направления, к задней поверхности приклеена усиливающая нервюра; в средней части — вырез, сквозь который вертикальная тяга руля высоты идёт к кабанчику',
           'frame', 'AMM 53-10 2.N, рис. 4')
-    # снизу стенка кончается над нижним кронштейном руля (он ходит под ней вместе с рулём)
-    web_plate(p, [(rud_y(z) - 0.035, z) for z in
-                  [REAR_WEB_LOW_Z + (FIN_TOP_Z - REAR_WEB_LOW_Z) * i / 28 for i in range(29)]])
+    # снизу стенка кончается над нижним кронштейном руля (он ходит под ней вместе с рулём); вертикальная тяга
+    # руля высоты идёт к кабанчику за стенкой — сквозь вырез, высота которого — по ходу тяги в клипе
+    zs_w = [REAR_WEB_LOW_Z + (FIN_TOP_Z - REAR_WEB_LOW_Z) * i / 28 for i in range(29)]
+    cut = None
+    zc = []
+    for name, vs, es in lines():
+        if name != 'Elevator vertical push rod':
+            continue
+        for ia, ib in es:
+            fa, fb = vs[ia].y - (rud_y(vs[ia].z) - 0.035), vs[ib].y - (rud_y(vs[ib].z) - 0.035)
+            if (fa < 0) != (fb < 0):
+                zc.append(vs[ia].lerp(vs[ib], fa / (fa - fb)).z)
+    if zc:
+        cut = (max(REAR_WEB_LOW_Z + 0.03, min(zc) - ELEV_VROD_TRAVEL), min(FIN_TOP_Z - 0.1, max(zc) + ELEV_VROD_TRAVEL))
+        print(f'REAR WEB вырез под вертикальную тягу: z {cut[0]:.3f}…{cut[1]:.3f}')
+    if cut:
+        web_plate(p, [(rud_y(z) - 0.035, z) for z in [z for z in zs_w if z < cut[0]] + [cut[0]]])
+        web_plate(p, [(rud_y(z) - 0.035, z) for z in [cut[1]] + [z for z in zs_w if z > cut[1]]])
+        mid = [cut[0] + (cut[1] - cut[0]) * i / 6 for i in range(7)]
+        for sd in (1, -1):
+            web_plate(p, [(rud_y(z) - 0.035, z) for z in mid], side=sd, x_in=ELEV_VROD_CUT_HW)
+    else:
+        web_plate(p, [(rud_y(z) - 0.035, z) for z in zs_w])
     p.done()
     r = P('Vertical stabilizer rear web reinforcing rib', 'Усиливающая нервюра на задней поверхности задней стенки киля под верхним узлом навески руля направления',
           'frame', 'AMM 53-10 2.N, рис. 4')
@@ -1157,7 +1187,7 @@ def trim_bracket_and_stops(ez):
     p = P('Elevator up stop (bolt and bush)', 'Ограничитель отклонения руля высоты вверх: поперечный болт с втулкой в монтажном кронштейне исполнительного механизма триммера; '
           'при полном отклонении руля вверх в неё упирается передняя часть кабанчика руля высоты. Регулировать запрещается',
           'steel', 'AMM 27-30 2., 27-38 рис. 2')
-    q = V((0, yc, TB_Z + 0.0105))
+    q = V((0, yc, TB_Z + 0.0068))                    # верх втулки — под выступом кабанчика при полном отклонении вверх (15,3°)
     cyl(p, q - V((0.021, 0, 0)), q + V((0.021, 0, 0)), 0.0025, 0, segs=10)
     cyl(p, q - V((0.0145, 0, 0)), q + V((0.0145, 0, 0)), 0.0065, p.m(M['alu']), segs=16)
     hexa(p, q + V((0.0175, 0, 0)), q + V((0.022, 0, 0)), 0.007, 0)
@@ -1169,7 +1199,7 @@ def trim_bracket_and_stops(ez):
     p = P('Elevator down stop (GFRP block)', 'Ограничитель отклонения руля высоты вниз: колодка из стеклопластика, вклеенная изнутри в верхнюю '
           'обшивку стабилизатора; при полном отклонении руля вниз в неё упирается передняя часть кабанчика руля высоты. Регулировать запрещается',
           'insert', 'AMM 27-30 2.')
-    box(p, V((0, yc, zt - 0.005)), (0.03, 0.03, 0.010), None, 0, bevel=0.002)
+    box(p, V((0, yc, zt - 0.003)), (0.03, 0.03, 0.006), None, 0, bevel=0.0015)   # низ — над выступом при полном отклонении вниз (13,2°)
     p.done()
 
 
