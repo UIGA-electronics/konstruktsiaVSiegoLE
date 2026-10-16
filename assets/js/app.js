@@ -328,7 +328,7 @@
     }
     if (lb) entries += entry('#' + lb.screens[0].id, 'Практикум', 'DA 40 NG по системам', systems().length + ' систем в 3D · по AMM и AFM');
     var quiz = ch && ch.screens.filter(function (s) { return /quiz/.test(s.id); })[0];
-    if (quiz) entries += entry('#' + quiz.id, 'Проверка', 'Тесты с разбором ответов', 'по главе 6 и по практикуму');
+    if (quiz) entries += entry('#' + quiz.id, 'Проверка', 'Тесты с разбором ответов', 'глава 6 — 8 вопросов · практикум — 12');
     cover.innerHTML =
       '<div class="cover-in">' +
       '<div class="cover-text">' +
@@ -347,8 +347,10 @@
       sec.innerHTML = '<header class="sec-h"><span class="sec-k">Практикум · DA 40 NG</span>' +
         '<h2>Системы самолёта на виде сверху</h2>' +
         '<p>Наведите на систему в перечне или на чертеже — она подсветится. Щелчок открывает раздел с 3D-моделью.</p></header>';
+      var lq = lb.screens.filter(function (s) { return /quiz/.test(s.id); })[0];
       planBox(sec, null, { dims: true, caption: '<span>Контуры и системы сняты с 3D-модели, нос — вверх. Размеры — по РЛЭ, разд. 1.</span>' +
-        '<a class="go" href="#' + lb.screens[0].id + '">Самолёт целиком ' + ICON.arrowR + '</a>' });
+        '<span class="plan-links"><a class="go" href="#' + lb.screens[0].id + '">Самолёт целиком ' + ICON.arrowR + '</a>' +
+        (lq ? '<a class="go" href="#' + lq.id + '">Проверь себя ' + ICON.arrowR + '</a>' : '') + '</span>' });
       var specs = el('dl', 'specs');
       specs.innerHTML = [['Размах', '11,63', 'м'], ['Длина', '8,06', 'м'], ['Взлётная масса', '1 280', 'кг'],
         ['Мощность', '123,5', 'кВт'], ['V<sub>NE</sub>', '172', 'уз'], ['Топливо', '2 × 56,8', 'л']]

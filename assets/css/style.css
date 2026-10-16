@@ -658,3 +658,4 @@ td:first-child{ color:var(--ink); font-weight:600; }
 @media (max-width:620px){ .plan-cap{ flex-wrap:wrap; } .rows a,.rows .row{ padding:12px 0 13px; } }
 .systems .plan svg{ max-height:calc(100vh - var(--bar) - 170px); max-height:calc(100dvh - var(--bar) - 170px); width:auto; max-width:100%; margin:0 auto; }
 .systems .sys-list a{ padding:8px 0 9px; }
+.plan-links{ display:flex; gap:22px; flex-wrap:wrap; }
