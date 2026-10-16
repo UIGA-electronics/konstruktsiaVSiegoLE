@@ -12,7 +12,7 @@ AMM 6.02.15 Rev. 3: 53-10 (рис. 1–4) — перегородка, прямо
 Сечения фюзеляжа снимаются лучами по внутренней поверхности обшивки исходной
 модели, поэтому шпангоуты повторяют её без подгонки. Места привязаны к уже
 построенным слоям: главные болты и комли лонжеронов (wing.py), узлы шасси
-(gear.py), направляющие тяги руля высоты на раме багажника и шпангоутах
+(gear.py), направляющие тяги руля высоты на шпангоутах (controls.py)
 (controls), сопла в дуге (air.py), ось руля направления и руля высоты —
 пустышки исходной модели.
 """
@@ -72,6 +72,7 @@ LINE_LAYERS = ('fuel', 'brakes', 'pitot', 'air', 'electrical', 'instruments', 'r
 LINE_RE = re.compile(r'hose|cable|harness|duct|wire|coax|tube|pipe|conductor|braid|jumper|fuel (supply|return|vent)|line', re.I)
 NOT_LINE = re.compile(r'clamp|grommet|fitting|outlet|nozzle|grille|valve|connector|tee\b|trap|seal|bracket|lug|terminal|adapter|inlet duct', re.I)
 _LINES = None
+LINE_R = {}                    # радиус трасс-кривых (у них в сечении одна точка)
 
 
 def lines():
@@ -99,6 +100,7 @@ def lines():
         for o in got:
             bpy.data.objects.remove(o, do_unlink=True)
     # тяги и тросы управления из исходной модели: им тоже нужны вырезы (с запасом на ход — gap в wall_cuts)
+    dg = bpy.context.evaluated_depsgraph_get()
     for c in bpy.data.collections['DA40 Systems'].children:
         if c.name != 'Flight controls':
             continue
@@ -106,6 +108,16 @@ def lines():
             if o.type == 'MESH' and re.search(r'push rod|cable', o.name, re.I):
                 mw = o.matrix_world
                 _LINES.append((o.name, [mw @ v.co for v in o.data.vertices], [tuple(e.vertices) for e in o.data.edges]))
+            elif o.type == 'CURVE' and re.search(r'cable|tube', o.name, re.I) and 'S-tube' not in o.name:
+                # тросы руля направления, их фторопластовые трубки и трос триммера заданы кривыми:
+                # сечение у кривой — одна точка, поэтому радиус берём из её толщины
+                e = o.evaluated_get(dg)
+                m = e.to_mesh()
+                if m is not None and len(m.vertices):
+                    mw = o.matrix_world
+                    _LINES.append((o.name, [mw @ v.co for v in m.vertices], [tuple(ed.vertices) for ed in m.edges]))
+                    LINE_R[o.name] = max(o.data.bevel_depth, 0.0025)
+                e.to_mesh_clear()
     print('LINES', len(_LINES))
     return _LINES
 
@@ -130,10 +142,10 @@ def wall_cuts(axis, pos, inside, room, gap=0.004):
                 groups.remove(g)
             (near[0] if near else (groups.append([]) or groups[-1])).append(q)
         for g in groups:
-            if len(g) < 4:
+            if len(g) < 4 and name not in LINE_R:
                 continue
             c = sum(g, V()) / len(g)
-            r = max((q - c).length for q in g)
+            r = max([(q - c).length for q in g] + [LINE_R.get(name, 0.0)])
             if r > 0.05:
                 print(f'CUT ALONG {name}: сечение {r * 2:.3f} м — трасса идёт вдоль стенки, выреза нет')
                 continue
@@ -260,10 +272,13 @@ def centre(y, z_in=None):
     return (lo + top.z) / 2 if top else lo + 0.3
 
 
-def ring_frame(name, ru, y, depth, doc, flange=0.022, t=0.005, n=72, lower_web=None, holes=(), z_in=0.14):
-    """Кольцевой шпангоут: стенка от обшивки внутрь на depth и отбортовка вдоль обшивки.
-    lower_web — высота сплошной нижней части (z), holes — отверстия в ней [(x, z, r)]."""
+def ring_frame(name, ru, y, depth, doc, flange=0.022, t=0.005, n=144, lower_web=None, z_in=0.14, shelf=0.0, grommet_ru=None):
+    """Шпангоут: пояс от обшивки внутрь на depth, отбортовка вдоль обшивки и сплошная нижняя часть
+    до высоты lower_web. Трассы, проходящие сквозь сплошную часть, получают круглые вырезы с окантовкой;
+    задевающие кромку пояса или верх нижней части — местную выемку. shelf — глубина горизонтальной
+    полки по верху нижней части (вперёд от стенки)."""
     zc = centre(y, z_in)
+    C = V((0.0, y, zc))
     ang = [2 * math.pi * i / n for i in range(n)]
     sec = section(y, zc, ang, closed=True)
     sec2 = section(y + flange, zc, ang, closed=True)
@@ -275,20 +290,76 @@ def ring_frame(name, ru, y, depth, doc, flange=0.022, t=0.005, n=72, lower_web=N
         if lower_web is not None and q.z < lower_web:
             i = V((i.x, y, lower_web))          # сплошная нижняя часть до высоты lower_web
         inner.append(i)
-    plate_with_hole(p, outer, inner, (0, 1, 0), t, 0)
+    r_out = [(q - C).length for q in outer]
+
+    def k_of(c):
+        a = math.atan2(c.x, c.z - zc) % (2 * math.pi)
+        return a / (2 * math.pi) * n
+
+    def at(arr, kf):
+        k0 = int(math.floor(kf)) % n
+        f = kf - math.floor(kf)
+        return arr[k0] * (1 - f) + arr[(k0 + 1) % n] * f
+
+    gap = 0.004
+    cuts = wall_cuts(1, y, lambda q: (q - C).length < at(r_out, k_of(q)) + 0.01, lambda c: 1.0)
+    holes, guide_holes = [], []
+    for c, r, names in cuts:
+        rc = (c - C).length
+        kf = k_of(c)
+        ro = at(r_out, kf)
+        ri = at([(q - C).length for q in inner], kf)
+        if lower_web is not None and c.z + r + gap < lower_web:
+            if rc + r + 0.004 < ro:
+                (guide_holes if any(re.search('push rod', nm, re.I) for nm in names) else holes).append((c, r))
+            else:
+                print(f'FRAME {name}: вырез у обшивки не помещается — {names[0][:40]}')
+            continue
+        if lower_web is not None and c.z - r - gap < lower_web:
+            # трасса задевает верх нижней части — выемка вниз
+            for j, q in enumerate(inner):
+                if abs(q.z - lower_web) < 1e-6 and abs(q.x - c.x) < r + gap + 0.006:
+                    inner[j] = V((q.x, y, max(c.z - r - gap, outer[j].z + 0.008)))
+            print(f'FRAME {name}: выемка в верху нижней части x {c.x:+.3f} — {names[0][:40]}')
+            continue
+        if rc - r - gap > ri:
+            if rc + r + 0.004 < ro:
+                holes.append((c, r))
+            else:
+                print(f'FRAME {name}: трасса у самой обшивки, вырез не помещается — {names[0][:40]}')
+            continue
+        if rc + r + gap > ri:
+            # трасса задевает кромку пояса — выемка наружу
+            dk = max(2, int(math.ceil(math.asin(min(1.0, (r + gap + 0.004) / max(rc, 0.05))) / (2 * math.pi) * n)) + 1)
+            want = rc + r + gap
+            for j in range(int(kf) - dk + 1, int(kf) + dk + 1):
+                jj = j % n
+                if r_out[jj] - want < 0.006:
+                    print(f'FRAME {name}: выемка до обшивки — {names[0][:40]}')
+                    continue
+                d = (outer[jj] - C).normalized()
+                if (inner[jj] - C).length < want and not (lower_web is not None and abs(inner[jj].z - lower_web) < 1e-6):
+                    inner[jj] = C + d * want
+            print(f'FRAME {name}: выемка в поясе у ({c.x:+.3f},{c.z:+.3f}) — {names[0][:40]}')
+    loops = [inner] + [cut_loop(c, r, 1) for c, r in holes + guide_holes]
+    plate_with_holes(p, outer, loops, (0, 1, 0), t, 0)
     # отбортовка вдоль обшивки
     a0 = outer
     a1 = [q for _, q in sec2]
     a2 = [q - d * 0.003 for d, q in sec2]
     a3 = [q - d * 0.003 for d, q in sec]
     loft(p, [a0, a1, a2, a3, a0], 0, caps=False, smooth=False)
+    if lower_web is not None and shelf > 0:
+        xs = [q.x for q in inner if abs(q.z - lower_web) < 1e-6]
+        if xs:
+            box(p, V(((min(xs) + max(xs)) / 2, y - t / 2 - shelf / 2, lower_web - 0.0025)),
+                (max(xs) - min(xs), shelf, 0.005), Matrix.Identity(3), 0, bevel=0.0015)
     p.done()
-    if lower_web is not None and holes:
-        # отверстия в сплошной части показываем латунными втулками-проходниками
-        h = P(name + ' grommets', 'Проходные втулки в нижней части шпангоута: тросы руля направления, трос триммера, тяга руля высоты', 'alu', doc)
-        for x, z, r in holes:
-            ring_tube(h, V((x, y, z)), (0, 1, 0), r + 0.004, r, t + 0.004, 0, segs=18)
-        h.done()
+    if holes:
+        g = P(name + ' grommets', grommet_ru or 'Окантовка вырезов шпангоута: сквозь них проходят тросы, трубки, жгуты и кабели', 'rubber', doc)
+        for c, r in holes:
+            ring_tube(g, c, (0, 1, 0), r + 0.003, r - 0.0025, t + 0.006, 0, segs=18)
+        g.done()
     return zc, sec
 
 
@@ -569,7 +640,7 @@ def roll_bar():
     ang = [math.radians(-112 + 224 * i / 56) for i in range(57)]
     sec = section(ROLL_Y, zc, ang)
     dep, th = 0.075, 0.045
-    p = P('Roll bar', 'Дуга безопасности за передними креслами: жёсткая формованная деталь из стеклопластика, укреплённая лентой из углеткани; приклеена к внутренней поверхности обшивки и по периметру к каркасу фонаря, остеклению и раме пассажирской двери; в ней сопла задних пассажиров',
+    p = P('Roll bar', 'Дуга безопасности за передними креслами: жёсткая формованная деталь из стеклопластика, укреплённая лентой из углеткани; приклеена к внутренней поверхности обшивки по контуру проёмов фонаря, окон и пассажирской двери; в ней сопла задних пассажиров',
           'frame', 'AMM 53-10 2.F, рис. 3')
     rects = []
     for d, q in sec:
@@ -592,20 +663,29 @@ def roll_bar():
     c.done()
 
 
-BAGGAGE_Y = 2.262              # направляющая тяги руля высоты на раме багажника (controls: y 2,25…2,26)
-RING_Y = [(3.150, 1), (4.020, 2), (4.250, 3)]   # шпангоуты 1 и 2 — по направляющим тяги, 3 — перед килем
+# Шпангоут крепления багажного отсека — задняя стенка багажника: к его верхней полке крепится задний край
+# чашки заднего кресла (пол багажника MSFS кончается на y 1,737, AMM 25-10 2.B), на полку ставят уровень
+# (AMM 08-20), с передней стороны — крышка доступа к ELT (AMM 25-60). Центр багажника по РЛЭ 6.4.1 (плечо
+# 3,65 м) при этом на y 1,30 — середина отсека 0,89…1,74. Шпангоуты 1 и 2 — по роликовым направляющим тяги
+# руля высоты исходника (y 2,25 и 3,15), 3 — перед килем (AMM 53-10 рис. 3).
+BAGGAGE_Y = 1.745
+BAGGAGE_FLOOR_Z = 0.237        # верх пола багажника (чашки заднего кресла) у задней кромки, MSFS Plane.379
+RING_Y = [(2.250, 1, 0.075), (3.150, 2, 0.085), (4.250, 3, 0.100)]   # y, номер, верх сплошной нижней части
 
 
 def frames():
     zc, _ = ring_frame('Baggage compartment frame',
-                       'Шпангоут крепления багажного отсека: замыкает кабину сзади и служит опорой чашки заднего кресла; приклеен к обшивке и нижней обшивке центроплана; внизу отверстия для тросов руля направления и триммера руля высоты, направляющая тяги руля высоты',
-                       BAGGAGE_Y, 0.075, 'AMM 53-10 2.G, рис. 3', flange=0.025, lower_web=-0.03, z_in=0.2,
-                       holes=((0.06, -0.075, 0.012), (-0.06, -0.075, 0.012), (0.0, -0.09, 0.008)))
-    for y, k in RING_Y:
-        ru = {1: 'Кольцевой шпангоут 1: сразу за шпангоутом крепления багажного отсека; отверстия для тросов руля направления и триммера, роликовая направляющая тяги руля высоты',
-              2: 'Кольцевой шпангоут 2: отверстия для тросов руля направления и триммера, роликовая направляющая тяги руля высоты',
+                       'Шпангоут крепления багажного отсека: замыкает кабину сзади за багажником и служит опорой чашки заднего кресла; приклеен к обшивке и нижней обшивке центроплана. '
+                       'По верху сплошной нижней части — горизонтальная полка: к ней пятью болтами крепится задний край чашки (пол багажника), на неё ставят уровень при нивелировке. '
+                       'Внизу — отверстия для тросов руля направления, троса триммера и жгутов, роликовая направляющая тяги руля высоты; с передней стороны — крышка доступа к аварийному маяку',
+                       BAGGAGE_Y, 0.075, 'AMM 53-10 2.G, рис. 3; 25-10 2.B; 08-20', flange=0.025, lower_web=BAGGAGE_FLOOR_Z - 0.006, z_in=0.2,
+                       shelf=0.035, grommet_ru='Окантовка отверстий в нижней части шпангоута крепления багажного отсека: тросы руля направления в фторопластовых трубках, трос триммера, жгуты и кабели')
+    for y, k, lw in RING_Y:
+        ru = {1: 'Кольцевой шпангоут 1: сразу за шпангоутом крепления багажного отсека; в сплошной нижней части — отверстия для тросов руля направления и триммера, роликовая направляющая тяги руля высоты',
+              2: 'Кольцевой шпангоут 2: в сплошной нижней части — отверстия для тросов руля направления и триммера, роликовая направляющая тяги руля высоты',
               3: 'Кольцевой шпангоут 3: непосредственно перед килем; отверстия для тросов руля направления и триммера'}[k]
-        ring_frame(f'Ring frame {k}', ru, y, 0.030, 'AMM 53-10 2.H–J, рис. 3')
+        ring_frame(f'Ring frame {k}', ru, y, 0.030, 'AMM 53-10 2.H–J, рис. 3', lower_web=lw,
+                   grommet_ru=f'Окантовка отверстий кольцевого шпангоута {k}: тросы руля направления, трос триммера, жгуты и кабели')
 
 
 # ── Киль ──────────────────────────────────────────────────────────────────

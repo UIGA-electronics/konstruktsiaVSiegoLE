@@ -36,7 +36,7 @@ M = dict(
     gfrp=lib.mat('DA40 GFRP moulding', (0.83, 0.84, 0.74), 0.0, 0.55, ru='стеклопластик'),
     web=lib.mat('DA40 GFRP shear web (foam sandwich)', (0.76, 0.80, 0.70), 0.0, 0.6,
                 ru='сэндвич: стеклопластик и жёсткий пенопласт'),
-    insert=lib.mat('DA40 solid GFRP insert', (0.55, 0.62, 0.48), 0.0, 0.5, ru='монолитная вставка из стеклопластика'),
+    insert=lib.mat('DA40 solid GFRP insert', (0.55, 0.62, 0.48), 0.0, 0.5, ru='жёсткая вставка из стеклопластика'),
     steel=lib.mat('DA40 stainless steel', (0.62, 0.63, 0.65), 1.0, 0.28, ru='нержавеющая сталь'),
     alu=lib.mat('DA40 aluminium', (0.80, 0.81, 0.83), 1.0, 0.32, ru='алюминиевый сплав'),
     rubber=lib.mat('DA40 rubber', (0.05, 0.05, 0.05), 0.0, 0.9, ru='резина'),
@@ -46,11 +46,12 @@ M = dict(
 ROOT_X = 1.205       # корневая нервюра
 END_X = 5.523        # концевая нервюра
 TANK_RIBS = [(1.385, 'inner 1'), (2.375, 'inner 2'), (2.62, 'outer 1'), (3.02, 'outer 2')]
-CONTROL_RIBS = [(2.80, 'Flap control rib', 'Нервюра крепления качалки закрылка: изгиб с монолитной вставкой под качалку'),
+CONTROL_RIBS = [(2.80, 'Flap control rib', 'Нервюра крепления качалки закрылка: изгиб с жёсткой вставкой под качалку'),
                 (3.25, 'Flap control rib 2 (push rod guide)', 'Вторая нервюра закрылка: направляющая тяги элерона с роликами'),
-                (3.88, 'Aileron control rib', 'Нервюра крепления качалки элерона: изгиб с монолитной вставкой')]
+                (3.88, 'Aileron control rib', 'Нервюра крепления качалки элерона: изгиб с жёсткой вставкой')]
 OUTER_RIBS = [4.49, 5.09]
 SIDE = {+1: ('LH', 'левого'), -1: ('RH', 'правого')}
+SIDE_N = {+1: 'левое', -1: 'правое'}
 
 
 def P(name, ru, m, doc='AMM 57-10'):
@@ -129,7 +130,7 @@ def spar(s, which):
               'cfrp', 'AMM 57-10 2.B')
         loft(p, caps[k], 0)
         p.done()
-    p = P(f'{name} spar shear web {tag}', f'Стенка {ru} лонжерона {gen} крыла: стеклопластик с пенопластом, работает на сдвиг',
+    p = P(f'{name} spar shear web {tag}', f'Стенка {ru} лонжерона {gen} крыла: работает на сдвиг; обшивки из стеклопластика с промежуточным слоем жёсткого пеноматериала',
           'web', 'AMM 57-10 2.B, Корнеев рис. 2.5')
     loft(p, web, 0)
     p.done()
@@ -185,9 +186,9 @@ def control_rib(s, x, name, ru):
     outer = rib_outline(X, y0, y1, n=40, rc=0.006)
     c = sum(outer, V()) / len(outer)
     hole = ellipse(c, (y1 - y0) * 0.22, (max(q.z for q in outer) - min(q.z for q in outer)) * 0.22, 40)
-    p = P(f'{name} {tag}', f'{ru} ({gen} крыло)', 'gfrp', 'AMM 57-10 2.E')
+    p = P(f'{name} {tag}', f'{ru} ({SIDE_N[s]} крыло)', 'gfrp', 'AMM 57-10 2.E')
     plate_with_hole(p, resample_closed(outer, 40), hole, (1, 0, 0), 0.004, 0)
-    # изгиб с монолитной вставкой под кронштейн качалки
+    # изгиб с жёсткой вставкой под кронштейн качалки
     ins = V((X, (y0 + y1) / 2 + 0.01, c.z))
     box(p, ins + V((s * 0.012, 0, 0)), (0.024, (y1 - y0) * 0.55, (max(q.z for q in outer) - min(q.z for q in outer)) * 0.55),
         Matrix.Identity(3), p.m(M['insert']), bevel=0.003)
@@ -206,7 +207,7 @@ def plain_rib(s, x, name, ru, y0=None, y1=None, hole=True):
         c = sum(outer, V()) / len(outer)
         zs = [q.z for q in outer]
         h = ellipse(c, (y1 - y0) * 0.36, (max(zs) - min(zs)) * 0.3, 56)
-    p = P(f'{name} {tag}', f'{ru} ({gen} крыло)', 'gfrp', 'AMM 57-10 2')
+    p = P(f'{name} {tag}', f'{ru} ({SIDE_N[s]} крыло)', 'gfrp', 'AMM 57-10 2')
     plate_with_hole(p, outer, h, (1, 0, 0), 0.004, 0)
     flanges(p, X, y0, y1, -s, 0)
     p.done()
@@ -318,7 +319,7 @@ def copy_old(name, new_name, ru, doc):
     lib.LABELS[new_name] = ob['ru']
 
 
-# ── Запорная трубка главных болтов (AMM 57-10 рис. 2) ──────────────────────
+# ── Стопорная трубка главных болтов (AMM 57-10 рис. 2) ──────────────────────
 
 def _bolt_end(name, which):
     """Центр торца главного болта: 'aft' — задний, 'fwd' — передний."""
@@ -339,24 +340,24 @@ def main_bolt_lock(s):
     f = _bolt_end(f'Front wing main bolt {tag}', 'aft')
     r = _bolt_end(f'Rear wing main bolt {tag}', 'fwd')
     d = (r - f).normalized()
-    p = P(f'Main bolt long end-piece {tag}', f'Длинный наконечник в торце переднего главного болта {gen} крыла: на него надевается запорная трубка',
+    p = P(f'Main bolt long end-piece {tag}', f'Длинный хвостовик в торце переднего главного болта {gen} крыла: на него надевается стопорная трубка',
           'steel', 'AMM 57-10 рис. 2')
     cyl(p, f - d * 0.004, f + d * 0.070, 0.0075, 0, segs=16)
     hexa(p, f, f + d * 0.010, 0.022, 0)
     p.done()
-    p = P(f'Main bolt short end-piece {tag}', f'Короткий наконечник в торце заднего главного болта {gen} крыла',
+    p = P(f'Main bolt short end-piece {tag}', f'Короткий хвостовик в торце заднего главного болта {gen} крыла',
           'steel', 'AMM 57-10 рис. 2')
     cyl(p, r - d * 0.034, r + d * 0.004, 0.0075, 0, segs=16)
     hexa(p, r - d * 0.010, r, 0.022, 0)
     p.done()
-    p = P(f'Main bolt locking tube {tag}', f'Запорная трубка главных болтов {gen} крыла: держит оба болта от выворачивания; '
-          'снимают первой — сдвигают на длинный наконечник и вынимают короткий',
+    p = P(f'Main bolt locking tube {tag}', f'Стопорная трубка главных болтов {gen} крыла: держит оба болта от выворачивания; '
+          'снимают первой — сдвигают на длинный хвостовик и освобождают короткий',
           'alu', 'AMM 57-10 рис. 2, 57-10 2.B(11)')
     a, b = f + d * 0.012, r - d * 0.012
     cyl(p, a, b, 0.0140, 0, segs=24)
     p.done()
     # запорный болт поперёк трубки у переднего конца, шайба и гайка
-    p = P(f'Main bolt locking bolt {tag}', f'Болт запорной трубки {gen} крыла: проходит сквозь трубку и длинный наконечник, шайба и гайка',
+    p = P(f'Main bolt locking bolt {tag}', f'Стопорный болт трубки {gen} крыла: проходит сквозь трубку и длинный хвостовик, шайба и гайка',
           'steel', 'AMM 57-10 рис. 2')
     q = a + d * 0.020
     side = V((0, 0, 1)).cross(d).normalized()
@@ -452,10 +453,10 @@ def hinges(s):
                       f'Кронштейн навески {gen} закрылка № {k + 1} на задней стенке: два болта, ухо с втулкой и пальцем',
                       fl, 'hinge')
     hinge_bracket(s, s * 2.837, f'Flap control horn hinge bracket {tag}',
-                  f'Кронштейн навески у кронштейна {gen} закрылка: стойка на задней стенке и лапка на нижней обшивке на трёх болтах; '
-                  'гайки — через лючок качалки', fl, 'flap horn')
+                  f'Кронштейн навески у кабанчика {gen} закрылка: стойка на задней стенке и лапка на нижней обшивке на трёх болтах; '
+                  'гайки — через люк качалки', fl, 'flap horn')
     hinge_bracket(s, s * 3.985, f'Aileron control horn hinge bracket {tag}',
-                  f'Кронштейн навески у кронштейна {gen} элерона: палец фиксирует штифт', ai, 'ail horn')
+                  f'Кронштейн навески у кабанчика {gen} элерона: палец фиксирует штифт', ai, 'ail horn')
     for k, x in enumerate(AIL_HINGES):
         nm = 'inner' if k == 0 else f'outer {k}'
         hinge_bracket(s, s * x, f'Aileron {nm} hinge bracket {tag}',
@@ -495,12 +496,12 @@ for s in (+1, -1):
     end_rib(s)
     rear_web(s)
     for old, new, ru, doc in (
-            (f'Front spar stub {tag}', f'Front spar stub {tag}', f'Комель переднего лонжерона {gen} крыла: коробка из стеклоткани вокруг поясов, выходит за корневую нервюру', 'AMM 57-10 2.B'),
-            (f'Rear spar stub {tag}', f'Rear spar stub {tag}', f'Комель заднего лонжерона {gen} крыла', 'AMM 57-10 2.B'),
-            (f'Front spar bush 1 {tag}', f'Front spar main bolt bush 1 {tag}', 'Большая втулка под главный болт, вклеена в комель переднего лонжерона', 'AMM 57-10 рис. 2'),
-            (f'Front spar bush 2 {tag}', f'Front spar main bolt bush 2 {tag}', 'Большая втулка под главный болт, вклеена в комель переднего лонжерона', 'AMM 57-10 рис. 2'),
-            (f'Rear spar bush 1 {tag}', f'Rear spar main bolt bush 1 {tag}', 'Большая втулка под главный болт, вклеена в комель заднего лонжерона', 'AMM 57-10 рис. 2'),
-            (f'Rear spar bush 2 {tag}', f'Rear spar main bolt bush 2 {tag}', 'Большая втулка под главный болт, вклеена в комель заднего лонжерона', 'AMM 57-10 рис. 2'),
+            (f'Front spar stub {tag}', f'Front spar stub {tag}', f'Удлинённая часть (комель) переднего лонжерона {gen} крыла: коробка из стеклоткани вокруг поясов, выходит за корневую нервюру', 'AMM 57-10 2.B'),
+            (f'Rear spar stub {tag}', f'Rear spar stub {tag}', f'Удлинённая часть (комель) заднего лонжерона {gen} крыла', 'AMM 57-10 2.B'),
+            (f'Front spar bush 1 {tag}', f'Front spar main bolt bush 1 {tag}', 'Большая втулка под главный болт, вклеена в удлинённую часть переднего лонжерона', 'AMM 57-10 рис. 2'),
+            (f'Front spar bush 2 {tag}', f'Front spar main bolt bush 2 {tag}', 'Большая втулка под главный болт, вклеена в удлинённую часть переднего лонжерона', 'AMM 57-10 рис. 2'),
+            (f'Rear spar bush 1 {tag}', f'Rear spar main bolt bush 1 {tag}', 'Большая втулка под главный болт, вклеена в удлинённую часть заднего лонжерона', 'AMM 57-10 рис. 2'),
+            (f'Rear spar bush 2 {tag}', f'Rear spar main bolt bush 2 {tag}', 'Большая втулка под главный болт, вклеена в удлинённую часть заднего лонжерона', 'AMM 57-10 рис. 2'),
             (f'Front wing main bolt {tag}', f'Front wing main bolt {tag}', 'Передний главный болт: передаёт изгибающий момент крыла на центроплан', 'AMM 57-10 рис. 2'),
             (f'Rear wing main bolt {tag}', f'Rear wing main bolt {tag}', 'Задний главный болт', 'AMM 57-10 рис. 2'),
             (f'A-bolt (root rib) {tag}', f'A-bolt {tag}', 'Болт A в передней части корневой нервюры: передаёт подъёмную силу', 'AMM 57-10 2.C, рис. 3'),

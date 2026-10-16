@@ -3,10 +3,10 @@
     python3 tools/da40/brakes.py [out.glb]
 
 AMM 6.02.15 Rev. 3, 32-40: рис. 2 (схема), 3 (цилиндры и бачки), 5 (тормоз
-колеса при OÄM 40-334), 8 (клапан стояночного тормоза); AFM 7.5.
+колеса при OÄM 40-334), 8 (кран стояночного тормоза); AFM 7.5.
 Две независимые системы — левая и правая. Цилиндры второго пилота (с бачками)
 и пилота стоят последовательно: выход второго пилота — на вход пилота, выход
-пилота — в клапан стояночного тормоза на нижней полке пультовой переборки,
+пилота — в кран стояночного тормоза на нижней полке пультовой переборки,
 оттуда шланги к суппортам. Снаружи шланг идёт по задней кромке рессоры —
 по той же трассе, что у MSFS (Plane.069 / Plane.041, заменены).
 
@@ -69,7 +69,7 @@ M = dict(
     steel=lib.mat('DA40 stainless steel', (0.62, 0.63, 0.65), 1.0, 0.28, ru='нержавеющая сталь'),
     hose=lib.mat('DA40 brake hose (black)', (0.03, 0.03, 0.035), 0.0, 0.6, ru='тормозной шланг высокого давления'),
     an=lib.mat('DA40 AN fitting black anodised', (0.06, 0.06, 0.07), 0.8, 0.35, ru='штуцер AN, чёрное анодирование'),
-    res=lib.mat('DA40 brake reservoir (translucent)', (0.90, 0.88, 0.80), 0.0, 0.2, alpha=0.55, ru='полупрозрачный бачок'),
+    res=lib.mat('DA40 brake reservoir (translucent)', (0.90, 0.88, 0.80), 0.0, 0.2, alpha=0.55, ru='полупрозрачный бак'),
     fluid=lib.mat('DA40 brake fluid MIL-H-5606 (red)', (0.72, 0.05, 0.05), 0.0, 0.1, alpha=0.8, ru='гидрожидкость MIL-PRF-5606, красная'),
     black=lib.mat('DA40 black anodised', (0.05, 0.05, 0.06), 0.6, 0.4, ru='алюминий, чёрное анодирование'),
     rubber=lib.mat('DA40 rubber', (0.05, 0.05, 0.05), 0.0, 0.9, ru='резина'),
@@ -153,25 +153,25 @@ def reservoir(side, end):
     x = PEDALS[('copilot', side)]
     inlet = end['in']
     c = V((x + end['off'] * 0.006, inlet.y - 0.026, 0.047))
-    p = P(f'Brake fluid reservoir {side}', f'Бачок тормозной жидкости {SIDE_RU[side]} системы на главном цилиндре педали второго пилота: уровень между 12 и 25 мм от верха',
+    p = P(f'Brake fluid reservoir {side}', f'Бак тормозной жидкости системы {SIDE_RU[side]} тормоза на главном цилиндре педали второго пилота: уровень между 12 и 25 мм от верха',
           'res', 'AMM 32-40 2.C, рис. 2–3')
     cyl(p, c - V((0, 0, 0.024)), c + V((0, 0, 0.024)), 0.012, 0, segs=24)
     cyl(p, c + V((0, 0, 0.024)), c + V((0, 0, 0.029)), 0.009, p.m(M['black']), segs=20)
     hexa(p, c + V((0, 0, 0.029)), c + V((0, 0, 0.033)), 0.008, p.m(M['black']))
     box(p, V((x, (c.y + inlet.y) / 2 + 0.012, c.z + 0.012)), (0.010, abs(c.y - inlet.y) + 0.002, 0.012), Matrix.Identity(3), p.m(M['black']))   # кронштейн на цилиндре
     p.done()
-    f = P(f'Brake fluid in reservoir {side}', 'Тормозная жидкость в бачке', 'fluid', 'AMM 32-40')
+    f = P(f'Brake fluid in reservoir {side}', 'Тормозная жидкость в баке', 'fluid', 'AMM 32-40')
     cyl(f, c - V((0, 0, 0.022)), c + V((0, 0, 0.008)), 0.0108, 0, segs=24)
     f.done()
     a = c - V((0, 0, 0.026))
     pts = [a, a - V((0, 0, 0.010)), inlet - V((0, 0.012, -0.010)), inlet - V((0, 0.004, 0)), inlet]
-    path = hose(f'Reservoir {side} to co-pilot master cylinder', 'Питание цилиндра второго пилота из бачка на этом же цилиндре', pts, 0.006, r=0.003)
+    path = hose(f'Reservoir {side} to co-pilot master cylinder', 'Питание цилиндра второго пилота из бака на этом же цилиндре', pts, 0.006, r=0.003)
     CHECKS.append((f'Reservoir {side} to co-pilot master cylinder', path, 0.003))
     RT.set_extra(ref._bvh([o for o in COL.all_objects if o.type == 'MESH']))
 
 
 def parking_valve():
-    p = P('Parking brake valve', 'Клапан стояночного тормоза на нижней полке пультовой переборки: два клапана запирают давление в суппортах; держит больше суток',
+    p = P('Parking brake valve', 'Кран стояночного тормоза на нижней полке шпангоута крепления ручек управления: два клапана запирают давление в суппортах; держит больше суток',
           'alu', 'AMM 32-40 2.C, рис. 8')
     box(p, VALVE, (0.07, 0.045, 0.034), Matrix.Identity(3), 0, bevel=0.003)
     # болт сверху вниз сквозь клапан и полку, снизу большая шайба и гайка
@@ -191,7 +191,7 @@ def parking_valve():
     lever = VALVE + V((-0.039, 0, 0.004))
     box(p, lever, (0.004, 0.014, 0.05), Matrix.Identity(3), p.m(M['steel']), bevel=0.001)
     p.done()
-    f = P('Control bulkhead bottom flange (valve mount)', 'Нижняя полка пультовой переборки под клапаном стояночного тормоза', 'black', 'AMM 32-40 рис. 8')
+    f = P('Control bulkhead bottom flange (valve mount)', 'Нижняя полка шпангоута крепления ручек управления под краном стояночного тормоза', 'black', 'AMM 32-40 рис. 8')
     # полка — по ширине клапана: снаружи (x > 0,245) под креслом пилота стоит влагоотстойник статики (pitot.py)
     box(f, VALVE + V((-0.004, 0.0, -0.020)), (0.075, 0.07, 0.005), Matrix.Identity(3), 0, bevel=0.001)
     f.done()
@@ -240,7 +240,7 @@ def build():
                     relax=[(c_lead[-1], 0.03), (p_lead[-1], 0.03)])
         pts = c_lead[:-1] + mid + list(reversed(p_lead))[1:]
         path = hose(f'Brake hose {side} co-pilot to pilot master cylinder',
-                    f'Шланг {SIDE_RU[side]} системы: выход цилиндра второго пилота — вход цилиндра пилота',
+                    f'Шланг системы {SIDE_RU[side]} тормоза: выход цилиндра второго пилота — вход цилиндра пилота',
                     pts, 0.02, doc='AMM 32-40 2.C, рис. 2–3')
         CHECKS.append((f'Brake hose {side} co-pilot to pilot master cylinder', path, 0.0045))
         RT.set_extra(ref._bvh([o for o in COL.all_objects if o.type == 'MESH']))
@@ -250,7 +250,7 @@ def build():
         pts = p_lead[:-1] + route(p_lead[-1], (0, -1, 0), v_in, -dv, 0.0045, (-0.10, -1.20, -0.23), (0.45, -0.28, 0.0),
                                   relax=[(p_lead[-1], 0.03)])
         path = hose(f'Brake hose {side} pilot master cylinder to parking valve',
-                    f'Шланг {SIDE_RU[side]} системы: выход цилиндра пилота — клапан стояночного тормоза на пультовой переборке',
+                    f'Шланг системы {SIDE_RU[side]} тормоза: выход цилиндра пилота — кран стояночного тормоза на шпангоуте крепления ручек управления',
                     pts, 0.02, doc='AMM 32-40 2.C, рис. 8')
         CHECKS.append((f'Brake hose {side} pilot master cylinder to parking valve', path, 0.0045))
         # клапан → суппорт: под полом к выходу рессоры из фюзеляжа, дальше по задней кромке рессоры
