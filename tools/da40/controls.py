@@ -521,7 +521,19 @@ def relax_path(pts, r, fixed, margin=0.003, step=0.008, iters=80):
             o.location.z -= R.lift
     bpy.context.view_layer.update()
     objs += [o for o in new if o.type == 'MESH' and not skip.search(o.name)]
-    bvhs = [ref._bvh(objs), ref.swept_bvh([o for o in COL.all_objects if o.type == 'MESH'], samples=9)]
+
+    def closed(o):
+        # замкнутая деталь: каждое ребро — у двух граней; у неё точка может оказаться внутри
+        cnt = {}
+        for poly in o.data.polygons:
+            for ek in poly.edge_keys:
+                cnt[ek] = cnt.get(ek, 0) + 1
+        return bool(cnt) and all(v == 2 for v in cnt.values())
+    shut = [o for o in objs if closed(o)]
+    # (BVH, знаковое ли расстояние): замкнутые детали и детали этого слоя во всём ходе — со знаком по нормали,
+    # открытые поверхности (пол, панели отделки) — без знака
+    bvhs = [(ref._bvh(shut), True), (ref._bvh([o for o in objs if o not in shut]), False),
+            (ref.swept_bvh([o for o in COL.all_objects if o.type == 'MESH'], samples=9), True)]
     for o in new:
         bpy.data.objects.remove(o, do_unlink=True)
     # ломаная с шагом step
@@ -535,12 +547,16 @@ def relax_path(pts, r, fixed, margin=0.003, step=0.008, iters=80):
         for i, q in enumerate(path):
             if not move[i]:
                 continue
-            for b in bvhs:
-                loc, nrm, _i, d = b.find_nearest(q, need * 3)
-                if loc is None or d >= need:
+            for b, signed in bvhs:
+                loc, nrm, _i, d = b.find_nearest(q, 0.05)
+                if loc is None:
                     continue
-                dv = (q - loc).normalized() if d > 1e-5 else nrm
-                q += dv * (need - d) * 0.8
+                sd = (q - loc).dot(nrm) if signed else d
+                if signed and sd < 0:                  # внутри детали — наружу по нормали
+                    q += nrm * (need - sd) * 0.8
+                elif d < need:
+                    dv = (q - loc).normalized() if d > 1e-5 else nrm
+                    q += dv * (need - d) * 0.8
         for i in range(1, len(path) - 1):
             if move[i]:
                 path[i] = path[i] + ((path[i - 1] + path[i + 1]) / 2 - path[i]) * 0.25
@@ -548,10 +564,13 @@ def relax_path(pts, r, fixed, margin=0.003, step=0.008, iters=80):
     for i, q in enumerate(path):
         if not move[i]:
             continue
-        for b in bvhs:
+        for b, signed in bvhs:
             loc, nrm, _i, d = b.find_nearest(q, 0.05)
-            if loc is not None and d - r < worst[0]:
-                worst = (d - r, tuple(round(v, 3) for v in q))
+            if loc is None:
+                continue
+            gap = (-d if signed and (q - loc).dot(nrm) < 0 else d) - r
+            if gap < worst[0]:
+                worst = (gap, tuple(round(v, 3) for v in q))
     print(f'RELAX {len(path)} точек, наименьший зазор {worst[0] * 1000:.1f} мм у {worst[1]}')
     # через точку (шаг 16 мм): хорды на изгибах уходят от трассы меньше чем на 1 мм
     return path[::2] + ([path[-1]] if (len(path) - 1) % 2 else [])
@@ -582,7 +601,13 @@ def trim_tail():
     # плоская на y 4,56, выше — наклонная до 4,84 у верха), сквозь паз у верха стенки (structure.py: по самой
     # трассе) — внутрь киля под швеллер, к наконечнику в кронштейне механизма триммера. Наконечник MSFS
     # (Circle.001) уходил вперёд в ход вертикальной тяги и кабанчика руля высоты — построен короче (TRIM_FERRULE_Y)
-    mid = [q for q in src if 0.16 <= q.y <= 4.30]
+    # в центроплане внутренние узлы рессор шасси занимают всю ширину под полом (x ±0,013…0,135), кроме зазора между
+    # средними замыкающими нервюрами (x ±0,027): передний лонжерон центроплана — левее промежуточного рычага элеронов
+    # (x −0,04…−0,02), дальше к оси — между нервюрами под обратной топливной магистралью (низ z −0,167), за задним
+    # лонжероном — над торсионной трубой закрылков и под полом — к трассе MSFS
+    cs = [V((-0.040, 0.170, -0.172)), V((-0.012, 0.240, -0.178)), V((-0.004, 0.300, -0.181)), V((-0.004, 0.420, -0.181)),
+          V((-0.010, 0.520, -0.177)), V((-0.025, 0.600, -0.172)), V((-0.045, 0.700, -0.168))]
+    mid = cs + [q for q in src if 0.95 <= q.y <= 4.30]
 
     def web_y(z):                                     # передняя стенка киля (structure.py: FW_BOT_Y, FW_TOP_Y, FIN_LOW_Z, FIN_TOP_Z)
         return 4.56 + 0.28 * max(0.0, (z - 0.36) / 0.875)
