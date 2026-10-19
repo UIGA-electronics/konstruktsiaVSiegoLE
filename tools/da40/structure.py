@@ -75,6 +75,56 @@ _LINES = None
 LINE_R = {}                    # радиус трасс-кривых (у них в сечении одна точка)
 
 
+SWEEP_FRAMES = 9                 # кадров на клип при съёме хода тяг
+
+
+def swept(objs, which):
+    """{деталь: [вершины в мире по позам]} — исходная поза и SWEEP_FRAMES кадров каждого клипа;
+    детали, которых клип не касается, стоят в исходной позе."""
+    sc = bpy.context.scene
+    base = {o: o.matrix_basis.copy() for o in objs}
+    clips = sorted({t.name.split('.')[0] for o in objs if o.animation_data for t in o.animation_data.nla_tracks})
+    out = {o: [] for o in which}
+
+    def grab():
+        bpy.context.view_layer.update()
+        dg = bpy.context.evaluated_depsgraph_get()
+        for o in which:
+            e = o.evaluated_get(dg)
+            m = e.to_mesh()
+            out[o].append([e.matrix_world @ v.co for v in m.vertices])
+            e.to_mesh_clear()
+
+    def reset():
+        for o in objs:
+            if o.animation_data:
+                o.animation_data.action = None
+            o.matrix_basis = base[o]
+    reset()
+    grab()
+    for nm in clips:
+        reset()
+        rng = None
+        for o in objs:
+            if not o.animation_data:
+                continue
+            for t in o.animation_data.nla_tracks:
+                if t.name.split('.')[0] == nm and t.strips:
+                    a = t.strips[0].action
+                    o.animation_data.action = a
+                    r = a.frame_range
+                    rng = (min(rng[0], r[0]), max(rng[1], r[1])) if rng else (r[0], r[1])
+        if rng is None:
+            continue
+        for k in range(SWEEP_FRAMES):
+            sc.frame_set(int(round(rng[0] + (rng[1] - rng[0]) * k / (SWEEP_FRAMES - 1))))
+            grab()
+    reset()
+    sc.frame_set(1)
+    print('SWEPT', len(which), 'тяг,', len(clips), 'клипов')
+    return out
+
+
 def lines():
     """[(имя, вершины, рёбра)] трасс соседних слоёв (из LAYERS) в координатах исходника."""
     global _LINES
@@ -93,8 +143,15 @@ def lines():
             if o.parent is None:
                 o.location.z -= R.lift
         bpy.context.view_layer.update()
-        for o in got:
-            if o.type == 'MESH' and LINE_RE.search(o.name) and not NOT_LINE.search(o.name):
+        mine = [o for o in got if o.type == 'MESH' and LINE_RE.search(o.name) and not NOT_LINE.search(o.name)]
+        if g == 'controls-addon':
+            # тяги ходят: сечение стенки берём во всех позах всех клипов — вырез охватывает весь ход
+            for o, vs in swept(got, mine).items():
+                es = [tuple(e.vertices) for e in o.data.edges]
+                n = len(o.data.vertices)
+                _LINES.append((o.name, [q for pose in vs for q in pose], [(a + k * n, b + k * n) for k in range(len(vs)) for a, b in es]))
+        else:
+            for o in mine:
                 mw = o.matrix_world
                 _LINES.append((o.name, [mw @ v.co for v in o.data.vertices], [tuple(e.vertices) for e in o.data.edges]))
         for o in got:
@@ -124,10 +181,42 @@ def lines():
     return _LINES
 
 
+def _uw(axis):
+    return [(1, 2), (0, 2), (0, 1)][axis]
+
+
+def _slot(pts, axis):
+    """Наименьший паз (две полуокружности и прямые) вокруг точек сечения в плоскости стенки:
+    (середина, полувектор паза, радиус); у неподвижной трассы паз вырождается в круг."""
+    u, w = _uw(axis)
+    c = sum(pts, V()) / len(pts)
+    if len(pts) < 3:
+        return c, V(), max([(q - c).length for q in pts] + [0.0])
+    suu = sum((q[u] - c[u]) ** 2 for q in pts)
+    sww = sum((q[w] - c[w]) ** 2 for q in pts)
+    suw = sum((q[u] - c[u]) * (q[w] - c[w]) for q in pts)
+    ang = 0.5 * math.atan2(2 * suw, suu - sww)
+    d = V()
+    d[u], d[w] = math.cos(ang), math.sin(ang)
+    tp = [((q - c).dot(d), ((q - c) - d * (q - c).dot(d)).length) for q in pts]
+    r = max(p for _, p in tp)
+    a = min(t + math.sqrt(max(r * r - p * p, 0.0)) for t, p in tp)
+    b = max(t - math.sqrt(max(r * r - p * p, 0.0)) for t, p in tp)
+    if b - a < 0.002:
+        mid = c + d * ((a + b) / 2)
+        return mid, V(), max((q - mid).length for q in pts)
+    return c + d * ((a + b) / 2), d * ((b - a) / 2), r
+
+
+def _seg_dist(ci, hi, cj, hj, n=12):
+    return min(((ci + hi * (2 * a / n - 1)) - (cj + hj * (2 * b / n - 1))).length for a in range(n + 1) for b in range(n + 1))
+
+
 def wall_cuts(axis, pos, inside, room, gap=0.004):
-    """Вырезы в стенке — плоскости {axis = pos}: [(центр, радиус выреза, имена трасс)];
+    """Вырезы в стенке — плоскости {axis = pos}: [(центр, радиус, имена трасс, полувектор паза)];
+    тяги управления сняты во всех позах (lines → swept), поэтому вырез под тягу — паз на весь её ход;
     room(c) — сколько места от точки c до края стенки (вырез не выходит за контур)."""
-    cuts = []
+    raw = []                                         # [точки сечения, припуск, имена]
     for name, vs, es in lines():
         hits = []
         for a, b in es:
@@ -146,47 +235,56 @@ def wall_cuts(axis, pos, inside, room, gap=0.004):
         for g in groups:
             if len(g) < 4 and name not in LINE_R:
                 continue
-            c = sum(g, V()) / len(g)
-            r = max([(q - c).length for q in g] + [LINE_R.get(name, 0.0)])
-            if r > 0.05:
-                print(f'CUT ALONG {name}: сечение {r * 2:.3f} м — трасса идёт вдоль стенки, выреза нет')
+            c, h, r = _slot(g, axis)
+            if r > 0.05 or h.length > 0.08:
+                print(f'CUT ALONG {name}: сечение {2 * (r + h.length):.3f} м — трасса идёт вдоль стенки, выреза нет')
                 continue
-            cuts.append([c, r + (gap * 2 if re.search(r'push rod|cable', name, re.I) and 'Bowden' not in name else gap), [name]])
+            pad = LINE_R.get(name, 0.0) + (gap * 2 if re.search(r'push rod|cable', name, re.I) and 'Bowden' not in name else gap)
+            raw.append([g, pad, [name]])
+    cuts = [[*_slot(g, axis), pad, names, g] for g, pad, names in raw]   # [c, h, r, припуск, имена, точки]
     merged = True
     while merged:
         merged = False
         for i in range(len(cuts)):
             for j in range(i + 1, len(cuts)):
-                (ci, ri, ni), (cj, rj, nj) = cuts[i], cuts[j]
-                d = (ci - cj).length
-                if d < ri + rj + 0.004:
-                    if d + rj <= ri:
-                        new = [ci, ri, ni + nj]
-                    elif d + ri <= rj:
-                        new = [cj, rj, ni + nj]
-                    else:
-                        rr = (d + ri + rj) / 2
-                        new = [ci + (cj - ci).normalized() * (rr - ri), rr, ni + nj]
-                    cuts[i] = new
+                ci, hi, ri, pi, ni, gi = cuts[i]
+                cj, hj, rj, pj, nj, gj = cuts[j]
+                if _seg_dist(ci, hi, cj, hj) < ri + pi + rj + pj + 0.004:
+                    g = gi + gj
+                    cuts[i] = [*_slot(g, axis), max(pi, pj), ni + nj, g]
                     cuts.pop(j)
                     merged = True
                     break
             if merged:
                 break
-    for cut in cuts:
-        c, r, names = cut
-        lim = room(c) - 0.004
+    out = []
+    for c, h, r, pad, names, _ in cuts:
+        r += pad
+        lim = min(room(c + h), room(c - h)) - 0.004
         if r > lim:
             print(f'CUT EDGE {"xyz"[axis]}={pos:+.3f} at ({c.x:+.3f},{c.y:+.3f},{c.z:+.3f}): нужно {r * 1000:.0f} мм, есть {lim * 1000:.0f} — {names[0][:40]}')
-            cut[1] = r = max(0.004, lim)
-        print(f'CUT {"xyz"[axis]}={pos:+.3f} at ({c.x:+.3f},{c.y:+.3f},{c.z:+.3f}) r {r * 1000:.0f} mm: {", ".join(n[:40] for n in names)}')
-    return cuts
+            r = max(0.004, lim)
+        kind = f'паз {2 * h.length * 1000:.0f} мм, ' if h.length > 1e-4 else ''
+        print(f'CUT {"xyz"[axis]}={pos:+.3f} at ({c.x:+.3f},{c.y:+.3f},{c.z:+.3f}) {kind}r {r * 1000:.0f} mm: {", ".join(n[:40] for n in names)}')
+        out.append([c, r, names, h])
+    return out
 
 
-def cut_loop(c, r, axis, n=20):
-    """Контур круглого выреза в плоскости, перпендикулярной оси axis."""
-    u, w = [(1, 2), (0, 2), (0, 1)][axis]
+def cut_loop(c, r, axis, n=20, h=None):
+    """Контур выреза в плоскости, перпендикулярной оси axis: круг или паз (h — полувектор паза)."""
+    u, w = _uw(axis)
     out = []
+    if h is not None and h.length > 1e-4:
+        a0 = math.atan2(h[w], h[u])
+        m = max(4, n // 2)
+        for end, base in ((c + h, a0 - math.pi / 2), (c - h, a0 + math.pi / 2)):
+            for i in range(m + 1):
+                a = base + math.pi * i / m
+                q = end.copy()
+                q[u] += r * math.cos(a)
+                q[w] += r * math.sin(a)
+                out.append(q)
+        return out
     for i in range(n):
         a = 2 * math.pi * i / n
         q = c.copy()
@@ -202,9 +300,20 @@ def grommets(name, ru, cuts, axis, doc):
         return
     g = P(name, ru, 'rubber', doc)
     d = V([1 if i == axis else 0 for i in range(3)])
-    for c, r, _ in cuts:
-        ring_tube(g, c, d, r + 0.003, r - 0.0025, 0.010, 0, segs=20)
+    for c, r, _, h in cuts:
+        slot_ring(g, c, h, axis, r + 0.003, r - 0.0025, 0.010)
     g.done()
+
+
+def slot_ring(p, c, h, axis, r_out, r_in, width, mi=0, n=20):
+    """Окантовка круглого выреза или паза: кольцо прямоугольного сечения по его контуру."""
+    if h is None or h.length < 1e-4:
+        ring_tube(p, c, V([1 if i == axis else 0 for i in range(3)]), r_out, r_in, width, mi, segs=n)
+        return
+    d = V([1 if i == axis else 0 for i in range(3)]) * (width / 2)
+    L = [[p.bm.verts.new(q + d * sg) for q in cut_loop(c, r, axis, n, h)] for r, sg in ((r_out, -1), (r_out, 1), (r_in, 1), (r_in, -1))]
+    for a, b in zip(L, L[1:] + L[:1]):
+        lib._bridge(p.bm, a, b, mi, False)
 
 
 def bottom_z(x, y):
@@ -306,14 +415,15 @@ def ring_frame(name, ru, y, depth, doc, flange=0.022, t=0.005, n=144, lower_web=
     gap = 0.004
     cuts = wall_cuts(1, y, lambda q: (q - C).length < at(r_out, k_of(q)) + 0.01, lambda c: 1.0)
     holes, guide_holes = [], []
-    for c, r, names in cuts:
+    for c, r_cut, names, h in cuts:
+        r = r_cut + h.length                      # паз — проверки по описанному кругу
         rc = (c - C).length
         kf = k_of(c)
         ro = at(r_out, kf)
         ri = at([(q - C).length for q in inner], kf)
         if lower_web is not None and c.z + r + gap < lower_web:
             if rc + r + 0.004 < ro:
-                (guide_holes if any(re.search('push rod', nm, re.I) for nm in names) else holes).append((c, r))
+                (guide_holes if any(re.search('push rod', nm, re.I) for nm in names) else holes).append((c, r_cut, h))
             else:
                 print(f'FRAME {name}: вырез у обшивки не помещается — {names[0][:40]}')
             continue
@@ -326,7 +436,7 @@ def ring_frame(name, ru, y, depth, doc, flange=0.022, t=0.005, n=144, lower_web=
             continue
         if rc - r - gap > ri:
             if rc + r + 0.004 < ro:
-                holes.append((c, r))
+                holes.append((c, r_cut, h))
             else:
                 print(f'FRAME {name}: трасса у самой обшивки, вырез не помещается — {names[0][:40]}')
             continue
@@ -343,7 +453,7 @@ def ring_frame(name, ru, y, depth, doc, flange=0.022, t=0.005, n=144, lower_web=
                 if (inner[jj] - C).length < want and not (lower_web is not None and abs(inner[jj].z - lower_web) < 1e-6):
                     inner[jj] = C + d * want
             print(f'FRAME {name}: выемка в поясе у ({c.x:+.3f},{c.z:+.3f}) — {names[0][:40]}')
-    loops = [inner] + [cut_loop(c, r, 1) for c, r in holes + guide_holes]
+    loops = [inner] + [cut_loop(c, r, 1, h=h) for c, r, h in holes + guide_holes]
     plate_with_holes(p, outer, loops, (0, 1, 0), t, 0)
     # отбортовка вдоль обшивки
     a0 = outer
@@ -359,8 +469,8 @@ def ring_frame(name, ru, y, depth, doc, flange=0.022, t=0.005, n=144, lower_web=
     p.done()
     if holes:
         g = P(name + ' grommets', grommet_ru or 'Окантовка вырезов шпангоута: сквозь них проходят тросы, трубки, жгуты и кабели', 'rubber', doc)
-        for c, r in holes:
-            ring_tube(g, c, (0, 1, 0), r + 0.003, r - 0.0025, t + 0.006, 0, segs=18)
+        for c, r, h in holes:
+            slot_ring(g, c, h, 1, r + 0.003, r - 0.0025, t + 0.006, 0, n=18)
         g.done()
     return zc, sec
 
@@ -478,7 +588,7 @@ def top_hat():
         cuts = wall_cuts(0, xm, lambda q, xw=xw: HAT_Y[0] + 0.01 < q.y < HAT_Y[1] - 0.01 and
                          bottom_z(xw, q.y) + T_SH + 0.012 < q.z < hat_top(q.y) - t - 0.012,
                          lambda c, xw=xw: min(c.z - bottom_z(xw, c.y) - T_SH, hat_top(c.y) - t - c.z, c.y - HAT_Y[0], HAT_Y[1] - c.y))
-        plate_with_holes(p, outline, [cut_loop(c, r, 0) for c, r, _ in cuts], (1, 0, 0), t, 0)
+        plate_with_holes(p, outline, [cut_loop(c, r, 0, h=h) for c, r, _, h in cuts], (1, 0, 0), t, 0)
         all_cuts += cuts
     # верхняя полка; прорезь — под рычаг руля высоты на валу ручек (ход ручек по тангажу ±10°)
     def cap(xa, xb, ya, yb, n):
@@ -541,7 +651,7 @@ def main_bulkhead(tag, ru_name, ru_gen, y0, y1, bolt, doc_extra=''):
         outline = [V((x, yw, stub_bot(x, yw))) for x in xs] + [V((x, yw, wall_top(x, yw))) for x in reversed(xs)]
         cuts = wall_cuts(1, yw, lambda q, yw=yw: abs(q.x) < STUB_X - 0.01 and stub_bot(q.x, yw) + 0.014 < q.z < wall_top(q.x, yw) - 0.014,
                          lambda c, yw=yw: min(c.z - stub_bot(c.x, yw), wall_top(c.x, yw) - c.z, STUB_X - abs(c.x)))
-        plate_with_holes(p, outline, [cut_loop(c, r, 1) for c, r, _ in cuts], (0, 1, 0), t, 0)
+        plate_with_holes(p, outline, [cut_loop(c, r, 1, h=h) for c, r, _, h in cuts], (0, 1, 0), t, 0)
         all_cuts += cuts
     p.done()
     grommets(f'{tag} main bulkhead grommets', f'Резиновая окантовка вырезов в стенках {ru_gen} лонжерона центроплана: сквозь них проходят тяги, шланги и жгуты',
@@ -582,7 +692,7 @@ def rib_plate(name, ru, x, y0, y1, doc, hole=None, n=24, m='frame', passes=(), h
         # обход тот же, что у контура: от передней нижней точки назад по низу
         inner = ellipse(c, (y1 - y0) * hole, (max(zs) - min(zs)) * 0.30, len(outer), phase=1.25 * math.pi)
     if passes or holes:
-        cuts = ([inner] if inner else []) + [stub.circle(c, r + stub.GROMMET, 16) for c, r in passes] + [stub.circle(c, r, 16) for c, r in holes]
+        cuts = ([inner] if inner else []) + [stub.circle(c, r + stub.GROMMET, 16) for c, r in passes] + [cut_loop(c, r, 0, 16, h) for c, r, h in holes]
         plate_with_holes(p, outer, cuts, (1, 0, 0), 0.005, 0)
     else:
         plate_with_hole(p, outer, inner, (1, 0, 0), 0.005, 0)
@@ -608,7 +718,7 @@ def rod_holes(X):
 
     def room(c):
         return min(c.y - REAR_MB[1], REAR_WEB_Y - c.y, c.z - stub_bot(c.x, c.y), stub_top(c.x, c.y) - c.z)
-    return [(c, r) for c, r, names in wall_cuts(0, X, inside, room) if any('push rod' in n for n in names)]
+    return [(c, r, h) for c, r, names, h in wall_cuts(0, X, inside, room) if any('push rod' in n for n in names)]
 
 
 def centre_section():
@@ -803,7 +913,7 @@ def fin():
         a, b = half[min(half, key=lambda z: abs(z - c.z))]
         return min(a - c.x, c.x - b, c.z - min(half), max(half) - c.z)
     fw_cuts = wall_cuts(1, ym, in_web, room)
-    plate_with_holes(p, left + list(reversed(right)), [cut_loop(c, r, 1) for c, r, _ in fw_cuts], (0, 1, 0), 0.006, 0)
+    plate_with_holes(p, left + list(reversed(right)), [cut_loop(c, r, 1, h=h) for c, r, _, h in fw_cuts], (0, 1, 0), 0.006, 0)
     pts = []
     for z in [FIN_LOW_Z] + [z for z in zs if z > FIN_LOW_Z]:
         t = max(0.0, (z - FIN_LOW_Z) / (FIN_TOP_Z - FIN_LOW_Z))

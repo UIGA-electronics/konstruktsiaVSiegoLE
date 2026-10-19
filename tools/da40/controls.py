@@ -52,6 +52,7 @@ M = dict(
     gfrp=lib.mat('DA40 GFRP moulding', (0.83, 0.84, 0.74), 0.0, 0.55, ru='стеклопластик'),
     varnish=lib.mat('DA40 locking varnish (red)', (0.75, 0.10, 0.08), 0.0, 0.4, ru='контровочный лак'),
     lead=lib.mat('DA40 balance weight (lead, grey primer)', (0.42, 0.43, 0.44), 0.2, 0.6, ru='свинец, грунт'),
+    sheath=lib.mat('DA40 trim cable outer sheath (black)', (0.035, 0.035, 0.04), 0.0, 0.55, ru='оболочка гибкого троса'),
 )
 
 FPS = 24
@@ -79,6 +80,14 @@ IDLER_D = 0.050                        # плечи качалки (к тяга�
 MOTOR = V((0.60, 0.650, -0.192))       # мотор привода у левой задней замыкающей нервюры
 SWIVEL = V((0.555, 0.635, -0.200))     # поворотный узел привода (ось вертикальная)
 REAR_CLOSING_RIB_X = 0.660            # у корня закрылка, где кончается торсионная труба
+# торсионная труба закрылков (AMM 27-50 2.C, рис. 1): ось — ось навески закрылков у борта фюзеляжа
+# (x ±0,582, где обе оси закрылков проходят через y 0,765, z −0,230: у нижнего угла борта); внутри
+# фюзеляжа сразу колено вверх — над обшивкой днища и под тросами руля направления
+TT_AX = V((0.0, 0.7651, -0.2297))
+TT_R = 0.0125                          # труба Ø25
+TT_CRANK_Z = -0.204                    # средняя часть: над днищем, под токоотводом (z −0,187) и тросами РН (−0,166)
+TT_WALL_X = 0.5823                     # борт фюзеляжа у корня закрылка
+TT_PINS = (V((0, 0.008, 0.044)), V((0, 0.038, 0.058)))   # пальцы передаточного рычага от оси — внутрь корневой нервюры закрылка
 
 
 def frame(yv, zv):
@@ -343,6 +352,8 @@ def build():
     cyl(p, SWIVEL - V((0, 0, 0.02)), SWIVEL + V((0, 0, 0.035)), 0.004, p.m(M['steel']), segs=10)
     p.done()
 
+    flap_torsion_tube(objs)
+
     # анимация
     bpy.context.scene.render.fps = FPS
     bpy.context.scene.frame_start, bpy.context.scene.frame_end = FRAMES[0], FRAMES[-1]
@@ -355,6 +366,10 @@ def build():
             key_rod(objs[('long', s)], v['e'], v['a1'], fr)
             key_rod(objs[('fus', s)], idler_pin(s, st['ps']), v['e'], fr)
         key_rot(objs['idler'], rot((0, 0, 1), st['ps']), fr)
+        for s_ in (1, -1):
+            key_rot(objs[('tt', s_)], rot((-1, 0, 0), st['th']), fr)       # торсионная труба — с закрылками
+            sd = L if s_ > 0 else Rt
+            key_rot(objs[('tt_bush', s_)], rot(sd.axis, st['th']), fr)       # втулки — в корневой нервюре закрылка
         pa = idler_pin(1, st['ps']) + V((0, 0, 0.016))
         d = (pa - SWIVEL).normalized()
         key_rot(objs['act'], d0.rotation_difference(d), fr)
@@ -372,6 +387,168 @@ def build():
           f'ход тяги {(en[1]["e"] - st[1]["e"]).length * 1000:.0f} мм  '
           f'правая тяга в фюзеляже меняет длину на {abs((idler_pin(-1, en["ps"]) - en[-1]["e"]).length - (idler_pin(-1, 0) - st[-1]["e"]).length) * 1000:.1f} мм')
     return objs, frames
+
+
+def flap_torsion_tube(objs):
+    """Торсионная труба закрылков (AMM 27-50 2.C, рис. 1): коленчатая труба из двух частей, соединённых
+    болтами в фюзеляже; на наружном конце каждой части — передаточный рычаг с двумя пальцами, которые
+    входят во втулки корневой нервюры закрылка; труба проходит сквозь направляющую со вставкой на борту.
+    При отказе механической проводки одного закрылка труба передаёт движение от другого — закрылки
+    отклоняются синхронно."""
+    y, z0, zc = TT_AX.y, TT_AX.z, TT_CRANK_Z
+    for s in (1, -1):
+        tag, gen = ('LH', 'левая') if s > 0 else ('RH', 'правая')
+        p = P(f'Flap torsion tube {tag} part', f'Торсионная труба закрылков, {gen} часть: от передаточного рычага у корня закрылка '
+              'сквозь направляющую в борту, коленом вверх над днищем к болтовому стыку посередине фюзеляжа', 'rod', 'AMM 27-50 2.C, рис. 1')
+        inner = -0.034 if s > 0 else 0.036               # левая часть входит в муфту правой
+        pts = [V((s * 0.606, y, z0)), V((s * 0.576, y, z0)), V((s * 0.550, y, zc)), V((inner, y, zc))]
+        lib.pipe(p, pts, TT_R, 0.02, 0, segs=20)
+        # передаточный рычаг: ступица на конце трубы и плечо вверх-назад к пальцам
+        hub0, hub1 = V((s * 0.604, y, z0)), V((s * 0.614, y, z0))
+        cyl(p, hub0, hub1, TT_R + 0.004, p.m(M['alu']), segs=24)
+        tip = TT_AX + TT_PINS[1]
+        arm = V((0, tip.y - y, tip.z - z0))
+        xm = s * 0.609
+        box(p, V((xm, y + arm.y / 2, z0 + arm.z / 2)), (0.022, arm.length + 0.016, 0.006), frame(arm, (1, 0, 0)), p.m(M['alu']), bevel=0.002)
+        for q in TT_PINS:
+            c = V((xm, y + q.y, z0 + q.z))
+            cyl(p, c, c + V((s * 0.042, 0, 0)), 0.004, p.m(M['steel']), segs=12)        # палец передачи
+            cyl(p, c - V((s * 0.004, 0, 0)), c + V((s * 0.004, 0, 0)), 0.0065, p.m(M['steel']), segs=12)
+        if s < 0:
+            # муфта стыка с двумя болтами поперёк
+            cyl(p, V((-0.040, y, zc)), V((0.040, y, zc)), TT_R + 0.0028, p.m(M['alu']), segs=24)
+            for bx in (-0.024, 0.022):
+                q = V((bx, y, zc))
+                cyl(p, q - V((0, 0, 0.021)), q + V((0, 0, 0.021)), 0.0025, p.m(M['steel']), segs=10)
+                hexa(p, q + V((0, 0, 0.0155)), q + V((0, 0, 0.0195)), 0.008, p.m(M['steel']))
+                hexa(p, q - V((0, 0, 0.0195)), q - V((0, 0, 0.0155)), 0.008, p.m(M['steel']))
+        objs[('tt', s)] = pivot_obj(p, TT_AX)
+        # направляющая со вставкой на борту (на задней замыкающей нервюре по AMM)
+        g = P(f'Flap torsion tube guide {tag}', f'Направляющая торсионной трубы на борту фюзеляжа у корня закрылка ({"слева" if s > 0 else "справа"}): '
+              'фланец на болтах и вставка-подшипник скольжения, в которой поворачивается труба', 'black', 'AMM 27-50 рис. 1')
+        wx = s * (TT_WALL_X - 0.003)
+        ring_tube(g, V((wx, y, z0)), (1, 0, 0), 0.0215, TT_R + 0.0035, 0.004, 0, segs=28)
+        ring_tube(g, V((wx - s * 0.004, y, z0)), (1, 0, 0), TT_R + 0.0035, TT_R + 0.0004, 0.018, g.m(M['nylon']), segs=24)   # вставка
+        for k in range(4):
+            a = math.radians(45 + 90 * k)
+            q = V((wx - s * 0.002, y + 0.0185 * math.cos(a), z0 + 0.0185 * math.sin(a)))
+            hexa(g, q - V((s * 0.003, 0, 0)), q, 0.005, g.m(M['steel']))
+        g.done()
+        # втулки корневой нервюры закрылка — в них входят пальцы передаточного рычага; поворачиваются с закрылком
+        bp = P(f'Flap root rib transfer bushes {tag}', f'Втулки в корневой нервюре закрылка ({"левого" if s > 0 else "правого"}): в них входят пальцы передаточного рычага торсионной трубы',
+               'steel', 'AMM 27-50 2.C, рис. 1')
+        for q in TT_PINS:
+            c = V((s * 0.643, y + q.y, z0 + q.z))
+            ring_tube(bp, c, (1, 0, 0), 0.0085, 0.0042, 0.012, 0, segs=18)
+        objs[('tt_bush', s)] = pivot_obj(bp, hinge_point(s, s * 0.643))
+
+
+def curve_points(name):
+    """Точки оси кривой исходника по порядку (от носа к хвосту)."""
+    o = bpy.data.objects[name]
+    d = o.data.copy()
+    d.bevel_depth, d.extrude = 0.0, 0.0
+    t = bpy.data.objects.new('tmp curve', d)
+    bpy.context.scene.collection.objects.link(t)
+    t.matrix_world = o.matrix_world
+    bpy.context.view_layer.update()
+    e = t.evaluated_get(bpy.context.evaluated_depsgraph_get())
+    m = e.to_mesh()
+    vs = [t.matrix_world @ v.co for v in m.vertices]
+    adj = {}
+    for ed in m.edges:
+        a_, b_ = ed.vertices
+        adj.setdefault(a_, []).append(b_)
+        adj.setdefault(b_, []).append(a_)
+    e.to_mesh_clear()
+    bpy.data.objects.remove(t)
+    bpy.data.curves.remove(d)
+    path, prev = [next(i for i in adj if len(adj[i]) == 1)], None
+    while True:
+        nx = [j for j in adj[path[-1]] if j != prev]
+        if not nx:
+            break
+        prev = path[-1]
+        path.append(nx[0])
+    pts = [vs[i] for i in path]
+    return pts if pts[0].y < pts[-1].y else pts[::-1]
+
+
+def axis_of(name, sel=lambda q: True):
+    """Ось детали исходника по её вершинам: (центр, направление к хвосту, начало, конец)."""
+    o = bpy.data.objects[name]
+    vs = [q for q in (o.matrix_world @ v.co for v in o.data.vertices) if sel(q)]
+    c = sum(vs, V()) / len(vs)
+    cov = Matrix(((0,) * 3,) * 3)
+    for q in vs:
+        d = q - c
+        for i in range(3):
+            for j in range(3):
+                cov[i][j] += d[i] * d[j]
+    ax = V((0, 1, 0))
+    for _ in range(50):                               # степенной метод: главная ось
+        ax = (cov @ ax).normalized()
+    if ax.y < 0:
+        ax = -ax
+    ts = [(q - c).dot(ax) for q in vs]
+    return c, ax, c + ax * min(ts), c + ax * max(ts)
+
+
+TRIM_SHEATH = 'Elevator trim flexible cable (outer)'
+TRIM_FERRULE = 'Circle.001'                    # резьбовой наконечник оболочки в кронштейне (модель MSFS)
+TRIM_DAMPER_ROD = 'Cylinder.002_Cylinder.004.001'   # справа — шток фрикционного демпфера (модель MSFS)
+
+
+def trim_tail():
+    """Хвостовая часть триммера (AMM 27-38 2.B, 2.C, рис. 2): оболочка гибкого троса доведена до резьбового
+    наконечника в кронштейне механизма, внутренний трос с шаровым наконечником — к переднему концу левого
+    изогнутого рычага; шток фрикционного демпфера от переднего конца правого рычага проходит сквозь
+    фрикционную колодку на монтажном кронштейне механизма триммера (structure.py). Передние концы рычагов
+    в клипе руля высоты стоят на месте (ось BONE_13), поэтому демпфер и трос неподвижны."""
+    fc, fd, f0, f1 = axis_of(TRIM_FERRULE)
+    pts = [q for q in curve_points(TRIM_SHEATH) if q.y <= 5.152]
+    bpy.data.objects.remove(bpy.data.objects[TRIM_SHEATH], do_unlink=True)      # заменена (replaced.json): имя переходит к новой
+    tail = [V((0.034, 5.186, 1.2645)), f0 - fd * 0.018, f0 + fd * 0.004]
+    p = P(TRIM_SHEATH, 'Оболочка гибкого троса триммера: от рамы штурвальчика в кабине сквозь главные шпангоуты, шпангоут багажника и кольцевые '
+          'шпангоуты, вверх по передней стенке киля и сквозь вырез у её верха; в стабилизаторе — колодка на кронштейне стабилизатора и '
+          'резьбовой наконечник в кронштейне механизма триммера', 'sheath', 'AMM 27-38 2.B')
+    lib.pipe(p, pts + tail, 0.004, 0.012, 0, segs=10)
+    p.done()
+    # внутренний трос: из наконечника к ушку левого рычага, шаровой наконечник на болте
+    eye = V((0.0195, 5.2969, 1.2392))
+    p = P('Elevator trim cable inner core end fitting', 'Внутренний трос триммера: резьбовой хвостовик с контргайкой и шаровой наконечник на болте '
+          'переднего конца левого изогнутого рычага', 'steel', 'AMM 27-38 2.B, рис. 2')
+    a0 = f1 - fd * 0.004
+    cyl(p, a0, eye - fd * 0.005, 0.0022, 0, segs=10)
+    hexa(p, f1 + fd * 0.0005, f1 + fd * 0.0035, 0.007, p.m(M['varnish']))
+    lib.sphere(p, eye - fd * 0.001, 0.0042, 0, segs=14, rings=7)
+    p.done()
+    # фрикционный демпфер: колодка с отверстием под шток, стяжной болт, проставка к полке кронштейна
+    rc, rd, r0, r1 = axis_of(TRIM_DAMPER_ROD, lambda q: q.x < -0.002)
+    rr = 0.006
+    yb0, yb1, zt = 5.264, 5.288, 1.262                 # полка кронштейна (structure.py: TB_Y0…TB_Y1, TB_Z)
+    yc = (yb0 + yb1) / 2
+    q = r0 + rd * ((yc - r0.y) / rd.y)                 # ось штока под полкой
+    p = P('Trim friction clamp block', 'Фрикционная колодка демпфера триммера на монтажном кронштейне механизма: шток демпфера проходит '
+          'сквозь неё; трение регулируется стяжным болтом. При отказе проводки триммера демпфер не даёт щитку флаттерить',
+          'alu', 'AMM 27-38 2.C, 4., рис. 2')
+    w, h, L = 0.022, 0.020, yb1 - yb0
+    hw = rr + 0.0006
+    for dx, dz, sx, sz in ((0, (h / 2 + hw) / 2, w, h / 2 - hw), (0, -(h / 2 + hw) / 2, w, h / 2 - hw),
+                           ((w / 2 + hw) / 2, 0, w / 2 - hw, 2 * hw), (-(w / 2 + hw) / 2, 0, w / 2 - hw, 2 * hw)):
+        box(p, V((q.x + dx, yc, q.z + dz)), (sx, L, sz), None, 0, bevel=0.0006)
+    top = q.z + h / 2
+    box(p, V((q.x, yc, (top + zt) / 2)), (0.016, L - 0.004, zt - top), None, 0, bevel=0.0006)   # проставка до полки
+    for dy in (-0.007, 0.007):
+        b0 = V((q.x, yc + dy, zt + 0.004))
+        cyl(p, b0, V((q.x, yc + dy, top - 0.002)), 0.0021, p.m(M['steel']), segs=8)            # болты к полке
+        hexa(p, b0 - V((0, 0, 0.0008)), b0 + V((0, 0, 0.0022)), 0.0065, p.m(M['steel']))
+    c0 = V((q.x - w / 2 - 0.004, yc, q.z - h / 2 + 0.0045))
+    cyl(p, c0, c0 + V((w + 0.008, 0, 0)), 0.0022, p.m(M['steel']), segs=8)                      # стяжной болт трения
+    hexa(p, c0, c0 + V((0.003, 0, 0)), 0.0065, p.m(M['steel']))
+    hexa(p, c0 + V((w + 0.005, 0, 0)), c0 + V((w + 0.008, 0, 0)), 0.0065, p.m(M['steel']))
+    p.done()
+    print(f'TRIM наконечник {tuple(round(v, 4) for v in f0)}…{tuple(round(v, 4) for v in f1)}; шток демпфера {tuple(round(v, 4) for v in r0)}…{tuple(round(v, 4) for v in r1)}; колодка у {tuple(round(v, 4) for v in q)}')
 
 
 # ── Регулировка педалей (AMM 27-20 рис. 2) ─────────────────────────────────
@@ -1118,6 +1295,7 @@ bpy.context.scene.frame_set(FRAMES[0])
 push_clip(list(COL.all_objects), FLAP_CLIP)          # закрылки убраны — нейтраль
 pedal_adjusters()
 elevator_rod_guides()
+trim_tail()
 build_sticks_and_chains()
 if os.environ.get('CHECK'):
     check()
