@@ -494,9 +494,71 @@ def axis_of(name, sel=lambda q: True):
     return c, ax, c + ax * min(ts), c + ax * max(ts)
 
 
+# препятствия, сквозь которые трассы идут в вырезах (вырезы structure.py строит по самим трассам) или в колодках
+RELAX_PASS = r'clamp block|^Ring frame \d$|main bulkhead$|^Baggage compartment frame$|^Vertical stabilizer front web$|grommets|' \
+             r'^Vertical stabilizer front web top channel$|^Horizontal stabilizer rear (spar|mounting bracket)$|^Plane\.052$'
+
+
+def relax_path(pts, r, fixed, margin=0.003, step=0.008, iters=80):
+    """Трасса без касаний: точки ломаной отжимаются от ближайших поверхностей (отделка салона, детали MSFS,
+    соседние слои из LAYERS, детали этого слоя во всём их ходе) до зазора r + margin и сглаживаются;
+    fixed(q) — точки, которые не двигаются."""
+    import re as _re
+    from mathutils.bvhtree import BVHTree
+    skip = _re.compile(RELAX_PASS)
+    objs = [o for o in bpy.data.collections['DA40 Interior'].all_objects if o.type == 'MESH' and o.name not in ref.REPLACED and
+            not any(m and 'Glass' in m.name for m in o.data.materials) and not skip.search(o.name)]
+    objs += [o for o in bpy.data.collections['Flight controls'].all_objects if o.type == 'MESH' and o.name not in ref.REPLACED and not skip.search(o.name)]
+    before = set(bpy.data.objects)
+    layers = os.environ.get('LAYERS', '/home/user/da40src/out2')
+    for g in ('fuel', 'brakes', 'pitot', 'air', 'wing', 'electrical', 'structure', 'radio', 'instruments', 'equipment', 'bonding', 'gear'):
+        f = os.path.join(layers, f'da40-{g}-raw.glb')
+        if os.path.exists(f):
+            bpy.ops.import_scene.gltf(filepath=f)
+    new = [o for o in bpy.data.objects if o not in before]
+    for o in new:
+        if o.parent is None:
+            o.location.z -= R.lift
+    bpy.context.view_layer.update()
+    objs += [o for o in new if o.type == 'MESH' and not skip.search(o.name)]
+    bvhs = [ref._bvh(objs), ref.swept_bvh([o for o in COL.all_objects if o.type == 'MESH'], samples=9)]
+    for o in new:
+        bpy.data.objects.remove(o, do_unlink=True)
+    # ломаная с шагом step
+    path = [pts[0]]
+    for a_, b_ in zip(pts, pts[1:]):
+        n = max(1, int((b_ - a_).length / step))
+        path += [a_.lerp(b_, k / n) for k in range(1, n + 1)]
+    need = r + margin
+    move = [not fixed(q) for q in path]
+    for _ in range(iters):
+        for i, q in enumerate(path):
+            if not move[i]:
+                continue
+            for b in bvhs:
+                loc, nrm, _i, d = b.find_nearest(q, need * 3)
+                if loc is None or d >= need:
+                    continue
+                dv = (q - loc).normalized() if d > 1e-5 else nrm
+                q += dv * (need - d) * 0.8
+        for i in range(1, len(path) - 1):
+            if move[i]:
+                path[i] = path[i] + ((path[i - 1] + path[i + 1]) / 2 - path[i]) * 0.25
+    worst = (9.0, None)
+    for q in path:
+        for b in bvhs:
+            loc, nrm, _i, d = b.find_nearest(q, 0.05)
+            if loc is not None and d - r < worst[0]:
+                worst = (d - r, tuple(round(v, 3) for v in q))
+    print(f'RELAX {len(path)} точек, наименьший зазор {worst[0] * 1000:.1f} мм у {worst[1]}')
+    # прореживание: каждая 3-я точка (pipe скругляет)
+    return path[::3] + ([path[-1]] if (len(path) - 1) % 3 else [])
+
+
 TRIM_SHEATH = 'Elevator trim flexible cable (outer)'
 TRIM_FERRULE = 'Circle.001'                    # резьбовой наконечник оболочки в кронштейне (модель MSFS)
 TRIM_DAMPER_ROD = 'Cylinder.002_Cylinder.004.001'   # справа — шток фрикционного демпфера (модель MSFS)
+TRIM_FERRULE_Y = 5.256                         # передний конец наконечника: позади хода вертикальной тяги (y до 5,253) и кабанчика руля высоты
 
 
 def trim_tail():
@@ -506,13 +568,50 @@ def trim_tail():
     фрикционную колодку на монтажном кронштейне механизма триммера (structure.py). Передние концы рычагов
     в клипе руля высоты стоят на месте (ось BONE_13), поэтому демпфер и трос неподвижны."""
     fc, fd, f0, f1 = axis_of(TRIM_FERRULE)
-    pts = [q for q in curve_points(TRIM_SHEATH) if q.y <= 5.152]
+    src = curve_points(TRIM_SHEATH)
     bpy.data.objects.remove(bpy.data.objects[TRIM_SHEATH], do_unlink=True)      # заменена (replaced.json): имя переходит к новой
-    tail = [V((0.034, 5.186, 1.2645)), f0 - fd * 0.018, f0 + fd * 0.004]
+    # начало — у колодки на раме штурвальчика (у MSFS оболочка начиналась в самом колесе: от колодки к сектору
+    # идёт только жила); спуск под пол — внутри пульта и сквозь передний лонжерон центроплана
+    head = [V((0.0, -0.178, -0.0125)), V((-0.008, -0.150, -0.030)), V((-0.032, -0.070, -0.080)), V((-0.044, -0.005, -0.108)),
+            V((-0.054, 0.060, -0.150)), V((-0.060, 0.115, -0.166))]
+    # в хвосте — по AMM 27-38 2.B: вверх по передней поверхности передней стенки киля (нижняя часть стенки —
+    # плоская на y 4,56, выше — наклонная до 4,84 у верха), сквозь паз у верха стенки (structure.py: по самой
+    # трассе) — внутрь киля под швеллер, к наконечнику в кронштейне механизма триммера. Наконечник MSFS
+    # (Circle.001) уходил вперёд в ход вертикальной тяги и кабанчика руля высоты — построен короче (TRIM_FERRULE_Y)
+    mid = [q for q in src if 0.16 <= q.y <= 4.30]
+
+    def web_y(z):                                     # передняя стенка киля (structure.py: FW_BOT_Y, FW_TOP_Y, FIN_LOW_Z, FIN_TOP_Z)
+        return 4.56 + 0.28 * max(0.0, (z - 0.36) / 0.875)
+    fin = [V((-0.016, 4.40, 0.088)), V((-0.014, 4.535, 0.095)), V((-0.014, 4.545, 0.15))]
+    fin += [V((-0.014, web_y(z) - 0.014, z)) for z in (0.36, 0.60, 0.85, 1.05)]
+    fin += [V((-0.010, 4.835, 1.120)), V((0.004, 4.90, 1.160)), V((0.020, 4.98, 1.174)), V((0.024, 5.08, 1.183)),
+            V((0.024, 5.19, 1.195)), V((0.034, 5.222, 1.224))]
+    fs = f0 + fd * ((TRIM_FERRULE_Y - f0.y) / fd.y)   # начало наконечника на оси наконечника MSFS
+    tail = [fs - fd * 0.012 + V((0.006, 0, 0)), fs - fd * 0.002, fs + fd * 0.004]
+    pts = relax_path(head + mid + fin + tail, 0.004, fixed=lambda q: q.y < 0.06 or q.y > 5.18)
     p = P(TRIM_SHEATH, 'Оболочка гибкого троса триммера: от рамы штурвальчика в кабине сквозь главные шпангоуты, шпангоут багажника и кольцевые '
           'шпангоуты, вверх по передней стенке киля и сквозь вырез у её верха; в стабилизаторе — колодка на кронштейне стабилизатора и '
           'резьбовой наконечник в кронштейне механизма триммера', 'sheath', 'AMM 27-38 2.B')
-    lib.pipe(p, pts + tail, 0.004, 0.012, 0, segs=10)
+    lib.pipe(p, pts, 0.004, 0.012, 0, segs=10)
+    p.done()
+    # резьбовой наконечник оболочки в держателе на передней кромке кронштейна механизма триммера, две гайки
+    p = P('Elevator trim cable outer ferrule', 'Резьбовой наконечник оболочки троса триммера: проходит сквозь держатель на передней кромке '
+          'монтажного кронштейна механизма триммера и затянут двумя гайками; из него выходит жила к переднему концу левого рычага',
+          'steel', 'AMM 27-38 2.B, рис. 2')
+    cyl(p, fs, f1, 0.0062, 0, segs=16)
+    for k in range(int((f1 - fs).length / 0.003)):
+        ring_tube(p, fs + fd * (0.0015 + 0.003 * k), fd, 0.0072, 0.0058, 0.0014, 0, segs=16)       # витки резьбы
+    hp = fs + fd * ((5.264 - fs.y) / fd.y)
+    for dy in (-0.0065, 0.0065):
+        q = hp + fd * dy
+        hexa(p, q - fd * 0.002, q + fd * 0.002, 0.016, p.m(M['steel']))
+    p.done()
+    p = P('Trim cable ferrule holder (trim actuator bracket)', 'Держатель наконечника оболочки троса триммера: пластина, приклёпанная к передней кромке '
+          'монтажного кронштейна механизма триммера, с отверстием под резьбовой наконечник', 'alu', 'AMM 27-38 2.B, рис. 2')
+    ring_tube(p, hp, fd, 0.0125, 0.0063, 0.003, 0, segs=20)
+    top = 1.2635
+    box(p, V((hp.x, hp.y, (hp.z + 0.010 + top) / 2)), (0.016, 0.003, top - hp.z - 0.010), None, 0, bevel=0.0005)
+    box(p, V((hp.x, 5.268, top - 0.0012)), (0.016, 0.012, 0.0024), None, 0, bevel=0.0005)       # лапка под полкой кронштейна
     p.done()
     # внутренний трос: из наконечника к ушку левого рычага, шаровой наконечник на болте
     eye = V((0.0195, 5.2969, 1.2392))
@@ -526,7 +625,7 @@ def trim_tail():
     # фрикционный демпфер: колодка с отверстием под шток, стяжной болт, проставка к полке кронштейна
     rc, rd, r0, r1 = axis_of(TRIM_DAMPER_ROD, lambda q: q.x < -0.002)
     rr = 0.006
-    yb0, yb1, zt = 5.264, 5.288, 1.262                 # полка кронштейна (structure.py: TB_Y0…TB_Y1, TB_Z)
+    yb0, yb1, zt = 5.262, 5.290, 1.262                 # под полкой кронштейна (structure.py: TB_Y0…TB_Y1, TB_Z), до передних концов рычагов
     yc = (yb0 + yb1) / 2
     q = r0 + rd * ((yc - r0.y) / rd.y)                 # ось штока под полкой
     p = P('Trim friction clamp block', 'Фрикционная колодка демпфера триммера на монтажном кронштейне механизма: шток демпфера проходит '
@@ -539,10 +638,11 @@ def trim_tail():
         box(p, V((q.x + dx, yc, q.z + dz)), (sx, L, sz), None, 0, bevel=0.0006)
     top = q.z + h / 2
     box(p, V((q.x, yc, (top + zt) / 2)), (0.016, L - 0.004, zt - top), None, 0, bevel=0.0006)   # проставка до полки
-    for dy in (-0.007, 0.007):
-        b0 = V((q.x, yc + dy, zt + 0.004))
-        cyl(p, b0, V((q.x, yc + dy, top - 0.002)), 0.0021, p.m(M['steel']), segs=8)            # болты к полке
-        hexa(p, b0 - V((0, 0, 0.0008)), b0 + V((0, 0, 0.0022)), 0.0065, p.m(M['steel']))
+    for dy in (-0.0115, 0.0115):
+        # болты снизу сквозь колодку и проставку в анкерные гайки полки: над полкой — проушины и втулка упора руля высоты
+        b0 = V((q.x + 0.0088, yc + dy, q.z - h / 2))
+        cyl(p, b0, V((b0.x, b0.y, zt + 0.002)), 0.0021, p.m(M['steel']), segs=8)
+        hexa(p, b0 - V((0, 0, 0.003)), b0, 0.0065, p.m(M['steel']))
     c0 = V((q.x - w / 2 - 0.004, yc, q.z - h / 2 + 0.0045))
     cyl(p, c0, c0 + V((w + 0.008, 0, 0)), 0.0022, p.m(M['steel']), segs=8)                      # стяжной болт трения
     hexa(p, c0, c0 + V((0.003, 0, 0)), 0.0065, p.m(M['steel']))
@@ -1295,8 +1395,8 @@ bpy.context.scene.frame_set(FRAMES[0])
 push_clip(list(COL.all_objects), FLAP_CLIP)          # закрылки убраны — нейтраль
 pedal_adjusters()
 elevator_rod_guides()
-trim_tail()
 build_sticks_and_chains()
+trim_tail()
 if os.environ.get('CHECK'):
     check()
 dup = [o.name for o in COL.all_objects if '.0' in o.name[-4:]]
