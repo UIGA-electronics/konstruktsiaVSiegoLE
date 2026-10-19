@@ -2,14 +2,14 @@
   {
     "file": "da40-controls.glb",
     "title": "Управление",
-    "parts": 176,
-    "meshes": 109,
+    "parts": 94,
+    "meshes": 101,
     "clips": [
       "Закрылки UP → LDG",
       "Элероны влево → вправо",
       "Руль высоты"
     ],
-    "mb": 0.7
+    "mb": 0.81
   },
   {
     "file": "da40-wing-structure.glb",
@@ -53,7 +53,7 @@
     "parts": 47,
     "meshes": 47,
     "clips": [],
-    "mb": 0.29,
+    "mb": 0.28,
     "built": "tools/da40/avionics.py"
   },
   {
@@ -62,7 +62,7 @@
     "parts": 21,
     "meshes": 21,
     "clips": [],
-    "mb": 0.16,
+    "mb": 0.17,
     "built": "tools/da40/brakes.py"
   },
   {

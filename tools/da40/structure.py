@@ -75,6 +75,56 @@ _LINES = None
 LINE_R = {}                    # радиус трасс-кривых (у них в сечении одна точка)
 
 
+SWEEP_FRAMES = 9                 # кадров на клип при съёме хода тяг
+
+
+def swept(objs, which):
+    """{деталь: [вершины в мире по позам]} — исходная поза и SWEEP_FRAMES кадров каждого клипа;
+    детали, которых клип не касается, стоят в исходной позе."""
+    sc = bpy.context.scene
+    base = {o: o.matrix_basis.copy() for o in objs}
+    clips = sorted({t.name.split('.')[0] for o in objs if o.animation_data for t in o.animation_data.nla_tracks})
+    out = {o: [] for o in which}
+
+    def grab():
+        bpy.context.view_layer.update()
+        dg = bpy.context.evaluated_depsgraph_get()
+        for o in which:
+            e = o.evaluated_get(dg)
+            m = e.to_mesh()
+            out[o].append([e.matrix_world @ v.co for v in m.vertices])
+            e.to_mesh_clear()
+
+    def reset():
+        for o in objs:
+            if o.animation_data:
+                o.animation_data.action = None
+            o.matrix_basis = base[o]
+    reset()
+    grab()
+    for nm in clips:
+        reset()
+        rng = None
+        for o in objs:
+            if not o.animation_data:
+                continue
+            for t in o.animation_data.nla_tracks:
+                if t.name.split('.')[0] == nm and t.strips:
+                    a = t.strips[0].action
+                    o.animation_data.action = a
+                    r = a.frame_range
+                    rng = (min(rng[0], r[0]), max(rng[1], r[1])) if rng else (r[0], r[1])
+        if rng is None:
+            continue
+        for k in range(SWEEP_FRAMES):
+            sc.frame_set(int(round(rng[0] + (rng[1] - rng[0]) * k / (SWEEP_FRAMES - 1))))
+            grab()
+    reset()
+    sc.frame_set(1)
+    print('SWEPT', len(which), 'тяг,', len(clips), 'клипов')
+    return out
+
+
 def lines():
     """[(имя, вершины, рёбра)] трасс соседних слоёв (из LAYERS) в координатах исходника."""
     global _LINES
@@ -93,8 +143,15 @@ def lines():
             if o.parent is None:
                 o.location.z -= R.lift
         bpy.context.view_layer.update()
-        for o in got:
-            if o.type == 'MESH' and LINE_RE.search(o.name) and not NOT_LINE.search(o.name):
+        mine = [o for o in got if o.type == 'MESH' and LINE_RE.search(o.name) and not NOT_LINE.search(o.name)]
+        if g == 'controls-addon':
+            # тяги ходят: сечение стенки берём во всех позах всех клипов — вырез охватывает весь ход
+            for o, vs in swept(got, mine).items():
+                es = [tuple(e.vertices) for e in o.data.edges]
+                n = len(o.data.vertices)
+                _LINES.append((o.name, [q for pose in vs for q in pose], [(a + k * n, b + k * n) for k in range(len(vs)) for a, b in es]))
+        else:
+            for o in mine:
                 mw = o.matrix_world
                 _LINES.append((o.name, [mw @ v.co for v in o.data.vertices], [tuple(e.vertices) for e in o.data.edges]))
         for o in got:
@@ -124,10 +181,68 @@ def lines():
     return _LINES
 
 
+def _uw(axis):
+    return [(1, 2), (0, 2), (0, 1)][axis]
+
+
+def _hull2(pts):
+    """Выпуклая оболочка точек (u, w), обход против часовой стрелки."""
+    pts = sorted(set(pts))
+    if len(pts) < 3:
+        return pts
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+    lo, hi = [], []
+    for q in pts:
+        while len(lo) >= 2 and cross(lo[-2], lo[-1], q) <= 0:
+            lo.pop()
+        lo.append(q)
+    for q in reversed(pts):
+        while len(hi) >= 2 and cross(hi[-2], hi[-1], q) <= 0:
+            hi.pop()
+        hi.append(q)
+    return lo[:-1] + hi[:-1]
+
+
+def _inside2(poly, q):
+    n = len(poly)
+    for i in range(n):
+        a, b = poly[i], poly[(i + 1) % n]
+        if (b[0] - a[0]) * (q[1] - a[1]) - (b[1] - a[1]) * (q[0] - a[0]) < 0:
+            return False
+    return n >= 3
+
+
+def _seg_pt(a, b, q):
+    ab = (b[0] - a[0], b[1] - a[1])
+    L = ab[0] ** 2 + ab[1] ** 2
+    t = 0.0 if L < 1e-12 else max(0.0, min(1.0, ((q[0] - a[0]) * ab[0] + (q[1] - a[1]) * ab[1]) / L))
+    return math.hypot(a[0] + ab[0] * t - q[0], a[1] + ab[1] * t - q[1])
+
+
+def _poly_dist(A, B):
+    if any(_inside2(B, q) for q in A) or any(_inside2(A, q) for q in B):
+        return 0.0
+    return min(min(_seg_pt(P_[i], P_[(i + 1) % len(P_)], q) for i in range(len(P_)) for q in Q)
+               for P_, Q in ((A, B), (B, A)))
+
+
+def _hull_of(g, pad, axis, k=16):
+    """Оболочка сечения трассы с припуском pad: выпуклая оболочка точек сечения, раздутых кругом pad."""
+    u, w = _uw(axis)
+    pts = [(round(q[u] + pad * math.cos(2 * math.pi * i / k), 6), round(q[w] + pad * math.sin(2 * math.pi * i / k), 6))
+           for q in g for i in range(k)]
+    return _hull2(pts)
+
+
 def wall_cuts(axis, pos, inside, room, gap=0.004):
-    """Вырезы в стенке — плоскости {axis = pos}: [(центр, радиус выреза, имена трасс)];
-    room(c) — сколько места от точки c до края стенки (вырез не выходит за контур)."""
-    cuts = []
+    """Вырезы в стенке — плоскости {axis = pos}: [(центр, описанный радиус, имена трасс, V(), контур)];
+    контур — выпуклая оболочка сечений трасс с припуском (тяги управления сняты во всех позах — lines → swept,
+    поэтому вырез под тягу охватывает весь её ход); вырезы, которые ближе 4 мм друг к другу, сливаются в один
+    по общей оболочке; room(q) — сколько места от точки q до края стенки (контур поджимается внутрь)."""
+    u, w = _uw(axis)
+    cuts = []                                        # [оболочка (u, w), имена]
     for name, vs, es in lines():
         hits = []
         for a, b in es:
@@ -138,7 +253,7 @@ def wall_cuts(axis, pos, inside, room, gap=0.004):
                     hits.append(q)
         groups = []                                  # сечения трассы: связные группы точек
         for q in hits:
-            near = [g for g in groups if any((q - w).length < 0.02 for w in g)]
+            near = [g for g in groups if any((q - w_).length < 0.02 for w_ in g)]
             for g in near[1:]:
                 near[0].extend(g)
                 groups.remove(g)
@@ -147,46 +262,108 @@ def wall_cuts(axis, pos, inside, room, gap=0.004):
             if len(g) < 4 and name not in LINE_R:
                 continue
             c = sum(g, V()) / len(g)
-            r = max([(q - c).length for q in g] + [LINE_R.get(name, 0.0)])
-            if r > 0.05:
-                print(f'CUT ALONG {name}: сечение {r * 2:.3f} м — трасса идёт вдоль стенки, выреза нет')
+            if max((q - c).length for q in g) > 0.06:
+                print(f'CUT ALONG {name}: сечение {2 * max((q - c).length for q in g):.3f} м — трасса идёт вдоль стенки, выреза нет')
                 continue
-            cuts.append([c, r + (gap * 2 if re.search(r'push rod|cable', name, re.I) and 'Bowden' not in name else gap), [name]])
+            pad = LINE_R.get(name, 0.0) + (gap * 2 if re.search(r'push rod|cable', name, re.I) and 'Bowden' not in name else gap)
+            cuts.append([_hull_of(g, pad, axis), [name]])
     merged = True
     while merged:
         merged = False
         for i in range(len(cuts)):
             for j in range(i + 1, len(cuts)):
-                (ci, ri, ni), (cj, rj, nj) = cuts[i], cuts[j]
-                d = (ci - cj).length
-                if d < ri + rj + 0.004:
-                    if d + rj <= ri:
-                        new = [ci, ri, ni + nj]
-                    elif d + ri <= rj:
-                        new = [cj, rj, ni + nj]
-                    else:
-                        rr = (d + ri + rj) / 2
-                        new = [ci + (cj - ci).normalized() * (rr - ri), rr, ni + nj]
-                    cuts[i] = new
+                if _poly_dist(cuts[i][0], cuts[j][0]) < 0.004:
+                    cuts[i] = [_hull2(cuts[i][0] + cuts[j][0]), cuts[i][1] + cuts[j][1]]
                     cuts.pop(j)
                     merged = True
                     break
             if merged:
                 break
-    for cut in cuts:
-        c, r, names = cut
-        lim = room(c) - 0.004
-        if r > lim:
-            print(f'CUT EDGE {"xyz"[axis]}={pos:+.3f} at ({c.x:+.3f},{c.y:+.3f},{c.z:+.3f}): нужно {r * 1000:.0f} мм, есть {lim * 1000:.0f} — {names[0][:40]}')
-            cut[1] = r = max(0.004, lim)
-        print(f'CUT {"xyz"[axis]}={pos:+.3f} at ({c.x:+.3f},{c.y:+.3f},{c.z:+.3f}) r {r * 1000:.0f} mm: {", ".join(n[:40] for n in names)}')
-    return cuts
-
-
-def cut_loop(c, r, axis, n=20):
-    """Контур круглого выреза в плоскости, перпендикулярной оси axis."""
-    u, w = [(1, 2), (0, 2), (0, 1)][axis]
     out = []
+    for hull, names in cuts:
+        cu = sum(q[0] for q in hull) / len(hull)
+        cw = sum(q[1] for q in hull) / len(hull)
+        c = V()
+        c[axis], c[u], c[w] = pos, cu, cw
+        loop, short = [], 0.0
+        for a_, b_ in hull:
+            q = V()
+            q[axis], q[u], q[w] = pos, a_, b_
+            if room(q) < 0.004:                      # вершина у края стенки — поджать к центру
+                short = max(short, 0.004 - room(q))
+                lo_, hi_ = 0.0, 1.0
+                for _ in range(14):
+                    m = (lo_ + hi_) / 2
+                    if room(c.lerp(q, m)) >= 0.004:
+                        lo_ = m
+                    else:
+                        hi_ = m
+                q = c.lerp(q, lo_)
+            loop.append(q)
+        if short > 0:
+            print(f'CUT EDGE {"xyz"[axis]}={pos:+.3f} at ({c.x:+.3f},{c.y:+.3f},{c.z:+.3f}): контур поджат на {short * 1000:.0f} мм у края стенки — {names[0][:40]}')
+        r = max((q - c).length for q in loop)
+        su = max(q[u] for q in loop) - min(q[u] for q in loop)
+        sw = max(q[w] for q in loop) - min(q[w] for q in loop)
+        print(f'CUT {"xyz"[axis]}={pos:+.3f} at ({c.x:+.3f},{c.y:+.3f},{c.z:+.3f}) {su * 1000:.0f}×{sw * 1000:.0f} mm: {", ".join(n[:40] for n in names)}')
+        out.append([c, r, names, V(), loop])
+    return out
+
+
+def cut_shape(cut, axis, n=20):
+    """Контур выреза: выпуклый многоугольник wall_cuts или круг (центр, радиус)."""
+    if len(cut) > 4 and cut[4]:
+        return cut[4]
+    return cut_loop(cut[0], cut[1], axis, n)
+
+
+def _radial(cut, axis, d, n=24):
+    """Контур выреза, сдвинутый на d по лучам из центра (n точек) — для окантовки."""
+    c, loop = cut[0], cut_shape(cut, axis)
+    u, w = _uw(axis)
+    out = []
+    for k in range(n):
+        ang = 2 * math.pi * k / n
+        dv = V()
+        dv[u], dv[w] = math.cos(ang), math.sin(ang)
+        best = None
+        for i in range(len(loop)):
+            a, b = loop[i] - c, loop[(i + 1) % len(loop)] - c
+            # пересечение луча c + t·dv с отрезком a…b в плоскости (u, w)
+            den = dv[u] * (b[w] - a[w]) - dv[w] * (b[u] - a[u])
+            if abs(den) < 1e-12:
+                continue
+            t = (a[u] * (b[w] - a[w]) - a[w] * (b[u] - a[u])) / den
+            sgm = (a[u] * dv[w] - a[w] * dv[u]) / den
+            if t > 0 and -1e-6 <= sgm <= 1 + 1e-6 and (best is None or t < best):
+                best = t
+        out.append(c + dv * ((best or 0.0) + d))
+    return out
+
+
+def cut_ring(p, cut, axis, d_out, d_in, width, mi=0):
+    """Резиновая окантовка выреза любой формы: кольцо прямоугольного сечения по его контуру."""
+    dn = V([1 if i == axis else 0 for i in range(3)]) * (width / 2)
+    L = [[p.bm.verts.new(q + dn * sg) for q in _radial(cut, axis, d)] for d, sg in ((d_out, -1), (d_out, 1), (-d_in, 1), (-d_in, -1))]
+    for a, b in zip(L, L[1:] + L[:1]):
+        lib._bridge(p.bm, a, b, mi, False)
+
+
+def cut_loop(c, r, axis, n=20, h=None):
+    """Контур выреза в плоскости, перпендикулярной оси axis: круг или паз (h — полувектор паза)."""
+    u, w = _uw(axis)
+    out = []
+    if h is not None and h.length > 1e-4:
+        a0 = math.atan2(h[w], h[u])
+        m = max(4, n // 2)
+        for end, base in ((c + h, a0 - math.pi / 2), (c - h, a0 + math.pi / 2)):
+            for i in range(m + 1):
+                a = base + math.pi * i / m
+                q = end.copy()
+                q[u] += r * math.cos(a)
+                q[w] += r * math.sin(a)
+                out.append(q)
+        return out
     for i in range(n):
         a = 2 * math.pi * i / n
         q = c.copy()
@@ -202,8 +379,8 @@ def grommets(name, ru, cuts, axis, doc):
         return
     g = P(name, ru, 'rubber', doc)
     d = V([1 if i == axis else 0 for i in range(3)])
-    for c, r, _ in cuts:
-        ring_tube(g, c, d, r + 0.003, r - 0.0025, 0.010, 0, segs=20)
+    for cut in cuts:
+        cut_ring(g, cut, axis, 0.003, 0.0025, 0.010)
     g.done()
 
 
@@ -306,14 +483,15 @@ def ring_frame(name, ru, y, depth, doc, flange=0.022, t=0.005, n=144, lower_web=
     gap = 0.004
     cuts = wall_cuts(1, y, lambda q: (q - C).length < at(r_out, k_of(q)) + 0.01, lambda c: 1.0)
     holes, guide_holes = [], []
-    for c, r, names in cuts:
+    for cut in cuts:
+        c, r, names = cut[0], cut[1], cut[2]       # проверки — по описанному кругу контура
         rc = (c - C).length
         kf = k_of(c)
         ro = at(r_out, kf)
         ri = at([(q - C).length for q in inner], kf)
         if lower_web is not None and c.z + r + gap < lower_web:
             if rc + r + 0.004 < ro:
-                (guide_holes if any(re.search('push rod', nm, re.I) for nm in names) else holes).append((c, r))
+                (guide_holes if any(re.search('push rod', nm, re.I) for nm in names) else holes).append(cut)
             else:
                 print(f'FRAME {name}: вырез у обшивки не помещается — {names[0][:40]}')
             continue
@@ -326,7 +504,7 @@ def ring_frame(name, ru, y, depth, doc, flange=0.022, t=0.005, n=144, lower_web=
             continue
         if rc - r - gap > ri:
             if rc + r + 0.004 < ro:
-                holes.append((c, r))
+                holes.append(cut)
             else:
                 print(f'FRAME {name}: трасса у самой обшивки, вырез не помещается — {names[0][:40]}')
             continue
@@ -343,7 +521,7 @@ def ring_frame(name, ru, y, depth, doc, flange=0.022, t=0.005, n=144, lower_web=
                 if (inner[jj] - C).length < want and not (lower_web is not None and abs(inner[jj].z - lower_web) < 1e-6):
                     inner[jj] = C + d * want
             print(f'FRAME {name}: выемка в поясе у ({c.x:+.3f},{c.z:+.3f}) — {names[0][:40]}')
-    loops = [inner] + [cut_loop(c, r, 1) for c, r in holes + guide_holes]
+    loops = [inner] + [cut_shape(cut, 1) for cut in holes + guide_holes]
     plate_with_holes(p, outer, loops, (0, 1, 0), t, 0)
     # отбортовка вдоль обшивки
     a0 = outer
@@ -359,8 +537,8 @@ def ring_frame(name, ru, y, depth, doc, flange=0.022, t=0.005, n=144, lower_web=
     p.done()
     if holes:
         g = P(name + ' grommets', grommet_ru or 'Окантовка вырезов шпангоута: сквозь них проходят тросы, трубки, жгуты и кабели', 'rubber', doc)
-        for c, r in holes:
-            ring_tube(g, c, (0, 1, 0), r + 0.003, r - 0.0025, t + 0.006, 0, segs=18)
+        for cut in holes:
+            cut_ring(g, cut, 1, 0.003, 0.0025, t + 0.006)
         g.done()
     return zc, sec
 
@@ -478,18 +656,39 @@ def top_hat():
         cuts = wall_cuts(0, xm, lambda q, xw=xw: HAT_Y[0] + 0.01 < q.y < HAT_Y[1] - 0.01 and
                          bottom_z(xw, q.y) + T_SH + 0.012 < q.z < hat_top(q.y) - t - 0.012,
                          lambda c, xw=xw: min(c.z - bottom_z(xw, c.y) - T_SH, hat_top(c.y) - t - c.z, c.y - HAT_Y[0], HAT_Y[1] - c.y))
-        plate_with_holes(p, outline, [cut_loop(c, r, 0) for c, r, _ in cuts], (1, 0, 0), t, 0)
+        plate_with_holes(p, outline, [cut_shape(cut, 0) for cut in cuts], (1, 0, 0), t, 0)
         all_cuts += cuts
     # верхняя полка; прорезь — под рычаг руля высоты на валу ручек (ход ручек по тангажу ±10°)
     def cap(xa, xb, ya, yb, n):
         loft(p, [[V((xa, y, hat_top(y) - t)), V((xb, y, hat_top(y) - t)), V((xb, y, hat_top(y))), V((xa, y, hat_top(y)))]
                  for y in [ya + (yb - ya) * i / n for i in range(n + 1)]], 0, smooth=False)
-    sx0, sx1, sy0, sy1 = HAT_LEVER_SLOT
+    # окна в полке: под рычаг руля высоты и под оболочку троса триммера — она уходит под пол под пультом
+    # (AMM 27-38 2.B); окно троса — по самой трассе (слой управления)
+    slots = [HAT_LEVER_SLOT]
+    hits = []
+    for name, vs, es in lines():
+        if not name.startswith('Elevator trim flexible cable (outer)'):
+            continue
+        for off in (-t, -t / 2, 0.0):
+            for ia, ib in es:
+                qa, qb = vs[ia], vs[ib]
+                if not (HAT_Y[0] < qa.y < HAT_Y[1] and HAT_X[0] < qa.x < HAT_X[1]):
+                    continue
+                da, db = qa.z - (hat_top(qa.y) + off), qb.z - (hat_top(qb.y) + off)
+                if (da < 0) != (db < 0):
+                    hits.append(qa.lerp(qb, da / (da - db)))
+    if hits:
+        tr = (min(q.x for q in hits) - 0.006, max(q.x for q in hits) + 0.006, min(q.y for q in hits) - 0.006, max(q.y for q in hits) + 0.006)
+        print(f'HAT окно под трос триммера: x {tr[0]:+.3f}…{tr[1]:+.3f}, y {tr[2]:+.3f}…{tr[3]:+.3f}')
+        slots.append(tr)
     xa, xb = HAT_X[0] - 0.005, HAT_X[1] + 0.005
-    cap(xa, xb, HAT_Y[0], sy0, 18)
-    cap(xa, xb, sy1, HAT_Y[1], 8)
-    cap(xa, sx0, sy0, sy1, 3)
-    cap(sx1, xb, sy0, sy1, 3)
+    y_lo = HAT_Y[0]
+    for sx0, sx1, sy0, sy1 in sorted(slots, key=lambda sl: sl[2]):
+        cap(xa, xb, y_lo, sy0, max(2, int((sy0 - y_lo) / 0.04)))
+        cap(xa, sx0, sy0, sy1, 3)
+        cap(sx1, xb, sy0, sy1, 3)
+        y_lo = sy1
+    cap(xa, xb, y_lo, HAT_Y[1], max(2, int((HAT_Y[1] - y_lo) / 0.04)))
     p.done()
     grommets('Top hat profile grommets', 'Резиновая окантовка вырезов в стенках прямоугольного профиля: сквозь них поперёк профиля идут шланги, жгуты и воздуховод пассажиров',
              all_cuts, 0, 'AMM 53-10 2.C')
@@ -541,7 +740,7 @@ def main_bulkhead(tag, ru_name, ru_gen, y0, y1, bolt, doc_extra=''):
         outline = [V((x, yw, stub_bot(x, yw))) for x in xs] + [V((x, yw, wall_top(x, yw))) for x in reversed(xs)]
         cuts = wall_cuts(1, yw, lambda q, yw=yw: abs(q.x) < STUB_X - 0.01 and stub_bot(q.x, yw) + 0.014 < q.z < wall_top(q.x, yw) - 0.014,
                          lambda c, yw=yw: min(c.z - stub_bot(c.x, yw), wall_top(c.x, yw) - c.z, STUB_X - abs(c.x)))
-        plate_with_holes(p, outline, [cut_loop(c, r, 1) for c, r, _ in cuts], (0, 1, 0), t, 0)
+        plate_with_holes(p, outline, [cut_shape(cut, 1) for cut in cuts], (0, 1, 0), t, 0)
         all_cuts += cuts
     p.done()
     grommets(f'{tag} main bulkhead grommets', f'Резиновая окантовка вырезов в стенках {ru_gen} лонжерона центроплана: сквозь них проходят тяги, шланги и жгуты',
@@ -582,7 +781,7 @@ def rib_plate(name, ru, x, y0, y1, doc, hole=None, n=24, m='frame', passes=(), h
         # обход тот же, что у контура: от передней нижней точки назад по низу
         inner = ellipse(c, (y1 - y0) * hole, (max(zs) - min(zs)) * 0.30, len(outer), phase=1.25 * math.pi)
     if passes or holes:
-        cuts = ([inner] if inner else []) + [stub.circle(c, r + stub.GROMMET, 16) for c, r in passes] + [stub.circle(c, r, 16) for c, r in holes]
+        cuts = ([inner] if inner else []) + [stub.circle(c, r + stub.GROMMET, 16) for c, r in passes] + [cut_shape(cut, 0) for cut in holes]
         plate_with_holes(p, outer, cuts, (1, 0, 0), 0.005, 0)
     else:
         plate_with_hole(p, outer, inner, (1, 0, 0), 0.005, 0)
@@ -608,7 +807,7 @@ def rod_holes(X):
 
     def room(c):
         return min(c.y - REAR_MB[1], REAR_WEB_Y - c.y, c.z - stub_bot(c.x, c.y), stub_top(c.x, c.y) - c.z)
-    return [(c, r) for c, r, names in wall_cuts(0, X, inside, room) if any('push rod' in n for n in names)]
+    return [cut for cut in wall_cuts(0, X, inside, room) if any('push rod' in n for n in cut[2])]
 
 
 def centre_section():
@@ -738,22 +937,69 @@ def fin_half(y, z):
     return (a.x - b.x) / 2 - T_SH, (a.x + b.x) / 2
 
 
-def web_plate(p, pts_yz, t=0.006):
-    """Стенка киля: по точкам (y, z) снизу вверх, ширина — между обшивками."""
+def web_plate(p, pts_yz, t=0.006, side=0, x_in=0.0, clip=None):
+    """Стенка киля: по точкам (y, z) снизу вверх, ширина — между обшивками; side = ±1 — только полоса
+    сбоку от выреза |x| < x_in (левее или правее); clip = (x0, x1) — только часть стенки в этих пределах."""
     rings = []
     for y, z in pts_yz:
         hw = fin_half(y, z)
         if hw is None:
             continue
         h, xc = hw
-        rings.append([V((xc - h, y - t / 2, z)), V((xc + h, y - t / 2, z)), V((xc + h, y + t / 2, z)), V((xc - h, y + t / 2, z))])
+        a, b = xc - h, xc + h
+        if clip:
+            a, b = max(a, clip[0]), min(b, clip[1])
+        if side > 0:
+            a = max(a, x_in)
+        elif side < 0:
+            b = min(b, -x_in)
+        if b - a < 0.003:
+            continue
+        rings.append([V((a, y - t / 2, z)), V((b, y - t / 2, z)), V((b, y + t / 2, z)), V((a, y + t / 2, z))])
     loft(p, rings, 0, smooth=False)
+
+
+def web_with_windows(p, yfun, zs, wins):
+    """Стенка киля y = yfun(z) по высотам zs с окнами wins = [(z0, z1, x0, x1)] (непересекающиеся по высоте):
+    между z0 и z1 — две полосы по бокам окна."""
+    cuts = sorted(wins)
+    z_lo = zs[0]
+    for z0, z1, x0, x1 in cuts:
+        web_plate(p, [(yfun(z), z) for z in [z for z in zs if z_lo <= z < z0] + [z0]])
+        band = [z0] + [z for z in zs if z0 < z < z1] + [z1]
+        web_plate(p, [(yfun(z), z) for z in band], clip=(-1.0, x0))
+        web_plate(p, [(yfun(z), z) for z in band], clip=(x1, 1.0))
+        z_lo = z1
+    rest = [z_lo] + [z for z in zs if z > z_lo]
+    if len(rest) > 1:
+        web_plate(p, [(yfun(z), z) for z in rest])
+
+
+def trim_sheath_window(f, lo_z, hi_z, mx=0.007, mz=0.010, t=0.006):
+    """Окно в стенке под оболочку троса триммера (AMM 27-38 2.B): где трасса (слой управления) пересекает
+    стенку f(q) = 0 (обе её поверхности, f — расстояние по нормали), в пределах высот lo_z…hi_z: (z0, z1, x0, x1)."""
+    hits = []
+    for name, vs, es in lines():
+        if not name.startswith('Elevator trim flexible cable (outer)'):
+            continue
+        for off in (-t / 2, 0.0, t / 2):
+            for ia, ib in es:
+                da, db = f(vs[ia]) - off, f(vs[ib]) - off
+                if (da < 0) != (db < 0):
+                    q = vs[ia].lerp(vs[ib], da / (da - db))
+                    if lo_z < q.z < hi_z:
+                        hits.append(q)
+    if not hits:
+        return None
+    return (min(q.z for q in hits) - mz, max(q.z for q in hits) + mz, min(q.x for q in hits) - mx, max(q.x for q in hits) + mx)
 
 
 FIN_LOW_Z = 0.36               # низ киля над хвостовой балкой
 FIN_TOP_Z = 1.235              # под нижней обшивкой стабилизатора (1,245)
 FW_BOT_Y, FW_TOP_Y = 4.560, 4.840
 ELEV_VROD_Y_LOW_RIB = 4.929    # вертикальная тяга руля высоты (controls.py) на высоте нижней нервюры киля
+ELEV_VROD_TRAVEL = 0.075         # сдвиг места, где вертикальная тяга пересекает заднюю стенку, за ход руля высоты
+ELEV_VROD_CUT_HW = 0.016         # полуширина выреза под неё
 REAR_WEB_LOW_Z = 0.124         # над нижним кронштейном руля направления (верх 0,108) и тросом триммера
 
 
@@ -793,12 +1039,18 @@ def fin():
         a, b = half[min(half, key=lambda z: abs(z - c.z))]
         return min(a - c.x, c.x - b, c.z - min(half), max(half) - c.z)
     fw_cuts = wall_cuts(1, ym, in_web, room)
-    plate_with_holes(p, left + list(reversed(right)), [cut_loop(c, r, 1) for c, r, _ in fw_cuts], (0, 1, 0), 0.006, 0)
-    pts = []
-    for z in [FIN_LOW_Z] + [z for z in zs if z > FIN_LOW_Z]:
-        t = max(0.0, (z - FIN_LOW_Z) / (FIN_TOP_Z - FIN_LOW_Z))
-        pts.append((FW_BOT_Y + (FW_TOP_Y - FW_BOT_Y) * t, z))
-    web_plate(p, pts)
+    plate_with_holes(p, left + list(reversed(right)), [cut_shape(cut, 1) for cut in fw_cuts], (0, 1, 0), 0.006, 0)
+    def fw_y(z):
+        return FW_BOT_Y + (FW_TOP_Y - FW_BOT_Y) * max(0.0, (z - FIN_LOW_Z) / (FIN_TOP_Z - FIN_LOW_Z))
+    # паз у верха наклонной части стенки — сквозь него оболочка троса триммера уходит с передней поверхности
+    # стенки внутрь киля (AMM 27-38 2.B); место и размер — по самой трассе (слой управления)
+    n = V((0, FIN_TOP_Z - FIN_LOW_Z, -(FW_TOP_Y - FW_BOT_Y))).normalized()
+    o = V((0, FW_BOT_Y, FIN_LOW_Z))
+    zs_up = [FIN_LOW_Z] + [z for z in zs if z > FIN_LOW_Z]
+    win = trim_sheath_window(lambda q: (q - o).dot(n), FIN_LOW_Z + 0.05, FIN_TOP_Z - 0.02)
+    if win:
+        print(f'FIN WEB паз x {win[2]:+.3f}…{win[3]:+.3f}, z {win[0]:.3f}…{win[1]:.3f}')
+    web_with_windows(p, fw_y, zs_up, [win] if win else [])
     p.done()
     grommets('Vertical stabilizer front web grommets', 'Окантовка выреза в нижней части передней стенки киля: сквозь него проходит длинная тяга руля высоты',
              fw_cuts, 1, 'AMM 53-10 2.M')
@@ -811,11 +1063,38 @@ def fin():
     for s in (1, -1):
         box(c, V((s * (hw - 0.003), (ch0 + ch1) / 2, FIN_TOP_Z - 0.025)), (0.006, ch1 - ch0, 0.045), Matrix.Identity(3), 0, bevel=0.001)
     c.done()
-    p = P('Vertical stabilizer rear web', 'Задняя стенка киля: приклеена к обшивке и передней стенке, замыкает киль сзади; в верхней части — верхний узел навески руля направления, к задней поверхности приклеена усиливающая нервюра',
+    p = P('Vertical stabilizer rear web', 'Задняя стенка киля: приклеена к обшивке и передней стенке, замыкает киль сзади; в верхней части — верхний узел навески руля направления, к задней поверхности приклеена усиливающая нервюра; в средней части — вырез, сквозь который вертикальная тяга руля высоты идёт к кабанчику',
           'frame', 'AMM 53-10 2.N, рис. 4')
-    # снизу стенка кончается над нижним кронштейном руля (он ходит под ней вместе с рулём)
-    web_plate(p, [(rud_y(z) - 0.035, z) for z in
-                  [REAR_WEB_LOW_Z + (FIN_TOP_Z - REAR_WEB_LOW_Z) * i / 28 for i in range(29)]])
+    # снизу стенка кончается над нижним кронштейном руля (он ходит под ней вместе с рулём); вертикальная тяга
+    # руля высоты идёт к кабанчику за стенкой — сквозь вырез, высота которого — по ходу тяги в клипе
+    zs_w = [REAR_WEB_LOW_Z + (FIN_TOP_Z - REAR_WEB_LOW_Z) * i / 28 for i in range(29)]
+    cut = None
+    zc = []
+    for name, vs, es in lines():
+        if name != 'Elevator vertical push rod':
+            continue
+        for ia, ib in es:
+            fa, fb = vs[ia].y - (rud_y(vs[ia].z) - 0.035), vs[ib].y - (rud_y(vs[ib].z) - 0.035)
+            if (fa < 0) != (fb < 0):
+                zc.append(vs[ia].lerp(vs[ib], fa / (fa - fb)).z)
+    if zc:
+        cut = (max(REAR_WEB_LOW_Z + 0.03, min(zc) - ELEV_VROD_TRAVEL), min(FIN_TOP_Z - 0.1, max(zc) + ELEV_VROD_TRAVEL))
+        print(f'REAR WEB вырез под вертикальную тягу: z {cut[0]:.3f}…{cut[1]:.3f}')
+    # «большое отверстие у верха задней стенки» — сквозь него оболочка троса триммера идёт к механизму (27-38 2.B)
+    win = trim_sheath_window(lambda q: q.y - (rud_y(q.z) - 0.035), (cut[1] if cut else REAR_WEB_LOW_Z) + 0.01, FIN_TOP_Z + 0.05)
+    wins = []
+    if win:
+        win = (win[0], min(win[1], FIN_TOP_Z), win[2], win[3])
+        print(f'REAR WEB отверстие под трос триммера: x {win[2]:+.3f}…{win[3]:+.3f}, z {win[0]:.3f}…{win[1]:.3f}')
+        wins.append(win)
+    if cut:
+        web_plate(p, [(rud_y(z) - 0.035, z) for z in [z for z in zs_w if z < cut[0]] + [cut[0]]])
+        web_with_windows(p, lambda z: rud_y(z) - 0.035, [cut[1]] + [z for z in zs_w if z > cut[1]], wins)
+        mid = [cut[0] + (cut[1] - cut[0]) * i / 6 for i in range(7)]
+        for sd in (1, -1):
+            web_plate(p, [(rud_y(z) - 0.035, z) for z in mid], side=sd, x_in=ELEV_VROD_CUT_HW)
+    else:
+        web_with_windows(p, lambda z: rud_y(z) - 0.035, zs_w, wins)
     p.done()
     r = P('Vertical stabilizer rear web reinforcing rib', 'Усиливающая нервюра на задней поверхности задней стенки киля под верхним узлом навески руля направления',
           'frame', 'AMM 53-10 2.N, рис. 4')
@@ -843,7 +1122,24 @@ def fin():
             cy = ELEV_VROD_Y_LOW_RIB
             inner = [V((0.018 * math.cos(a), cy + 0.05 * math.sin(a), FIN_LOW_Z)) for a in
                      [-math.pi / 4 + 2 * math.pi * i / len(outer) for i in range(len(outer))]]
-        plate_with_hole(p, outer, inner, (0, 0, 1), 0.005, 0)
+            plate_with_hole(p, outer, inner, (0, 0, 1), 0.005, 0)
+        else:
+            # отверстие под гибкий трос триммера (и другие трассы, идущие вверх по передней стенке)
+            ylo, yhi = min(q.y for q in outer), max(q.y for q in outer)
+
+            def half_at(y):
+                hw = fin_half(y, FIN_LOW_Z)
+                return hw if hw else (0.0, 0.0)
+
+            def inside(q):
+                h, xc = half_at(q.y)
+                return ylo + 0.008 < q.y < yhi - 0.008 and abs(q.x - xc) < h - 0.006
+
+            def room(q):
+                h, xc = half_at(q.y)
+                return min(h - abs(q.x - xc), q.y - ylo, yhi - q.y)
+            rc = wall_cuts(2, FIN_LOW_Z, inside, room)
+            plate_with_holes(p, outer, [cut_shape(c_, 2) for c_ in rc], (0, 0, 1), 0.005, 0)
         p.done()
     # верхняя опора руля: втулка с подшипником на задней стенке, снизу входит палец из передней кромки руля
     z = FIN_TOP_Z - 0.06
@@ -1157,7 +1453,7 @@ def trim_bracket_and_stops(ez):
     p = P('Elevator up stop (bolt and bush)', 'Ограничитель отклонения руля высоты вверх: поперечный болт с втулкой в монтажном кронштейне исполнительного механизма триммера; '
           'при полном отклонении руля вверх в неё упирается передняя часть кабанчика руля высоты. Регулировать запрещается',
           'steel', 'AMM 27-30 2., 27-38 рис. 2')
-    q = V((0, yc, TB_Z + 0.0105))
+    q = V((0, yc, TB_Z + 0.0068))                    # верх втулки — под выступом кабанчика при полном отклонении вверх (15,3°)
     cyl(p, q - V((0.021, 0, 0)), q + V((0.021, 0, 0)), 0.0025, 0, segs=10)
     cyl(p, q - V((0.0145, 0, 0)), q + V((0.0145, 0, 0)), 0.0065, p.m(M['alu']), segs=16)
     hexa(p, q + V((0.0175, 0, 0)), q + V((0.022, 0, 0)), 0.007, 0)
@@ -1169,7 +1465,7 @@ def trim_bracket_and_stops(ez):
     p = P('Elevator down stop (GFRP block)', 'Ограничитель отклонения руля высоты вниз: колодка из стеклопластика, вклеенная изнутри в верхнюю '
           'обшивку стабилизатора; при полном отклонении руля вниз в неё упирается передняя часть кабанчика руля высоты. Регулировать запрещается',
           'insert', 'AMM 27-30 2.')
-    box(p, V((0, yc, zt - 0.005)), (0.03, 0.03, 0.010), None, 0, bevel=0.002)
+    box(p, V((0, yc, zt - 0.003)), (0.03, 0.03, 0.006), None, 0, bevel=0.0015)   # низ — над выступом при полном отклонении вниз (13,2°)
     p.done()
 
 
