@@ -938,6 +938,41 @@ def web_plate(p, pts_yz, t=0.006, side=0, x_in=0.0, clip=None):
     loft(p, rings, 0, smooth=False)
 
 
+def web_with_windows(p, yfun, zs, wins):
+    """Стенка киля y = yfun(z) по высотам zs с окнами wins = [(z0, z1, x0, x1)] (непересекающиеся по высоте):
+    между z0 и z1 — две полосы по бокам окна."""
+    cuts = sorted(wins)
+    z_lo = zs[0]
+    for z0, z1, x0, x1 in cuts:
+        web_plate(p, [(yfun(z), z) for z in [z for z in zs if z_lo <= z < z0] + [z0]])
+        band = [z0] + [z for z in zs if z0 < z < z1] + [z1]
+        web_plate(p, [(yfun(z), z) for z in band], clip=(-1.0, x0))
+        web_plate(p, [(yfun(z), z) for z in band], clip=(x1, 1.0))
+        z_lo = z1
+    rest = [z_lo] + [z for z in zs if z > z_lo]
+    if len(rest) > 1:
+        web_plate(p, [(yfun(z), z) for z in rest])
+
+
+def trim_sheath_window(f, lo_z, hi_z, mx=0.007, mz=0.010, t=0.006):
+    """Окно в стенке под оболочку троса триммера (AMM 27-38 2.B): где трасса (слой управления) пересекает
+    стенку f(q) = 0 (обе её поверхности, f — расстояние по нормали), в пределах высот lo_z…hi_z: (z0, z1, x0, x1)."""
+    hits = []
+    for name, vs, es in lines():
+        if not name.startswith('Elevator trim flexible cable (outer)'):
+            continue
+        for off in (-t / 2, 0.0, t / 2):
+            for ia, ib in es:
+                da, db = f(vs[ia]) - off, f(vs[ib]) - off
+                if (da < 0) != (db < 0):
+                    q = vs[ia].lerp(vs[ib], da / (da - db))
+                    if lo_z < q.z < hi_z:
+                        hits.append(q)
+    if not hits:
+        return None
+    return (min(q.z for q in hits) - mz, max(q.z for q in hits) + mz, min(q.x for q in hits) - mx, max(q.x for q in hits) + mx)
+
+
 FIN_LOW_Z = 0.36               # низ киля над хвостовой балкой
 FIN_TOP_Z = 1.235              # под нижней обшивкой стабилизатора (1,245)
 FW_BOT_Y, FW_TOP_Y = 4.560, 4.840
@@ -990,31 +1025,11 @@ def fin():
     # стенки внутрь киля (AMM 27-38 2.B); место и размер — по самой трассе (слой управления)
     n = V((0, FIN_TOP_Z - FIN_LOW_Z, -(FW_TOP_Y - FW_BOT_Y))).normalized()
     o = V((0, FW_BOT_Y, FIN_LOW_Z))
-    hits = []
-    for name, vs, es in lines():
-        if not name.startswith('Elevator trim flexible cable (outer)'):
-            continue
-        for ia, ib in es:
-            da, db = (vs[ia] - o).dot(n), (vs[ib] - o).dot(n)
-            if (da < 0) != (db < 0):
-                q = vs[ia].lerp(vs[ib], da / (da - db))
-                if FIN_LOW_Z + 0.05 < q.z < FIN_TOP_Z - 0.02:
-                    hits.append(q)
     zs_up = [FIN_LOW_Z] + [z for z in zs if z > FIN_LOW_Z]
-    if hits:
-        x0, x1 = min(q.x for q in hits) - 0.006, max(q.x for q in hits) + 0.006
-        z0, z1 = min(q.z for q in hits) - 0.008, max(q.z for q in hits) + 0.008
-        print(f'FIN WEB паз x {x0:+.3f}…{x1:+.3f}, z {z0:.3f}…{z1:.3f}')
-        low = [(fw_y(z), z) for z in zs_up if z < z0] + [(fw_y(z0), z0)]
-        band = [(fw_y(z0), z0)] + [(fw_y(z), z) for z in zs_up if z0 < z < z1] + [(fw_y(z1), z1)]
-        high = [(fw_y(z1), z1)] + [(fw_y(z), z) for z in zs_up if z > z1]
-        web_plate(p, low)
-        web_plate(p, band, clip=(-1.0, x0))
-        web_plate(p, band, clip=(x1, 1.0))
-        web_plate(p, high)
-    else:
-        print('FIN WEB: трассы троса триммера нет — паз не нужен')
-        web_plate(p, [(fw_y(z), z) for z in zs_up])
+    win = trim_sheath_window(lambda q: (q - o).dot(n), FIN_LOW_Z + 0.05, FIN_TOP_Z - 0.02)
+    if win:
+        print(f'FIN WEB паз x {win[2]:+.3f}…{win[3]:+.3f}, z {win[0]:.3f}…{win[1]:.3f}')
+    web_with_windows(p, fw_y, zs_up, [win] if win else [])
     p.done()
     grommets('Vertical stabilizer front web grommets', 'Окантовка выреза в нижней части передней стенки киля: сквозь него проходит длинная тяга руля высоты',
              fw_cuts, 1, 'AMM 53-10 2.M')
@@ -1044,14 +1059,21 @@ def fin():
     if zc:
         cut = (max(REAR_WEB_LOW_Z + 0.03, min(zc) - ELEV_VROD_TRAVEL), min(FIN_TOP_Z - 0.1, max(zc) + ELEV_VROD_TRAVEL))
         print(f'REAR WEB вырез под вертикальную тягу: z {cut[0]:.3f}…{cut[1]:.3f}')
+    # «большое отверстие у верха задней стенки» — сквозь него оболочка троса триммера идёт к механизму (27-38 2.B)
+    win = trim_sheath_window(lambda q: q.y - (rud_y(q.z) - 0.035), (cut[1] if cut else REAR_WEB_LOW_Z) + 0.01, FIN_TOP_Z + 0.05)
+    wins = []
+    if win:
+        win = (win[0], min(win[1], FIN_TOP_Z), win[2], win[3])
+        print(f'REAR WEB отверстие под трос триммера: x {win[2]:+.3f}…{win[3]:+.3f}, z {win[0]:.3f}…{win[1]:.3f}')
+        wins.append(win)
     if cut:
         web_plate(p, [(rud_y(z) - 0.035, z) for z in [z for z in zs_w if z < cut[0]] + [cut[0]]])
-        web_plate(p, [(rud_y(z) - 0.035, z) for z in [cut[1]] + [z for z in zs_w if z > cut[1]]])
+        web_with_windows(p, lambda z: rud_y(z) - 0.035, [cut[1]] + [z for z in zs_w if z > cut[1]], wins)
         mid = [cut[0] + (cut[1] - cut[0]) * i / 6 for i in range(7)]
         for sd in (1, -1):
             web_plate(p, [(rud_y(z) - 0.035, z) for z in mid], side=sd, x_in=ELEV_VROD_CUT_HW)
     else:
-        web_plate(p, [(rud_y(z) - 0.035, z) for z in zs_w])
+        web_with_windows(p, lambda z: rud_y(z) - 0.035, zs_w, wins)
     p.done()
     r = P('Vertical stabilizer rear web reinforcing rib', 'Усиливающая нервюра на задней поверхности задней стенки киля под верхним узлом навески руля направления',
           'frame', 'AMM 53-10 2.N, рис. 4')
@@ -1079,7 +1101,24 @@ def fin():
             cy = ELEV_VROD_Y_LOW_RIB
             inner = [V((0.018 * math.cos(a), cy + 0.05 * math.sin(a), FIN_LOW_Z)) for a in
                      [-math.pi / 4 + 2 * math.pi * i / len(outer) for i in range(len(outer))]]
-        plate_with_hole(p, outer, inner, (0, 0, 1), 0.005, 0)
+            plate_with_hole(p, outer, inner, (0, 0, 1), 0.005, 0)
+        else:
+            # отверстие под гибкий трос триммера (и другие трассы, идущие вверх по передней стенке)
+            ylo, yhi = min(q.y for q in outer), max(q.y for q in outer)
+
+            def half_at(y):
+                hw = fin_half(y, FIN_LOW_Z)
+                return hw if hw else (0.0, 0.0)
+
+            def inside(q):
+                h, xc = half_at(q.y)
+                return ylo + 0.008 < q.y < yhi - 0.008 and abs(q.x - xc) < h - 0.006
+
+            def room(q):
+                h, xc = half_at(q.y)
+                return min(h - abs(q.x - xc), q.y - ylo, yhi - q.y)
+            rc = wall_cuts(2, FIN_LOW_Z, inside, room)
+            plate_with_holes(p, outer, [cut_shape(c_, 2) for c_ in rc], (0, 0, 1), 0.005, 0)
         p.done()
     # верхняя опора руля: втулка с подшипником на задней стенке, снизу входит палец из передней кромки руля
     z = FIN_TOP_Z - 0.06

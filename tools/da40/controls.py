@@ -553,8 +553,8 @@ def relax_path(pts, r, fixed, margin=0.003, step=0.008, iters=80):
             if loc is not None and d - r < worst[0]:
                 worst = (d - r, tuple(round(v, 3) for v in q))
     print(f'RELAX {len(path)} точек, наименьший зазор {worst[0] * 1000:.1f} мм у {worst[1]}')
-    # прореживание: каждая 3-я точка (pipe скругляет)
-    return path[::3] + ([path[-1]] if (len(path) - 1) % 3 else [])
+    # через точку (шаг 16 мм): хорды на изгибах уходят от трассы меньше чем на 1 мм
+    return path[::2] + ([path[-1]] if (len(path) - 1) % 2 else [])
 
 
 TRIM_SHEATH = 'Elevator trim flexible cable (outer)'
