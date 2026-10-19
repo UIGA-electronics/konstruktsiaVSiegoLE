@@ -260,7 +260,9 @@ def build():
         line = [V((s * q.x, q.y, q.z)) for q in SPRING_LINE]
         exit_ = V((s * 0.80, 0.33, -0.168))           # над рессорой у уплотнительной панели (gear.py)
         lo, hi = (-0.82, -0.49, -0.23), (0.82, 0.36, 0.0)      # кран — на передней стороне полки шпангоута (y −0,45)
-        inside = route(v_out, dvo, exit_, (s, 0, 0), 0.0045, lo, hi)
+        # запас 3 мм под скругление углов (fillet 0,05 срезает углы ломаной планировщика): иначе шланг
+        # у клапана задевает ход тяги левой ручки по тангажу
+        inside = route(v_out, dvo, exit_, (s, 0, 0), 0.0075, lo, hi)
         pts = inside + line
         L_in = lib.path_len(inside)
         L = lib.path_len(pts)
