@@ -137,13 +137,13 @@ def routed(a, da, b, db, r, lo, hi, stub=0.03, hidden=True, relax=()):
     raise SystemExit(f'нет трассы {tuple(round(v, 3) for v in a)} → {tuple(round(v, 3) for v in b)}')
 
 
-def nozzle(name, ru, c, d, doc, r=0.03):
-    """Поворотное сопло: корпус за панелью и шаровая насадка."""
+def nozzle(name, ru, c, d, doc, r=0.03, behind=0.024):
+    """Корпус поворотного сопла за панелью с фланцем крепления; само сопло с шаровой насадкой в кабине — в модели
+    MSFS (vent_pilot.*), поэтому здесь только то, что за его задней гранью (behind от точки c)."""
     d = V(d).normalized()
     p = P(name, ru, 'plastic', doc)
-    cyl(p, c - d * 0.05, c, r * 0.9, 0, segs=24)
-    ring_tube(p, c, d, r * 1.25, r * 0.8, 0.006, 0, segs=24)
-    lib.sphere(p, c + d * 0.004, r * 0.75, 0, segs=18, rings=9)
+    cyl(p, c - d * 0.05, c - d * behind, r * 0.9, 0, segs=24)
+    ring_tube(p, c - d * (behind + 0.002), d, r * 1.15, r * 0.8, 0.004, 0, segs=24)
     p.done()
     return c - d * 0.05
 
@@ -204,7 +204,7 @@ def pilots():
         cyl(p, base - up * 0.006, port, 0.018, 0, segs=24)
         p.done()
         back = nozzle(f'Instrument panel air outlet {tag}', f'Поворотное сопло на приборной доске ({"пилот" if s > 0 else "второй пилот"}): наружный воздух от NACA-заборника',
-                      PANEL_VENT[s], V((0, 1, 0)), 'AMM 21-00 2.B(1), AFM 7.4.1')
+                      PANEL_VENT[s], V((0, 1, 0)), 'AMM 21-00 2.B(1), AFM 7.4.1', behind=0.031)
         lo, hi = (0.30, -1.18, 0.0), (0.56, -0.68, 0.56)
         if s < 0:
             lo, hi = (-hi[0], lo[1], lo[2]), (-lo[0], hi[1], hi[2])
@@ -268,7 +268,7 @@ def passengers():
         top = V((s * (INNER_RIB_X - 0.002), SIDE_HOLE[0], SIDE_HOLE[1]))
         d = V((-s * 0.3, 1, 0)).normalized()
         back = nozzle(f'Roll bar air outlet {tag}', f'Поворотное сопло в дуге безопасности ({"слева" if s > 0 else "справа"}) — воздух для пассажиров',
-                      ROLLBAR_VENT[s], d, 'AMM 21-00 2.B(2), AFM 7.4.1', r=0.024)
+                      ROLLBAR_VENT[s], d, 'AMM 21-00 2.B(2), AFM 7.4.1', r=0.024, behind=0.036)
         lo, hi = (0.40, -0.20, -0.10), (0.73, 0.32, 0.40)
         if s < 0:
             lo, hi = (-hi[0], lo[1], lo[2]), (-lo[0], hi[1], hi[2])
