@@ -81,12 +81,13 @@ def _miny(o):
 # на торце, рупор сигнализатора ниже PFD, влагоотстойники под креслом пилота — выше и вперёд, чтобы не
 # выходить под днище) и электрика (реле резервной батареи EECU — на полку; батарея и релейная коробка —
 # внутрь от борта: углами они выходили за обшивку)
-ELEC_CABLES = ('Battery (', 'External power cable', 'Starter cable', 'Main wiring harness', 'Alternator output', 'Alternator cable',
+ELEC_CABLES = ('Battery (', 'Starter cable', 'Main wiring harness', 'Alternator output', 'Alternator cable',
                'Alternator field', 'Alternator regulator control', 'ECU backup battery cable', 'ECU backup battery ground',
                'ECU backup relay', 'Engine harness', 'Cabin light feed', 'Wing lighting harness', 'Light feed', 'EECU harness:',
                'ECU bus →')
 LATER = {'pitot': lambda o: 'hose' in o.name.lower() or o.name.startswith(('Stall warning horn', 'GDC 74A pneumatic port', 'Water trap', 'Pitot heat wire')),
-         'electrical': lambda o: o.name.startswith(ELEC_CABLES + ('Main battery', 'Relay junction box', 'ECU backup battery', 'External power receptacle'))}
+         # разъём и реле внешнего питания и кабель между ними стоят на своих местах (кабель задан концами) — их обходят
+         'electrical': lambda o: o.name.startswith(ELEC_CABLES + ('Main battery', 'Relay junction box (battery relay, hot', 'ECU backup battery'))}
 TRIM, SYS, RT = cabin.setup(R, ('instruments', 'radio'), step=0.015, extra=GONE, skip=LATER)
 CHECKS = []
 
@@ -995,7 +996,11 @@ def build():
     pts = route(ant['nav'], (0, -1, 0), ports['nav'], (-1, 0, 0), 0.0025, *TAIL, step=0.02, hidden=False)
     cable('Coax: NAV antenna → splitter', 'Коаксиальный кабель: антенна VOR/LOC/GS — по килю и хвостовой балке к разветвителю', pts, 0.0025, 'rg400', col=COL_R, ends='bnc')
     way = V((0.05, 2.30, 0.38))                  # над стойкой авионики: из хвоста — в кабину под пол
-    pts = route(ant['ny163'], (0, 0, -1), way, (0, -1, 0), 0.003, (-0.50, 2.20, -0.14), (0.50, 5.50, 1.40), step=0.02, hidden=False)
+    # у кольцевого шпангоута 2 — ниже его пояса (30 мм от обшивки): вплотную к обшивке пояс не вырезать
+    top2 = R.hit(V((0.03, 3.15, 0.10)), V((0, 0, 1)))[0]
+    via2 = V((0.03, 3.15, top2.z - 0.055))
+    pts = route(ant['ny163'], (0, 0, -1), via2, (0, -1, 0), 0.003, (-0.50, 2.20, -0.14), (0.50, 5.50, 1.40), step=0.02, hidden=False)
+    pts = pts[:-1] + route(via2, (0, -1, 0), way, (0, -1, 0), 0.003, (-0.50, 2.20, -0.14), (0.50, 5.50, 1.40), step=0.02, hidden=False)
     pts2 = route(way, (0, -1, 0), wx_ant, (-1, 0, 0), 0.003, (-0.52, 0.40, -0.26), (0.52, 2.60, 0.62), step=0.02)
     cable('Stormscope antenna cable → WX-500', 'Кабель антенны NY-163 к процессору WX-500: по килю, хвостовой балке и под полом', pts + pts2[1:], 0.003, 'shield', col=COL_R)
     pts = route(rear['elt']['ant'], (0, -1, 0), rear['elt_ant'], (0, 1, 0), 0.0025, (-0.36, 1.75, -0.10), (-0.04, 2.25, 0.50), step=0.01, hidden=False)

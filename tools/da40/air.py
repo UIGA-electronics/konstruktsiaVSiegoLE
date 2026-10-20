@@ -137,13 +137,13 @@ def routed(a, da, b, db, r, lo, hi, stub=0.03, hidden=True, relax=()):
     raise SystemExit(f'нет трассы {tuple(round(v, 3) for v in a)} → {tuple(round(v, 3) for v in b)}')
 
 
-def nozzle(name, ru, c, d, doc, r=0.03):
-    """Поворотное сопло: корпус за панелью и шаровая насадка."""
+def nozzle(name, ru, c, d, doc, r=0.03, behind=0.024):
+    """Корпус поворотного сопла за панелью с фланцем крепления; само сопло с шаровой насадкой в кабине — в модели
+    MSFS (vent_pilot.*), поэтому здесь только то, что за его задней гранью (behind от точки c)."""
     d = V(d).normalized()
     p = P(name, ru, 'plastic', doc)
-    cyl(p, c - d * 0.05, c, r * 0.9, 0, segs=24)
-    ring_tube(p, c, d, r * 1.25, r * 0.8, 0.006, 0, segs=24)
-    lib.sphere(p, c + d * 0.004, r * 0.75, 0, segs=18, rings=9)
+    cyl(p, c - d * 0.05, c - d * behind, r * 0.9, 0, segs=24)
+    ring_tube(p, c - d * (behind + 0.002), d, r * 1.15, r * 0.8, 0.004, 0, segs=24)
     p.done()
     return c - d * 0.05
 
@@ -204,7 +204,7 @@ def pilots():
         cyl(p, base - up * 0.006, port, 0.018, 0, segs=24)
         p.done()
         back = nozzle(f'Instrument panel air outlet {tag}', f'Поворотное сопло на приборной доске ({"пилот" if s > 0 else "второй пилот"}): наружный воздух от NACA-заборника',
-                      PANEL_VENT[s], V((0, 1, 0)), 'AMM 21-00 2.B(1), AFM 7.4.1')
+                      PANEL_VENT[s], V((0, 1, 0)), 'AMM 21-00 2.B(1), AFM 7.4.1', behind=0.031)
         lo, hi = (0.30, -1.18, 0.0), (0.56, -0.68, 0.56)
         if s < 0:
             lo, hi = (-hi[0], lo[1], lo[2]), (-lo[0], hi[1], hi[2])
@@ -268,7 +268,7 @@ def passengers():
         top = V((s * (INNER_RIB_X - 0.002), SIDE_HOLE[0], SIDE_HOLE[1]))
         d = V((-s * 0.3, 1, 0)).normalized()
         back = nozzle(f'Roll bar air outlet {tag}', f'Поворотное сопло в дуге безопасности ({"слева" if s > 0 else "справа"}) — воздух для пассажиров',
-                      ROLLBAR_VENT[s], d, 'AMM 21-00 2.B(2), AFM 7.4.1', r=0.024)
+                      ROLLBAR_VENT[s], d, 'AMM 21-00 2.B(2), AFM 7.4.1', r=0.024, behind=0.036)
         lo, hi = (0.40, -0.20, -0.10), (0.73, 0.32, 0.40)
         if s < 0:
             lo, hi = (-hi[0], lo[1], lo[2]), (-lo[0], hi[1], hi[2])
@@ -372,10 +372,15 @@ def heating():
         tag = 'LH' if s > 0 else 'RH'
         grille(f'Passenger floor heat outlet {tag}', f'Решётка обогрева ног пассажира {"слева" if s > 0 else "справа"} на стенке тоннеля',
                walls[s][0], walls[s][1], 'AMM 21-00 рис. 1', w=0.07, h=0.03, depth=0.03)
-    port = dv + V((0.02, 0, -ds.z / 2))
+    # стенки «шляпы» для планировщика не препятствие (их режет structure.py), и шланг уходил внутрь её правой стенки:
+    # до переднего главного шпангоута — справа от «шляпы», под полом второго пилота; сквозь шпангоут — в окно у
+    # x −0,18 (рядом — поперечный воздуховод и тросы руля направления), дальше — к тройнику в тоннеле
+    port = dv + V((-0.025, 0, -ds.z / 2))
     inlet = (tee_a + tee_b) / 2 - V((0, 0.035, 0))
-    pts = routed(port, (0, 0, -1), inlet, (0, 1, 0), 0.016, (-0.45, -1.18, -0.26), (0.45, y + 0.05, 0.10),
-                 stub=0.015, relax=[(inlet, 0.035)])
+    via = V((-0.18, -0.045, -0.20))
+    pts = routed(port, (0, 0, -1), via, (0, 1, 0), 0.016, (-0.45, -1.18, -0.26), (-0.10, -0.03, 0.10), stub=0.015)
+    pts = pts[:-1] + routed(via, (0, 1, 0), inlet, (0, 1, 0), 0.016, (-0.45, -0.06, -0.26), (0.45, y + 0.05, 0.10),
+                            stub=0.015, relax=[(inlet, 0.035)])
     scat('Passenger floor heat duct', 'Тёплый воздух к ногам пассажиров: под полом кабины к тоннелю за передними креслами',
          pts, 0.016, 0.06, 'hot', 'AMM 21-00 рис. 1', allow=0.03)
     # тросы от рычагов CABIN HEAT и DEFROST/FLOOR на центральной консоли

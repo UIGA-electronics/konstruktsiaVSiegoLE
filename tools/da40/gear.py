@@ -140,10 +140,12 @@ def main_gear(s):
           'block', 'AMM 32-10 рис. 1')
     top_s = zc + SPRING_T / 2
     z_blk0 = top_s + 0.012
-    blk = V((s * (X_RIB_C + 0.05), SPRING_Y, z_blk0 + 0.022))
-    box(b, blk, (0.10, 0.07, 0.044), Matrix.Identity(3), 0, bevel=0.004)
+    # высота блока 24 мм: над ним под полом центроплана проходят тросы руля направления (z −0,164…−0,156, x ±0,068…0,08)
+    BLK_H = 0.024
+    blk = V((s * (X_RIB_C + 0.05), SPRING_Y, z_blk0 + BLK_H / 2))
+    box(b, blk, (0.10, 0.07, BLK_H), Matrix.Identity(3), 0, bevel=0.003)
     for dy in (-0.022, 0.022):                                                    # стяжные болты в нервюру
-        q = V((s * (X_RIB_C + 0.03), SPRING_Y + dy, blk.z + 0.008))
+        q = V((s * (X_RIB_C + 0.03), SPRING_Y + dy, blk.z))
         cyl(b, q, q - V((s * 0.04, 0, 0)), 0.004, b.m(M['steel']), segs=10)
         hexa(b, q, q + V((s * 0.006, 0, 0)), 0.011, b.m(M['steel']))
         hexa(b, q - V((s * 0.046, 0, 0)), q - V((s * 0.052, 0, 0)), 0.011, b.m(M['steel']))
@@ -161,7 +163,7 @@ def main_gear(s):
         box(b, V((axis.x + 0.012 * math.cos(a), axis.y + 0.012 * math.sin(a), nut_top - 0.017)),
             (0.006, 0.006, 0.006), Matrix.Rotation(a, 3, 'Z'), b.m(M['steel']))
     cyl(b, V((axis.x - 0.018, axis.y, nut_top - 0.017)), V((axis.x + 0.018, axis.y, nut_top - 0.017)), 0.0015, b.m(M['steel']), segs=6)  # шплинт
-    head = V((axis.x, axis.y, blk.z + 0.022))
+    head = V((axis.x, axis.y, blk.z + BLK_H / 2))
     hexa(b, head, head + V((0, 0, 0.008)), 0.030, b.m(M['steel']))               # головка внутреннего болта
     cyl(b, head, V((axis.x, axis.y, nut_top - 0.02)), 0.0095, b.m(M['steel']), segs=14)
     b.done()
