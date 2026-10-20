@@ -143,7 +143,8 @@ def lines():
             if o.parent is None:
                 o.location.z -= R.lift
         bpy.context.view_layer.update()
-        mine = [o for o in got if o.type == 'MESH' and LINE_RE.search(o.name) and not NOT_LINE.search(o.name)]
+        mine = [o for o in got if o.type == 'MESH' and (LINE_RE.search(o.name) or g == 'controls-addon' and 'idler lever' in o.name)
+                and not NOT_LINE.search(o.name)]                       # промежуточные качалки у стенок тоже ходят сквозь них
         if g == 'controls-addon':
             # тяги ходят: сечение стенки берём во всех позах всех клипов — вырез охватывает весь ход
             for o, vs in swept(got, mine).items():

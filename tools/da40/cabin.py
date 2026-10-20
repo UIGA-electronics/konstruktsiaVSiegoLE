@@ -19,7 +19,7 @@ LAYERS = os.environ.get('LAYERS', '/home/user/da40src/out2')
 BUILT = ('fuel', 'brakes', 'gear', 'pitot', 'engine', 'cooling', 'induction', 'oil', 'air', 'equipment', 'wing', 'controls-addon', 'electrical',
          'instruments', 'radio')
 SOURCE_SYSTEMS = ('Flight controls',)
-STRUCT_SOLID = re.compile(r'hinge|bracket|stop\b|stop |bearing|channel|bolt|insert|plate|jacking|mooring|lug', re.I)
+STRUCT_SOLID = re.compile(r'hinge|bracket|stop\b|stop |bearing|channel|bolt|insert|plate|jacking|mooring|lug|carbon caps', re.I)
 
 # глаза пилотов, камера сзади по центру, низко у колен — как заглядывают в нишу для ног на сайте
 EYES = [V(e) for e in ((0, 0.25, 0.78), (0.28, 0.15, 0.78), (-0.28, 0.15, 0.78), (0.3, 0.0, 0.5), (-0.3, 0.0, 0.5),
@@ -41,7 +41,9 @@ def systems_bvh(R, own, extra=(), skip=None):
     пересобраны после этого слоя (их трассы уступят место)."""
     own = (own,) if isinstance(own, str) else tuple(own or ())
     objs = [o for c in bpy.data.collections['DA40 Systems'].children if c.name in SOURCE_SYSTEMS
-            for o in c.all_objects if o.type == 'MESH' and o.name not in extra]
+            for o in c.all_objects if o.type in ('MESH', 'CURVE') and o.name not in extra and o.name not in ref.REPLACED]
+    # тросы руля направления, S-образные трубки педалей и трубки-направляющие в модели MSFS — кривые с толщиной:
+    # без них планировщики прокладывали трассы прямо сквозь тросы
     new, keep = [], []
     for g in BUILT:
         f = os.path.join(LAYERS, f'da40-{g}-raw.glb')
