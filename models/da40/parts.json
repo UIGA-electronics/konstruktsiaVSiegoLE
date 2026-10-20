@@ -26,7 +26,7 @@
     "parts": 112,
     "meshes": 112,
     "clips": [],
-    "mb": 0.78,
+    "mb": 0.8,
     "built": "tools/da40/fuel.py"
   },
   {
@@ -35,7 +35,7 @@
     "parts": 55,
     "meshes": 55,
     "clips": [],
-    "mb": 0.52,
+    "mb": 0.53,
     "built": "tools/da40/electrical.py"
   },
   {
@@ -53,7 +53,7 @@
     "parts": 47,
     "meshes": 47,
     "clips": [],
-    "mb": 0.28,
+    "mb": 0.29,
     "built": "tools/da40/avionics.py"
   },
   {
@@ -95,10 +95,10 @@
   {
     "file": "da40-induction.glb",
     "title": "Наддув и выхлоп",
-    "parts": 13,
-    "meshes": 13,
+    "parts": 16,
+    "meshes": 16,
     "clips": [],
-    "mb": 0.12,
+    "mb": 0.18,
     "built": "tools/da40/powerplant.py"
   },
   {
