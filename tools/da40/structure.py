@@ -267,10 +267,11 @@ def wall_cuts(axis, pos, inside, room, gap=0.004, half=0.008):
             if len(g) < 4 and name not in LINE_R:
                 continue
             c = sum(g, V()) / len(g)
-            if max((q - c).length for q in g) > 0.06:
+            # промежуточная качалка в коробчатом лонжероне на ходу выходит за его стенку длинным плечом — паз во весь ход
+            if max((q - c).length for q in g) > (0.12 if 'idler lever' in name else 0.06):
                 print(f'CUT ALONG {name}: сечение {2 * max((q - c).length for q in g):.3f} м — трасса идёт вдоль стенки, выреза нет')
                 continue
-            pad = LINE_R.get(name, 0.0) + (gap * 2 if re.search(r'push rod|cable', name, re.I) and 'Bowden' not in name else gap)
+            pad = LINE_R.get(name, 0.0) + (gap * 2 if re.search(r'push rod|cable|idler lever', name, re.I) and 'Bowden' not in name else gap)
             cuts.append([_hull_of(g, pad, axis), [name]])
     merged = True
     while merged:
