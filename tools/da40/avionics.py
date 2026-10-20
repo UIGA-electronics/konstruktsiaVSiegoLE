@@ -81,12 +81,13 @@ def _miny(o):
 # на торце, рупор сигнализатора ниже PFD, влагоотстойники под креслом пилота — выше и вперёд, чтобы не
 # выходить под днище) и электрика (реле резервной батареи EECU — на полку; батарея и релейная коробка —
 # внутрь от борта: углами они выходили за обшивку)
-ELEC_CABLES = ('Battery (', 'External power cable', 'Starter cable', 'Main wiring harness', 'Alternator output', 'Alternator cable',
+ELEC_CABLES = ('Battery (', 'Starter cable', 'Main wiring harness', 'Alternator output', 'Alternator cable',
                'Alternator field', 'Alternator regulator control', 'ECU backup battery cable', 'ECU backup battery ground',
                'ECU backup relay', 'Engine harness', 'Cabin light feed', 'Wing lighting harness', 'Light feed', 'EECU harness:',
                'ECU bus →')
 LATER = {'pitot': lambda o: 'hose' in o.name.lower() or o.name.startswith(('Stall warning horn', 'GDC 74A pneumatic port', 'Water trap', 'Pitot heat wire')),
-         'electrical': lambda o: o.name.startswith(ELEC_CABLES + ('Main battery', 'Relay junction box', 'ECU backup battery', 'External power receptacle'))}
+         # разъём и реле внешнего питания и кабель между ними стоят на своих местах (кабель задан концами) — их обходят
+         'electrical': lambda o: o.name.startswith(ELEC_CABLES + ('Main battery', 'Relay junction box (battery relay, hot', 'ECU backup battery'))}
 TRIM, SYS, RT = cabin.setup(R, ('instruments', 'radio'), step=0.015, extra=GONE, skip=LATER)
 CHECKS = []
 
