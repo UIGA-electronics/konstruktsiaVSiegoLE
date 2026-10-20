@@ -373,7 +373,8 @@ def build():
     p_ext = ports[4]
     wp = V((BATT.x + BATT_SIZE.x / 2 + 0.016, p_ext.y + 0.024, BATT.z + BATT_SIZE.z / 2 + 0.032))
     pts = route(ext_in, ext_d, wp, (0, 0, 1), 0.005, *rear, stub=0.02, relax=[(ext_in, 0.03)], step=0.008)
-    pts = pts + [wp + V((-0.006, 0, 0.040)), p_ext + V((0, 0.026, 0)), p_ext]
+    # от точки над батареей к клемме — тоже планировщиком: здесь же проходит кабель грозопеленгатора (avionics.py)
+    pts = pts + route(wp, (0, 0, 1), p_ext + V((0, 0.026, 0)), (0, -1, 0), 0.005, *rear, stub=0.012, relax=[(p_ext, 0.03)], step=0.006)[1:] + [p_ext]
     cable('External power cable to external power relay', 'Кабель от разъёма наземного питания к реле внешнего питания', pts, 0.005, 'power', 'AMM 24-40')
     # к двигателю: стартер
     fwd = ((-0.50, -1.19, -0.27), (0.50, 2.40, 0.70))
