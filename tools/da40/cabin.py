@@ -7,6 +7,7 @@
 авионика исходника заменены слоями electrical, instruments и radio.
 """
 import os
+import re
 
 import bpy
 from mathutils import Vector as V
@@ -18,6 +19,7 @@ LAYERS = os.environ.get('LAYERS', '/home/user/da40src/out2')
 BUILT = ('fuel', 'brakes', 'gear', 'pitot', 'engine', 'cooling', 'induction', 'oil', 'air', 'equipment', 'wing', 'controls-addon', 'electrical',
          'instruments', 'radio')
 SOURCE_SYSTEMS = ('Flight controls',)
+STRUCT_SOLID = re.compile(r'hinge|bracket|stop\b|stop |bearing|channel|bolt|insert|plate|jacking|mooring|lug', re.I)
 
 # глаза пилотов, камера сзади по центру, низко у колен — как заглядывают в нишу для ног на сайте
 EYES = [V(e) for e in ((0, 0.25, 0.78), (0.28, 0.15, 0.78), (-0.28, 0.15, 0.78), (0.3, 0.0, 0.5), (-0.3, 0.0, 0.5),
@@ -54,6 +56,15 @@ def systems_bvh(R, own, extra=(), skip=None):
         new += got
         drop = (skip or {}).get(g)
         keep += [o for o in got if o.type == 'MESH' and not (drop and drop(o))]
+    # силовой набор (structure.py строится последним и вырезает в стенках проходы под трассы) — препятствие только
+    # своими сплошными деталями: узлы навески, кронштейны, упоры, подшипники, швеллер, болты, вставки
+    f = os.path.join(LAYERS, 'da40-structure-raw.glb')
+    if 'structure' not in own and os.path.exists(f):
+        before = set(bpy.data.objects)
+        bpy.ops.import_scene.gltf(filepath=f)
+        got = [o for o in bpy.data.objects if o not in before]
+        new += got
+        keep += [o for o in got if o.type == 'MESH' and STRUCT_SOLID.search(o.name)]
     for o in new:
         if o.parent is None:
             o.location.z -= R.lift

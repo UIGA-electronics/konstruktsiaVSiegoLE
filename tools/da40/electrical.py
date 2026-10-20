@@ -306,9 +306,15 @@ def cb_panel():
     lo, hi = CB_PANEL
     p = P('Circuit-breaker bus bars (rear of the instrument panel)', 'Шины за панелью автоматов защиты справа на приборной доске: металлические полосы, соединяющие ряды автоматов',
           'copper', 'AMM 24-60')
-    for z in (0.395, 0.435, 0.475, 0.515):
-        box(p, V(((lo.x + hi.x) / 2, lo.y - 0.012, z)), (hi.x - lo.x - 0.01, 0.002, 0.010), Matrix.Identity(3), 0)
-    box(p, V(((lo.x + hi.x) / 2, lo.y - 0.004, (lo.z + hi.z) / 2)), (hi.x - lo.x, 0.004, hi.z - lo.z), Matrix.Identity(3), p.m(M['black']))
+    # по группам автоматов на панели (надписи MSFS): сверху ряд EECU BUS, слева ESSENTIAL BUS (три ряда) и MAIN BUS
+    # (два ряда), справа внизу AVIONICS BUS; справа вверху между группами — поворотное сопло вентиляции (air.py),
+    # за ним шин и подложки нет
+    x0, xm, xe = lo.x, -0.395, -0.435                 # край панели, граница ESSENTIAL/MAIN — AVIONICS, конец ряда EECU
+    rows = [(0.536, xe, hi.x), (0.505, xm, hi.x), (0.473, xm, hi.x), (0.441, xm, hi.x), (0.408, x0, hi.x), (0.378, x0, hi.x)]
+    for z, xa, xb in rows:
+        box(p, V(((xa + xb) / 2, lo.y - 0.012, z)), (xb - xa - 0.01, 0.002, 0.010), Matrix.Identity(3), 0)
+    for (xa, xb, za, zb) in ((x0, hi.x, lo.z, 0.425), (xm, hi.x, 0.425, hi.z), (xe, xm, 0.522, hi.z)):
+        box(p, V(((xa + xb) / 2, lo.y - 0.004, (za + zb) / 2)), (xb - xa, 0.004, zb - za), Matrix.Identity(3), p.m(M['black']))
     p.done()
     # реле шин за доской под автоматами (AMM 24-60: avionics master relay, essential tie relay)
     for nm, ru, x in (('Avionics master relay', 'Реле шины авионики: включается выключателем AVIONIC MASTER, подаёт питание основной шины на шину авионики', -0.355),

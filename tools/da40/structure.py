@@ -236,21 +236,25 @@ def _hull_of(g, pad, axis, k=16):
     return _hull2(pts)
 
 
-def wall_cuts(axis, pos, inside, room, gap=0.004):
+def wall_cuts(axis, pos, inside, room, gap=0.004, half=0.008):
     """Вырезы в стенке — плоскости {axis = pos}: [(центр, описанный радиус, имена трасс, V(), контур)];
     контур — выпуклая оболочка сечений трасс с припуском (тяги управления сняты во всех позах — lines → swept,
     поэтому вырез под тягу охватывает весь её ход); вырезы, которые ближе 4 мм друг к другу, сливаются в один
-    по общей оболочке; room(q) — сколько места от точки q до края стенки (контур поджимается внутрь)."""
+    по общей оболочке; room(q) — сколько места от точки q до края стенки (контур поджимается внутрь).
+    Сечения снимаются на плоскости стенки и на ±half от неё (толщина стенки и окантовки): трасса, идущая
+    сквозь стенку наискось, на поверхностях стенки смещена и иначе задевала бы кромку выреза."""
     u, w = _uw(axis)
     cuts = []                                        # [оболочка (u, w), имена]
     for name, vs, es in lines():
         hits = []
-        for a, b in es:
-            da, db = vs[a][axis] - pos, vs[b][axis] - pos
-            if (da < 0) != (db < 0):
-                q = vs[a].lerp(vs[b], da / (da - db))
-                if inside(q):
-                    hits.append(q)
+        for off in (-half, 0.0, half):
+            for a, b in es:
+                da, db = vs[a][axis] - pos - off, vs[b][axis] - pos - off
+                if (da < 0) != (db < 0):
+                    q = vs[a].lerp(vs[b], da / (da - db))
+                    if inside(q):
+                        q[axis] = pos
+                        hits.append(q)
         groups = []                                  # сечения трассы: связные группы точек
         for q in hits:
             near = [g for g in groups if any((q - w_).length < 0.02 for w_ in g)]
@@ -662,25 +666,36 @@ def top_hat():
     def cap(xa, xb, ya, yb, n):
         loft(p, [[V((xa, y, hat_top(y) - t)), V((xb, y, hat_top(y) - t)), V((xb, y, hat_top(y))), V((xa, y, hat_top(y)))]
                  for y in [ya + (yb - ya) * i / n for i in range(n + 1)]], 0, smooth=False)
-    # окна в полке: под рычаг руля высоты и под оболочку троса триммера — она уходит под пол под пультом
-    # (AMM 27-38 2.B); окно троса — по самой трассе (слой управления)
+    # окна в полке: под рычаг руля высоты и под трассы, которые уходят из канала вверх — под пульт или к штуцерам
+    # перегородки (оболочка троса триммера, AMM 27-38 2.B; шланги подачи и обратки у перегородки); окна — по самим трассам
     slots = [HAT_LEVER_SLOT]
-    hits = []
     for name, vs, es in lines():
-        if not name.startswith('Elevator trim flexible cable (outer)'):
-            continue
-        for off in (-t, -t / 2, 0.0):
+        hits = []
+        for off in (-t - 0.003, -t / 2, 0.003):
             for ia, ib in es:
                 qa, qb = vs[ia], vs[ib]
-                if not (HAT_Y[0] < qa.y < HAT_Y[1] and HAT_X[0] < qa.x < HAT_X[1]):
+                if not (HAT_Y[0] + 0.01 < qa.y < HAT_Y[1] - 0.01 and HAT_X[0] + 0.006 < qa.x < HAT_X[1] - 0.006):
                     continue
                 da, db = qa.z - (hat_top(qa.y) + off), qb.z - (hat_top(qb.y) + off)
                 if (da < 0) != (db < 0):
                     hits.append(qa.lerp(qb, da / (da - db)))
-    if hits:
-        tr = (min(q.x for q in hits) - 0.006, max(q.x for q in hits) + 0.006, min(q.y for q in hits) - 0.006, max(q.y for q in hits) + 0.006)
-        print(f'HAT окно под трос триммера: x {tr[0]:+.3f}…{tr[1]:+.3f}, y {tr[2]:+.3f}…{tr[3]:+.3f}')
-        slots.append(tr)
+        if hits:
+            tr = [min(q.x for q in hits) - 0.006, max(q.x for q in hits) + 0.006, min(q.y for q in hits) - 0.006, max(q.y for q in hits) + 0.006]
+            if tr[3] - tr[2] > 0.15:
+                print(f'HAT {name}: идёт вдоль полки, окна нет')
+                continue
+            print(f'HAT окно x {tr[0]:+.3f}…{tr[1]:+.3f}, y {tr[2]:+.3f}…{tr[3]:+.3f}: {name}')
+            slots.append(tr)
+    # окна, перекрывающиеся по длине профиля, — в одно (полка режется полосами поперёк)
+    slots.sort(key=lambda sl: sl[2])
+    merged = [list(slots[0])]
+    for sl in slots[1:]:
+        m = merged[-1]
+        if sl[2] < m[3] + 0.004:
+            merged[-1] = [min(m[0], sl[0]), max(m[1], sl[1]), m[2], max(m[3], sl[3])]
+        else:
+            merged.append(list(sl))
+    slots = [tuple(m) for m in merged]
     xa, xb = HAT_X[0] - 0.005, HAT_X[1] + 0.005
     y_lo = HAT_Y[0]
     for sx0, sx1, sy0, sy1 in sorted(slots, key=lambda sl: sl[2]):
