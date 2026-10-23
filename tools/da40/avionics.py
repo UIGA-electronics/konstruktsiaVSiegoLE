@@ -378,6 +378,7 @@ def shelf_units():
     box(p, V((0.03, -0.928, SHELF_Z + 0.014)), (0.52, 0.004, 0.028), I3, 0)       # отбортовка вдоль передней кромки
     p.done()
     for name, c, sz in (('ECU backup relay', ECU_RELAY, (0.056, 0.046, 0.044)),          # места деталей, которые ставят
+                        ('ECU backup relay cable entry', ECU_RELAY + V((0, 0.038, 0)), (0.026, 0.030, 0.026)),
                         ('main battery', V((0.240, 1.892, 0.035)), (0.15, 0.19, 0.18)),    # electrical.py и pitot.py
                         ('relay junction box', V((0.240, 1.787, 0.165)), (0.15, 0.08, 0.14)),
                         ('external power receptacle', V((0.35, 1.86, 0.04)), (0.12, 0.07, 0.07)),
@@ -595,15 +596,18 @@ def trim_servo():
     p = P('Pitch trim chain gear at the handwheel', 'Звёздочка на колесе триммера, цепь и верхняя звёздочка карданного вала '
           'на подшипнике в кронштейне правой рамы узла штурвальчика', 'steel', 'AMM 22-10 2.D; 27-38 рис. 1', COL_I)
     for q, r, n, x0, x1 in ((s_up, 0.016, 16, -0.0065, -0.0095), (s_mid, 0.010, 10, xc + 0.0015, xc - 0.0015)):
-        cyl(p, V((x0, q.y, q.z)), V((x1, q.y, q.z)), r - 0.0015, 0, segs=24)
+        if q is s_up:                                                                         # на болте колеса — кольцо
+            ring_tube(p, V((xc, q.y, q.z)), V((1, 0, 0)), r - 0.0015, 0.0042, abs(x1 - x0), 0, segs=24)
+        else:
+            cyl(p, V((x0, q.y, q.z)), V((x1, q.y, q.z)), r - 0.0015, 0, segs=24)
         for k in range(n):
             t = 2 * math.pi * (k + 0.5) / n
             d = V((0, math.sin(t), math.cos(t)))
             box(p, V((xc, q.y, q.z)) + d * (r - 0.0006), (0.0022, abs(x1 - x0), 0.0024), basis(d, up=V((1, 0, 0))), 0)
-    cyl(p, V((-0.0055, s_up.y, s_up.z)), V((-0.0065, s_up.y, s_up.z)), 0.008, 0, segs=16)       # ступица на колесе
-    for k in range(3):                                                                            # винты к колесу
+    ring_tube(p, V((-0.006, s_up.y, s_up.z)), V((1, 0, 0)), 0.008, 0.0042, 0.001, 0, segs=16)    # ступица на колесе
+    for k in range(3):                                                                            # винты к колесу (за шайбами пакета)
         t = 2 * math.pi * k / 3
-        q = s_up + V((0, 0.0105 * math.sin(t), 0.0105 * math.cos(t)))
+        q = s_up + V((0, 0.0125 * math.sin(t), 0.0125 * math.cos(t)))
         cyl(p, V((-0.0095, q.y, q.z)), V((-0.0105, q.y, q.z)), 0.0018, 0, segs=8)
     # цепь: внешние касательные двух окружностей в плоскости x = xc, дуги по звёздочкам
     c1, c2, r1, r2 = V((0, s_up.y, s_up.z)), V((0, s_mid.y, s_mid.z)), 0.016, 0.010
