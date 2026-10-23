@@ -378,6 +378,7 @@ def shelf_units():
     box(p, V((0.03, -0.928, SHELF_Z + 0.014)), (0.52, 0.004, 0.028), I3, 0)       # отбортовка вдоль передней кромки
     p.done()
     for name, c, sz in (('ECU backup relay', ECU_RELAY, (0.056, 0.046, 0.044)),          # места деталей, которые ставят
+                        ('ECU backup relay cable entry', ECU_RELAY + V((0, 0.038, 0)), (0.026, 0.030, 0.026)),
                         ('main battery', V((0.240, 1.892, 0.035)), (0.15, 0.19, 0.18)),    # electrical.py и pitot.py
                         ('relay junction box', V((0.240, 1.787, 0.165)), (0.15, 0.08, 0.14)),
                         ('external power receptacle', V((0.35, 1.86, 0.04)), (0.12, 0.07, 0.07)),
@@ -585,19 +586,60 @@ def trim_servo():
     for sg in (-1, 1):
         lib.cyl(p, s_serv + V((0, 0, sg * 0.016)), s_low + V((0, 0, sg * 0.012)), 0.0025, p.m(M['black']), segs=6)
     p.done()
-    # звёздочка у штурвальчика (справа) и нижний вал
-    s_up = HANDWHEEL + V((-0.014, 0, 0))
-    s_mid = V((-0.03, HANDWHEEL.y, s_low.z))
-    p = P('Pitch trim chain gear at the handwheel', 'Звёздочка и цепь справа от штурвальчика триммера: от карданного вала к штурвальчику', 'steel', 'AMM 22-10 2.D', COL_I)
-    for q, r in ((s_up, 0.020), (s_mid, 0.012)):
-        lib.cyl(p, q - V((0.003, 0, 0)), q + V((0.003, 0, 0)), r, 0, segs=18)
-    for sg in (-1, 1):
-        a = s_up + V((0, sg * 0.020, 0))
-        b = s_mid + V((0, sg * 0.012, 0))
-        lib.cyl(p, a, b, 0.0025, p.m(M['black']), segs=6)
+    # звёздочка у штурвальчика — на правом торце колеса, между колесом и фрикционным пакетом (узел AMM 27-38 рис. 1,
+    # controls.py). Цепь идёт между рамами узла вниз, впереди оси зубчатого сектора, к верхней звёздочке карданного
+    # вала («chain gear next to the trim wheel on the right side»): её вал — в подшипнике кронштейна на правой раме,
+    # под нижней кромкой рамы
+    xc = -0.008
+    s_up = V((xc, HANDWHEEL.y, HANDWHEEL.z))
+    s_mid = V((xc, -0.250, -0.020))
+    p = P('Pitch trim chain gear at the handwheel', 'Звёздочка на колесе триммера, цепь и верхняя звёздочка карданного вала '
+          'на подшипнике в кронштейне правой рамы узла штурвальчика', 'steel', 'AMM 22-10 2.D; 27-38 рис. 1', COL_I)
+    for q, r, n, x0, x1 in ((s_up, 0.016, 16, -0.0065, -0.0095), (s_mid, 0.010, 10, xc + 0.0015, xc - 0.0015)):
+        if q is s_up:                                                                         # на болте колеса — кольцо
+            ring_tube(p, V((xc, q.y, q.z)), V((1, 0, 0)), r - 0.0015, 0.0042, abs(x1 - x0), 0, segs=24)
+        else:
+            cyl(p, V((x0, q.y, q.z)), V((x1, q.y, q.z)), r - 0.0015, 0, segs=24)
+        for k in range(n):
+            t = 2 * math.pi * (k + 0.5) / n
+            d = V((0, math.sin(t), math.cos(t)))
+            box(p, V((xc, q.y, q.z)) + d * (r - 0.0006), (0.0022, abs(x1 - x0), 0.0024), basis(d, up=V((1, 0, 0))), 0)
+    ring_tube(p, V((-0.006, s_up.y, s_up.z)), V((1, 0, 0)), 0.008, 0.0042, 0.001, 0, segs=16)    # ступица на колесе
+    for k in range(3):                                                                            # винты к колесу (за шайбами пакета)
+        t = 2 * math.pi * k / 3
+        q = s_up + V((0, 0.0125 * math.sin(t), 0.0125 * math.cos(t)))
+        cyl(p, V((-0.0095, q.y, q.z)), V((-0.0105, q.y, q.z)), 0.0018, 0, segs=8)
+    # цепь: внешние касательные двух окружностей в плоскости x = xc, дуги по звёздочкам
+    c1, c2, r1, r2 = V((0, s_up.y, s_up.z)), V((0, s_mid.y, s_mid.z)), 0.016, 0.010
+    u = (c2 - c1).normalized()
+    nrm = V((0, -u.z, u.y))
+    sa = (r1 - r2) / (c2 - c1).length
+    loop = []
+    for sg in (1, -1):
+        w = u * sa + nrm * sg * math.sqrt(1 - sa * sa)
+        loop.append((c1 + w * r1, c2 + w * r2, w))
+    (a1, b1, w1), (a2, b2, w2) = loop
+
+    def arc(c, r, wa, wb, up):
+        ta, tb = math.atan2(wa.y, wa.z), math.atan2(wb.y, wb.z)
+        tm = math.atan2(up.y, up.z)
+        span = (tb - ta) % (2 * math.pi)
+        if abs(((tm - ta) % (2 * math.pi))) > span:     # дуга через сторону up
+            span -= 2 * math.pi
+        return [c + V((0, r * math.sin(ta + span * k / 16), r * math.cos(ta + span * k / 16))) for k in range(17)]
+    path = arc(c1, r1, w2, w1, -u) + arc(c2, r2, w1, w2, u) + [c1 + w2 * r1]
+    sweep(p, [V((xc, q.y, q.z)) for q in path], 0.0022, p.m(M['black']), segs=6)
+    # кронштейн подшипника снаружи правой рамы (рама — x −0,027, толщина 3 мм) и вал звёздочки
+    xb = -0.0296
+    box(p, V((xb, s_mid.y, -0.010)), (0.002, 0.026, 0.044), None, 0)
+    for z in (0.004, 0.008):
+        for dy in (-0.008, 0.008):
+            lib.sphere(p, V((xb - 0.001, s_mid.y + dy, z)), 0.0018, 0, segs=8, rings=4)        # заклёпки к раме
+    cyl(p, V((xb + 0.001, s_mid.y, s_mid.z)), V((xb - 0.006, s_mid.y, s_mid.z)), 0.008, p.m(M['alu']), segs=16)  # корпус подшипника
+    cyl(p, V((xc + 0.0015, s_mid.y, s_mid.z)), V((xb - 0.008, s_mid.y, s_mid.z)), 0.004, 0, segs=12)
     p.done()
-    # карданный вал: от нижней звёздочки у штурвальчика до звёздочки на машине
-    a, b = s_mid - V((0.02, 0, 0)), s_low + V((0.02, 0, 0))
+    # карданный вал: от вала верхней звёздочки (за кронштейном) до звёздочки на машине
+    a, b = V((xb - 0.008, s_mid.y, s_mid.z)), s_low + V((0.02, 0, 0))
     p = P('Pitch trim cardan shaft', 'Карданный вал триммера с двумя шарнирами; верхний шарнир крепится к детали, рассчитанной на разрушение при аварийной посадке', 'steel', 'AMM 22-10 7.', COL_I)
     j1, j2 = a + (b - a) * 0.08, a + (b - a) * 0.92
     lib.cyl(p, a, j1, 0.005, 0, segs=12)
@@ -938,7 +980,11 @@ def build():
     pts = route(gea_conn, (1, 0, 0), J, (0, -1, 0), 0.004, *PANEL, step=0.01, hidden=False)
     cable('GEA 71 harness', 'Жгут GEA 71: RS-485 к обоим GIA 63W', pts, 0.004, 'shield')
     # общий жгут: за доской → под полом → короб авионики
-    pts = route(J, (0, -1, 0), ports['fwd'][0], (0, 1, 0), 0.009, *CAB, step=0.02)
+    # у заднего главного шпангоута — посередине между его углепластиковым поясом (низ z −0,050) и тягами элеронов
+    # (верх z −0,082): вырез в стенке под жгут с окантовкой не упирается в пояс
+    via = V((0.027, 0.575, -0.065))
+    pts = route(J, (0, -1, 0), via, (0, 1, 0), 0.009, *CAB, step=0.02)
+    pts = pts[:-1] + route(via, (0, 1, 0), ports['fwd'][0], (0, 1, 0), 0.009, *CAB, step=0.02)
     cable('G1000 main harness (instrument panel → avionics rack)', 'Общий жгут G1000 от приборной доски к стойке авионики: питание от шины авионики, HSDB, ARINC 429, RS-232 и RS-485',
           pts, 0.009, 'harness', col=COL_R)
     # GRS 77 — к GIA (короткий), GMU 44 — к GRS 77
@@ -999,7 +1045,11 @@ def build():
     # у кольцевого шпангоута 2 — ниже его пояса (30 мм от обшивки): вплотную к обшивке пояс не вырезать
     top2 = R.hit(V((0.03, 3.15, 0.10)), V((0, 0, 1)))[0]
     via2 = V((0.03, 3.15, top2.z - 0.055))
-    pts = route(ant['ny163'], (0, 0, -1), via2, (0, -1, 0), 0.003, (-0.50, 2.20, -0.14), (0.50, 5.50, 1.40), step=0.02, hidden=False)
+    # у кольцевого шпангоута 3 — под кромкой его пояса (у оси пояс 30 мм, до обшивки выемку не прорезать)
+    top3 = R.hit(V((0.0, 4.25, 0.10)), V((0, 0, 1)))[0]
+    via3 = V((0.0, 4.25, top3.z - 0.048))
+    pts = route(ant['ny163'], (0, 0, -1), via3, (0, -1, 0), 0.003, (-0.50, 2.20, -0.14), (0.50, 5.50, 1.40), step=0.02, hidden=False)
+    pts = pts[:-1] + route(via3, (0, -1, 0), via2, (0, -1, 0), 0.003, (-0.50, 2.20, -0.14), (0.50, 5.50, 1.40), step=0.02, hidden=False)
     pts = pts[:-1] + route(via2, (0, -1, 0), way, (0, -1, 0), 0.003, (-0.50, 2.20, -0.14), (0.50, 5.50, 1.40), step=0.02, hidden=False)
     pts2 = route(way, (0, -1, 0), wx_ant, (-1, 0, 0), 0.003, (-0.52, 0.40, -0.26), (0.52, 2.60, 0.62), step=0.02)
     cable('Stormscope antenna cable → WX-500', 'Кабель антенны NY-163 к процессору WX-500: по килю, хвостовой балке и под полом', pts + pts2[1:], 0.003, 'shield', col=COL_R)
