@@ -424,8 +424,10 @@
       }
       /* Окошко с планом лежит над всем полем, а не внутри полосы: полоса с
          анимацией появления — свой слой, и окошко внутри неё уходило под
-         самолёт. Окошко едет за левым краем раскрывающейся полосы. */
+         самолёт. Окошко встаёт к краю поля со стороны полосы, а самолёт
+         отъезжает в свободную часть поля и не прячется под окошком. */
       card.setAttribute('data-tone', s.id);
+      txt.innerHTML = '<b>' + esc(s.title || s.short) + '</b>' + (s.note ? '<p>' + esc(s.note) + '</p>' : '') + '<span class="go">Открыть раздел</span>';
       /* окошки планов по системам: искать только среди своих — внутри плана
          у контуров систем тоже есть data-sys, и поиск по нему находил контур */
       if (!plans[s.id]) {
@@ -435,32 +437,72 @@
       }
       Object.keys(plans).forEach(function (k) { plans[k].hidden = k !== s.id; });
       card.classList.add('is-on');
-      follow(b);
+      card.classList.remove('is-tick'); void card.offsetWidth; card.classList.add('is-tick');
+      place(i);
       requestAnimationFrame(function () { requestAnimationFrame(function () { b.classList.add('is-in'); }); });
     }
-    var card = el('div', 'field-pv'), tFollow = null, plans = {};
+    var card = el('div', 'field-pv'), txt = el('div', 'pv-text'), plans = {}, tEdge = null;
+    var plane = field.querySelector('.field-plane'), phone = window.matchMedia('(max-width:720px)');
     card.setAttribute('aria-hidden', 'true');
-    field.appendChild(card);
-    function follow(b) {
-      var t0 = performance.now();
-      cancelAnimationFrame(tFollow);
-      (function step() {
-        var fr = field.getBoundingClientRect(), br = b.getBoundingClientRect();
-        var w = Math.min(320, Math.max(220, br.width - 24), fr.width - 24), x = Math.max(12, Math.min(br.left - fr.left + 12, fr.width - w - 12));
-        card.style.transform = 'translateX(' + Math.round(x) + 'px)';
-        card.style.width = w + 'px';
-        /* до конца раскрытия полосы (0,38 с) и с запасом: соседние полосы
-           сужаются в то же время, и левый край приходит на место последним */
-        if (performance.now() - t0 < 1000) tFollow = requestAnimationFrame(step);
-      })();
+    card.appendChild(txt);
+    field.insertBefore(card, field.querySelector('.field-keys'));
+    /* Место окошка и самолёта. Окошко — у левого края поля, если полоса в
+       левой половине, иначе у правого. Самолёт сдвигается (и при нехватке
+       места уменьшается) так, чтобы целиком стоять рядом с окошком.
+       Двигаются только translate и scale — без пересчёта вёрстки. */
+    function place(i) {
+      if (phone.matches) { plane.style.translate = plane.style.scale = ''; edge(); return; }
+      var fw = field.clientWidth, br = bands[i].getBoundingClientRect(), fr = field.getBoundingClientRect();
+      var w = Math.round(Math.max(220, Math.min(320, fw * .28))), left = br.left + br.width / 2 - fr.left < fw / 2;
+      var x = left ? 12 : fw - w - 12;
+      card.style.width = w + 'px';
+      card.style.transform = 'translateX(' + x + 'px)';
+      var pw = plane.offsetWidth, room = fw - w - 36, sc = Math.min(1, room / pw), ps = pw * sc;
+      var dx = left ? Math.max(0, w + 24 + ps / 2 - fw / 2) : Math.min(0, fw - w - 24 - ps / 2 - fw / 2);
+      plane.style.translate = Math.round(dx) + 'px 0';
+      plane.style.scale = sc < 1 ? sc.toFixed(3) : '';
+      /* полосы под окошком встают на место за 0,38 с — тогда и сверяем цвета */
+      clearTimeout(tEdge);
+      tEdge = setTimeout(edge, 420);
+    }
+    /* Окошко цвета полосы может лечь на полосу того же или близкого цвета
+       (или на фон страницы того же тона) и слиться с ней. Тогда у окошка
+       появляется обводка цвета подписи — белая на тёмных красках, тёмная
+       на светлых. Цвета сравниваются в пикселях, как их видит глаз. */
+    var cv = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+    function rgb(c) { cv.clearRect(0, 0, 1, 1); cv.fillStyle = c; cv.fillRect(0, 0, 1, 1); return cv.getImageData(0, 0, 1, 1).data; }
+    function near(a, b) {
+      var r = (a[0] + b[0]) / 2, d0 = a[0] - b[0], d1 = a[1] - b[1], d2 = a[2] - b[2];
+      return Math.sqrt((2 + r / 256) * d0 * d0 + 4 * d1 * d1 + (2 + (255 - r) / 256) * d2 * d2) < 150;
+    }
+    function edge() {
+      if (cur < 0) return;
+      var mine = rgb(getComputedStyle(bands[cur]).backgroundColor), cr = card.getBoundingClientRect(), hit = false;
+      if (phone.matches) hit = near(mine, rgb(getComputedStyle(document.body).backgroundColor));
+      else [].forEach.call(bands, function (b) {
+        var r = b.getBoundingClientRect();
+        if (r.right > cr.left && r.left < cr.right && near(mine, rgb(getComputedStyle(b).backgroundColor))) hit = true;
+      });
+      card.classList.toggle('is-edge', hit);
     }
     function stop() {
-      if (!demo) return;
+      if (!demo || phone.matches) return;
       demo = false; cur = -1; want = -1;
       bandsEl.classList.remove('is-demo');
       card.classList.remove('is-on');
+      plane.style.translate = plane.style.scale = '';
       show(-1);
     }
+    /* на телефоне окошко — карточка под полем: касание открывает раздел,
+       смахивание листает системы */
+    var tx = null;
+    listen(card, 'touchstart', function (e) { tx = e.touches[0].clientX; lastTouch = Date.now(); }, { passive: true });
+    listen(card, 'touchend', function (e) {
+      if (tx === null) return;
+      var dx = e.changedTouches[0].clientX - tx; tx = null;
+      if (Math.abs(dx) > 40) { cur = (cur + (dx < 0 ? 1 : bands.length - 1)) % bands.length; show(cur); nextAt = Date.now() + 3500; }
+    });
+    listen(card, 'click', function () { if (phone.matches && cur >= 0) location.hash = '#' + sys[cur].id; });
     /* Наведение мыши на полосу показывает то же превью. Чтобы раскрытие не
        мерцало, полоса меняется только при настоящем движении мыши и после
        задержки 120 мс: раздвинувшаяся полоса сдвигает соседние, курсор
@@ -484,7 +526,10 @@
       want = -1; clearTimeout(tWant);
       tLeave = setTimeout(function () { hover = false; stop(); }, 250);
     });
+    var lastTouch = 0;
+    listen(field, 'touchstart', function () { lastTouch = Date.now(); card.classList.remove('is-tick'); }, { passive: true });
     function wake(e) {
+      if (phone.matches) return;
       last = Date.now();
       /* движение мыши над полосами — это наведение, а не конец показа */
       if (e && e.type === 'pointermove' && bandsEl.contains(e.target)) return;
@@ -500,6 +545,15 @@
     tick = setInterval(function () {
       if (!field.isConnected) return;
       var now = Date.now();
+      /* телефон: карточка под полем видна всегда и листает системы, пока
+         поле на экране; касание поля останавливает листание на 8 с */
+      if (phone.matches) {
+        if (!demo) { demo = true; bandsEl.classList.add('is-demo'); plane.style.translate = plane.style.scale = ''; cur = -1; nextAt = 0; }
+        if (cur < 0) { cur = 0; show(0); nextAt = now + 3500; return; }
+        if (document.hidden || !seen || now - lastTouch < 8000 || now < nextAt) return;
+        cur = (cur + 1) % bands.length; show(cur); nextAt = now + 3500;
+        return;
+      }
       if (hover || document.hidden || !seen || now - last < 6000) return;
       if (!demo) { demo = true; bandsEl.classList.add('is-demo'); cur = -1; nextAt = 0; }
       if (now >= nextAt) {
@@ -542,7 +596,7 @@
         /* огни как на разбеге: навигационные горят (правая законцовка — зелёный,
            левая — красный), стробы на законцовках дают двойную вспышку,
            посадочная и рулёжная фары в левом крыле включены */
-        '<div class="field-plane"><img src="assets/img/da40-hero.webp?v=128" width="1600" height="617" alt="Учебный самолёт DA&nbsp;40&nbsp;NG — 3D-модель пособия">' +
+        '<div class="field-plane"><img src="assets/img/da40-hero.webp?v=152" width="1600" height="617" alt="Учебный самолёт DA&nbsp;40&nbsp;NG — 3D-модель пособия">' +
         '<span class="lt lt-nav lt-green" style="left:4.1%;top:29.6%"></span>' +
         '<span class="lt lt-nav lt-red" style="left:92.8%;top:43.8%"></span>' +
         '<span class="lt lt-strobe" style="left:4.5%;top:30.2%"></span>' +

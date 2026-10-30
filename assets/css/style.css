@@ -420,7 +420,7 @@ tbody th{ font-weight:500; }
 .pl-info b{ font-weight:500; }
 .pl-hint{ color:#5f6a82; }
 .pl-stepn{ display:inline-block; min-width:3.2em; color:#5f6a82; font-variant-numeric:tabular-nums; }
-.pl-list{ list-style:none; margin:0; padding:6px 18px 4px; columns:2; column-gap:28px; }
+.figure-frame .pl-list{ list-style:none; margin:0; padding:6px 18px 4px; columns:2; column-gap:28px; }
 .pl-list li{ margin:0; padding:0; }
 .figure-frame .pl-list li::before{ content:none; display:none; }
 .figure-frame .pl-list li::marker{ content:none; }
@@ -433,9 +433,48 @@ tbody th{ font-weight:500; }
 .pl-list button.is-on{ font-weight:500; }
 .pl-list button.is-on b{ color:var(--acc); }
 .figure-frame.is-plate .fig-controls{ margin:0; padding:12px 18px 14px; }
+/* Кинематическая схема (ГОСТ 2.770): толщины линий — в пикселях экрана,
+   значки и подписи растут на узком экране множителем --k (figures.js) */
+.kin-stage svg{ touch-action:pan-y; cursor:ew-resize; overflow:visible; }
+.kin-stage svg *{ vector-effect:non-scaling-stroke; }
+.k-ctx path{ fill:none; stroke:#a3abba; stroke-width:1; }
+.k-ctx path.k-sec{ stroke:#5f6a82; stroke-width:1.2; }
+.kin-stage .k-t{ fill:#5f6a82; font:400 calc(12px * var(--k,1)) var(--font); }
+.kin-stage .k-t.is-h{ fill:#141a26; font-size:calc(13.5px * var(--k,1)); font-weight:500; }
+.k-link{ fill:none; stroke:#141a26; stroke-width:2.6; stroke-linecap:round; stroke-linejoin:round; }
+.k-rod{ stroke:#141a26; stroke-width:2; stroke-linecap:round; }
+.k-rod.is-cable{ stroke-width:1.2; }
+.k-surf{ fill:#fff; stroke:#141a26; stroke-width:1.3; stroke-linejoin:round; }
+.k-knob{ fill:#141a26; }
+.k-joint{ fill:#fff; stroke:#141a26; stroke-width:1.3; }
+.k-fix .k-stand{ fill:none; stroke:#141a26; stroke-width:1.3; }
+.k-fix .k-base{ stroke:#141a26; stroke-width:1.3; }
+.k-fix .k-hatch{ stroke:#141a26; stroke-width:.8; }
+.k-guide circle{ fill:#fff; stroke:#141a26; stroke-width:1.1; }
+.k-lead line{ stroke:#141a26; stroke-width:.7; }
+.k-lead line.is-on{ stroke:var(--acc); stroke-width:1.2; }
+/* выделенное звено — цветом системы, остальное чуть уходит в тень */
+.kin-stage.has-sel .k-body:not(.is-on), .kin-stage.has-sel .k-rod:not(.is-on), .kin-stage.has-sel .k-guide:not(.is-on){ opacity:.45; }
+.k-body.is-on .k-link, .k-rod.is-on{ stroke:var(--acc); stroke-width:3.4; }
+.k-body.is-on .k-surf{ fill:color-mix(in oklab, var(--acc) 30%, #fff); stroke:var(--acc); }
+.k-guide.is-on circle{ stroke:var(--acc); stroke-width:2; }
+/* ручки-захваты: прозрачный круг под палец; у ведущего звена — пульсирующее кольцо */
+.k-hand{ fill:transparent; stroke:none; cursor:grab; touch-action:none; }
+.k-hand.is-main{ stroke:var(--acc); stroke-width:1.6; stroke-dasharray:3 4; fill:color-mix(in oklab, var(--acc) 10%, transparent); animation:k-pulse 2.4s ease-in-out infinite; transform-box:fill-box; transform-origin:center; }
+.figure-frame.is-drag .k-hand, .figure-frame.is-drag svg{ cursor:grabbing; }
+@keyframes k-pulse{ 0%,100%{ transform:scale(1); opacity:.9; } 50%{ transform:scale(1.18); opacity:.45; } }
+@media (prefers-reduced-motion: reduce){ .k-hand.is-main{ animation:none; } }
+.kin-stage .pl-spot{ width:24px; height:24px; font-size:12px; }
+.k-out{ flex-basis:100%; order:9; }
+/* Переключатель вида рисунка: упрощённо или как в AMM */
+.fig-var{ display:inline-flex; margin:0 0 10px; border:1px solid color-mix(in oklab, var(--ink) 22%, transparent); }
+.fig-var button{ min-height:34px; padding:0 14px; border:0; background:none; color:var(--ink-2); font:inherit; font-size:14px; cursor:pointer; }
+.fig-var button + button{ border-left:1px solid color-mix(in oklab, var(--ink) 22%, transparent); }
+.fig-var button.is-on{ background:var(--ink); color:var(--bg); }
+.fig-var button:not(.is-on):hover{ color:var(--ink); }
 .pl-src{ margin-left:auto; font-size:13px; color:#5f6a82; }
 @media (max-width:720px){
-  .pl-list{ columns:1; padding:6px 12px 4px; }
+  .figure-frame .pl-list{ columns:1; padding:6px 12px 4px; }
   .pl-info{ padding:12px 12px 4px; }
   .figure-frame.is-plate .fig-controls{ padding:10px 12px 12px; }
   .pl-spot{ width:24px; height:24px; font-size:12px; }
@@ -859,13 +898,20 @@ tbody th{ font-weight:500; }
 .band.is-pv .band-pv{ display:flex; }
 .band.is-pv.is-in .band-pv{ opacity:1; transform:none; }
 .band-pv p{ margin:0; max-width:24em; font-size:14px; line-height:1.4; color:var(--on-acc); opacity:.86; }
-/* окошко с планом системы: над полем и самолётом, плашка цвета системы */
+/* окошко с планом системы: у края поля, плашка цвета системы; самолёт
+   отъезжает от него (translate и scale задаёт app.js) */
+/* точка масштаба — левый верх рамки: после translateX(-50%) это середина
+   самолёта, и уменьшенный самолёт остаётся по центру своего места */
+.field-plane{ transform-origin:0 0; transition:translate .5s var(--ease), scale .5s var(--ease); }
 .field-pv{ position:absolute; z-index:3; left:0; top:14px; padding:10px 12px; pointer-events:none; color:var(--on-acc);
   /* цвет плашки — цвет полосы: план и текст в цвете подписи полосы читаются на любом тоне */
   background:color-mix(in oklab, var(--acc) 92%, transparent); box-shadow:0 12px 30px rgba(0,0,0,.14);
   -webkit-backdrop-filter:blur(10px) saturate(1.2); backdrop-filter:blur(10px) saturate(1.2);
-  opacity:0; transition:opacity .2s var(--ease), background-color .2s var(--ease); }
+  opacity:0; transition:opacity .2s var(--ease), background-color .2s var(--ease), transform .45s var(--ease), box-shadow .2s var(--ease); }
 .field-pv.is-on{ opacity:1; }
+/* окошко легло на полосу близкого цвета — обводка цвета подписи, чтобы не слилось */
+.field-pv.is-edge{ box-shadow:0 0 0 2px var(--on-acc), 0 12px 30px rgba(0,0,0,.14); }
+.pv-text{ display:none; }
 .field-pv .plan{ width:100%; }
 .field-pv .plan .pl-outline path{ fill:none; stroke:currentColor; stroke-opacity:.9; stroke-width:1.5; }
 .field-pv .plan .pl-sys path{ fill:currentColor; fill-opacity:0; stroke:currentColor; stroke-opacity:0; pointer-events:none; }
@@ -874,15 +920,38 @@ tbody th{ font-weight:500; }
 .band-pv .go::after{ content:' →'; }
 .field-keys a.is-pv{ font-weight:500; }
 .field-keys a.is-pv::before{ outline:2px solid var(--ink); outline-offset:2px; }
-@media (prefers-reduced-motion: reduce){ .band, .band-pv, .field-pv{ transition:none; } }
+@media (prefers-reduced-motion: reduce){ .band, .band-pv, .field-pv, .field-plane{ transition:none; } }
 @keyframes plane-in{ from{ transform:translate(-56%, 6%); } to{ transform:translateX(-50%); } }
+@keyframes pv-tick{ from{ transform:scaleX(0); } to{ transform:scaleX(1); } }
+@media (prefers-reduced-motion: reduce){ .field-pv.is-tick::after{ animation:none; } }
 .field-keys{ display:none; }
 @media (max-width:720px){
   .field{ height:auto; }
   .bands{ position:relative; height:clamp(230px,68vw,300px); }
-  .band{ padding:0; animation:none; }
-  .band b,.band span,.band-pv,.field-pv{ display:none !important; }
-  .field-plane{ top:14px; width:108%; height:auto; animation:none; }
+  /* на телефоне полосы не меняют ширину (это пересчёт вёрстки на каждом
+     кадре и прыгающий самолёт): текущая полоса остаётся яркой, остальные
+     приглушены вуалью — анимируется только прозрачность */
+  .band{ padding:0; animation:none; transition:none; }
+  .bands.is-demo .band, .bands.is-demo .band.is-pv{ flex-grow:var(--w,1); }
+  .bands.is-demo .band::after{ opacity:.42; }
+  .bands.is-demo .band.is-pv::after{ opacity:0; }
+  .band b,.band span,.band-pv{ display:none !important; }
+  .field-plane{ top:14px; width:108%; height:auto; animation:none; translate:none; scale:none; }
+  /* карточка системы под полем: план слева, название и состав справа;
+     высота постоянная, чтобы страница под ней не прыгала */
+  .field-pv{ position:relative; top:auto; z-index:auto; display:grid; grid-template-columns:40% 1fr; gap:14px; align-items:center;
+    width:auto !important; min-height:150px; margin:14px var(--gut) 0; padding:14px; transform:none !important;
+    opacity:1; pointer-events:auto; cursor:pointer; overflow:hidden; box-shadow:none; -webkit-backdrop-filter:none; backdrop-filter:none;
+    background:var(--acc); -webkit-tap-highlight-color:transparent; }
+  .field-pv.is-edge{ box-shadow:0 0 0 2px var(--on-acc); }
+  .pv-text{ display:flex; flex-direction:column; gap:6px; order:2; min-width:0; }
+  .pv-text b{ font-size:17px; font-weight:500; line-height:1.2; letter-spacing:-.01em; }
+  .pv-text p{ margin:0; font-size:13.5px; line-height:1.35; opacity:.86; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+  .pv-text .go{ font-size:14px; }
+  .pv-text .go::after{ content:' →'; }
+  /* полоска времени до следующей системы */
+  .field-pv::after{ content:''; position:absolute; left:0; bottom:0; width:100%; height:3px; background:var(--on-acc); opacity:.45; transform:scaleX(0); transform-origin:left; }
+  .field-pv.is-tick::after{ animation:pv-tick 3.5s linear both; }
   /* под полем — подписи полос: цвет и система */
   .field-keys{ display:grid; grid-template-columns:1fr 1fr; gap:2px 16px; margin:16px 0 0; padding:0 var(--gut); list-style:none; }
   .field-keys a{ display:grid; grid-template-columns:14px 1fr; gap:10px; align-items:center; min-height:44px; color:var(--ink); font-size:15px; font-weight:400; line-height:1.25; text-decoration:none; }
@@ -945,3 +1014,32 @@ tbody th{ font-weight:500; }
 .topics li.is-ready .st{ font-weight:500; }
 .topics li.is-ready + li{ border-top:0; }
 @media (max-width:860px){ .topics{ grid-template-columns:1fr; } }
+/* заголовок вида схемы — над рисунком, одного размера на любом экране */
+.k-view{ padding:12px 14px 0; background:#fff; font-size:13.5px; font-weight:500; color:#141a26; }
+.kin-stage .pl-full{ top:auto; bottom:8px; }
+/* элементы упрощённых схем: оболочка троса, ролики, тандер, сектор, нагрузка тяг */
+.k-ctx path.k-sheath{ stroke:#c9ced8; stroke-width:7; stroke-linecap:round; stroke-linejoin:round; }
+.k-pulley circle{ fill:#fff; stroke:#141a26; stroke-width:1.2; }
+.k-pulley .k-axle{ fill:#141a26; stroke:none; }
+.k-pulley.is-on circle{ stroke:var(--acc); stroke-width:2; }
+.k-sect{ fill:none; stroke:#141a26; stroke-width:2; }
+.k-teeth{ fill:none; stroke:#141a26; stroke-width:3; stroke-dasharray:2 3; }
+.k-tb rect{ fill:#fff; stroke:#141a26; stroke-width:1.2; }
+.k-tb.is-on rect{ fill:var(--acc); stroke:var(--acc); }
+.k-wheel circle{ fill:#fff; stroke:#141a26; stroke-width:2; }
+.k-wheel path{ stroke:#141a26; stroke-width:1; }
+.k-wheel.is-on circle{ stroke:var(--acc); }
+.k-arrow{ fill:none; stroke:#141a26; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+.k-spring{ fill:none; stroke:#141a26; stroke-width:1.4; stroke-linejoin:round; }
+.k-spring.is-on{ stroke:var(--acc); stroke-width:2; }
+/* нагрузка тяги: растяжение синим, сжатие красным; тот же цвет у подписи */
+.k-load{ fill:none; stroke-width:4; stroke-linecap:round; opacity:.55; pointer-events:none; }
+.k-load.is-tens{ stroke:#2f6fd6; } .k-load.is-comp{ stroke:#d5452f; }
+.kin-stage .k-t.is-load{ font-size:calc(11.5px * var(--k,1)); font-weight:500; }
+.kin-stage .k-t.is-load.is-tens{ fill:#2f6fd6; } .kin-stage .k-t.is-load.is-comp{ fill:#d5452f; }
+.kin-stage .k-t.is-s{ fill:#5f6a82; }
+.kin-stage .k-t.is-b{ fill:#141a26; font-weight:500; }
+.k-tabs{ padding:10px 14px 0; background:#fff; }
+.k-sl{ display:flex; align-items:center; gap:8px; flex:1 1 220px; }
+.k-sl .fig-range{ min-width:110px; }
+.k-modes, .k-steps{ display:inline-flex; flex-wrap:wrap; gap:8px; }

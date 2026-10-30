@@ -96,7 +96,62 @@ var Render = (function () {
     return node;
   }
 
+  /* Рисунок в двух видах: упрощённая кинематическая схема и чертёж как в
+     AMM. Выбор вида общий для всех рисунков и запоминается: курсант
+     переключает один раз, а не на каждом рисунке. Вид монтируется при
+     первом показе — тяжёлый чертёж из модели не грузится, пока не нужен. */
+  var VAR_KEY = 'kile.figVar';
+  function figVar() { try { return +localStorage.getItem(VAR_KEY) || 0; } catch (e) { return 0; } }
+  function blockVariants(b) {
+    var node = el('figure', 'figure has-var');
+    var bar = el('div', 'fig-var');
+    bar.setAttribute('role', 'group');
+    bar.setAttribute('aria-label', 'Вид рисунка');
+    var slots = b.variants.map(function (v, i) {
+      var btn = el('button', '', v.label || (i ? 'Как в AMM' : 'Упрощённо'));
+      btn.type = 'button';
+      bar.appendChild(btn);
+      var slot = el('div', 'fig-slot');
+      var frame = el('div', 'figure-frame' + (v.name === 'model3d' ? ' is-3d' : ' is-sheet'));
+      frame.dataset.lazy = v.name;
+      if (v.opts) frame.dataset.opts = JSON.stringify(v.opts);
+      slot.appendChild(frame);
+      if (v.name !== 'model3d') slot.appendChild(el('div', 'figure-hint', 'Рисунок можно тянуть пальцем'));
+      if (v.caption || b.caption) slot.appendChild(el('figcaption', 'figure-cap', inline(v.caption || b.caption)));
+      node.appendChild(slot);
+      btn.addEventListener('click', function () {
+        try { localStorage.setItem(VAR_KEY, String(i)); } catch (e) { /* без памяти — только этот рисунок */ }
+        document.dispatchEvent(new CustomEvent('figvar', { detail: i }));
+      });
+      return { btn: btn, slot: slot, frame: frame };
+    });
+    node.insertBefore(bar, node.firstChild);
+    function pick(i) {
+      i = Math.min(i, slots.length - 1);
+      slots.forEach(function (s, j) {
+        s.btn.classList.toggle('is-on', j === i);
+        s.btn.setAttribute('aria-pressed', j === i ? 'true' : 'false');
+        s.slot.hidden = j !== i;
+      });
+      var f = slots[i].frame;
+      if (!f.dataset.figure) {
+        f.dataset.figure = f.dataset.lazy;
+        /* при первой отрисовке страницы монтирует роутер; позже — сами */
+        if (node.isConnected && window.Figures) Figures.mountAll(node);
+      }
+    }
+    function onVar(e) {
+      if (!node.isConnected && node.__seen) { document.removeEventListener('figvar', onVar); return; }
+      pick(e.detail);
+    }
+    document.addEventListener('figvar', onVar);
+    pick(figVar());
+    node.__seen = 1;
+    return node;
+  }
+
   function blockFigure(b) {
+    if (b.variants) return blockVariants(b);
     var node = el('figure', 'figure');
     var frame = el('div', 'figure-frame' + (b.name === 'model3d' ? ' is-3d' : ' is-sheet'));
     frame.dataset.figure = b.name;
