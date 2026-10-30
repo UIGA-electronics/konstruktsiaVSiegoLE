@@ -35,7 +35,7 @@ var Figures = (function () {
        появляется прокрутка вбок, а в колонке компьютера схема помещается. */
     var w = parseFloat(vb.split(/\s+/)[2]) || 520;
     return '<div class="figure-svg"><svg viewBox="' + vb +
-      '" style="min-width:' + Math.round(w * 0.88) + 'px" ' +
+      '" style="--minw:' + Math.round(w * 0.88) + 'px" ' +
       'role="img" preserveAspectRatio="xMidYMid meet">' + inner + '</svg></div>';
   }
 
@@ -44,16 +44,69 @@ var Figures = (function () {
     c.className = 'fig-controls';
     c.innerHTML = html;
     frame.appendChild(c);
+    fitText(frame);
+    scrub(frame, c.querySelector('.fig-range'));
     return c;
   }
 
+  /* Рисунок тянется пальцем или мышью: горизонтальный ход по схеме двигает
+     главный ползунок. Клик по кнопке или поверхности (короче 5 px) остаётся
+     кликом; вертикальный жест на телефоне прокручивает страницу. */
+  function scrub(frame, range) {
+    var svgEl = frame.querySelector('.figure-svg svg');
+    if (!range || !svgEl) return;
+    frame.classList.add('is-scrub');
+    var x0 = null, v0 = 0, live = false, id = null;
+    svgEl.addEventListener('pointerdown', function (e) {
+      if (e.button > 0) return;
+      x0 = e.clientX; v0 = +range.value; live = false; id = e.pointerId;
+    });
+    svgEl.addEventListener('pointermove', function (e) {
+      if (x0 === null || e.pointerId !== id) return;
+      var dx = e.clientX - x0;
+      if (!live) {
+        if (Math.abs(dx) < 5) return;
+        live = true;
+        try { svgEl.setPointerCapture(id); } catch (err) { /* указатель уже отпущен */ }
+      }
+      var w = svgEl.getBoundingClientRect().width || 1;
+      var span = +range.max - +range.min;
+      range.value = clamp(v0 + dx / w * span * 1.6, +range.min, +range.max);
+      range.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    function end() { x0 = null; live = false; }
+    svgEl.addEventListener('pointerup', end);
+    svgEl.addEventListener('pointercancel', end);
+  }
+
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+
+  /* Подписи схем на телефоне: схема сжата под ширину экрана, и шрифт в
+     единицах viewBox пропорционально мельчает. Множитель --zs возвращает
+     подписям читаемый размер (не больше чем в полтора раза — дальше они
+     начинают наезжать на детали). */
+  var fitObs = window.ResizeObserver ? new ResizeObserver(function (list) {
+    list.forEach(function (e) {
+      var el = e.target, vb = el.viewBox && el.viewBox.baseVal;
+      var w = el.getBoundingClientRect().width;
+      if (!vb || !w) return;
+      var z = window.innerWidth <= 720 ? clamp(vb.width / w * (el.closest('.amm-view') ? 0.9 : 0.72), 1, 1.5) : 1;
+      el.style.setProperty('--zs', z.toFixed(2));
+    });
+  }) : null;
+  function fitText(frame) {
+    if (!fitObs) return;
+    frame.querySelectorAll('.figure-svg svg, .amm-view svg').forEach(function (el) {
+      if (!el.__fit) { el.__fit = 1; fitObs.observe(el); }
+    });
+  }
 
   /* Бесконечная анимация, которая сама себя выключает:
      когда схема ушла с экрана — пауза, когда узел удалён из DOM — стоп.
      Без этого при переходе между страницами оставались бы работать
      невидимые циклы rAF (лишний расход батареи на телефоне). */
   function loop(frame, step) {
+    fitText(frame);
     if (reduced) { step(0); return; }
     var visible = true, raf = null, t = 0, io = null, dead = false;
 
@@ -162,18 +215,6 @@ var Figures = (function () {
       r1(x1) + ' ' + r1(y1) + 'L' + r1(x2) + ' ' + r1(y2) + 'M' + poly([a, [x2, y2], b]) + '"/>';
   }
 
-  /* Пружина зигзагом между двумя точками. */
-  function zig(x1, y1, x2, y2, n, amp) {
-    var dx = x2 - x1, dy = y2 - y1, L = Math.sqrt(dx * dx + dy * dy) || 1;
-    var nx = -dy / L, ny = dx / L, out = [[x1, y1]];
-    for (var i = 1; i < n; i++) {
-      var k = i / n, s = (i % 2 ? 1 : -1) * amp;
-      out.push([x1 + dx * k + nx * s, y1 + dy * k + ny * s]);
-    }
-    out.push([x2, y2]);
-    return 'M' + poly(out);
-  }
-
   /* Группа кнопок-переключателей: одна нажата, остальные отжаты. */
   function pick(frame, attr, cb) {
     var bs = frame.querySelectorAll('[' + attr + ']');
@@ -213,757 +254,1041 @@ var Figures = (function () {
   var AUTO = '<button class="fig-btn fig-auto" type="button">Авто</button>';
 
   /* ═══════════════════════════════════════════════════════
-     1. Общая цепочка «команда → поверхность» в трёх вариантах
-     ═══════════════════════════════════════════════════════ */
-  reg.chain = function (frame) {
-    var X = [8, 166, 324, 482], W = 132, Y = 44, H = 82;
-    var TITLE = ['Орган управления', 'Проводка', 'Привод', 'Поверхность'];
-    var s = '';
-    X.forEach(function (x, i) {
-      s += '<rect class="f-body" x="' + x + '" y="' + Y + '" width="' + W + '" height="' + H +
-        '" rx="10"/>' +
-        '<text x="' + (x + W / 2) + '" y="' + (Y + 60) + '" text-anchor="middle">' + TITLE[i] +
-        '</text><text class="t-sm" id="ch-s' + i + '" x="' + (x + W / 2) + '" y="' + (Y + 75) +
-        '" text-anchor="middle"></text>';
-      if (i < 3) {
-        var a = x + W + 2, b = X[i + 1] - 3;
-        s += '<path id="ch-c' + i + '" stroke-width="2.5" d="M' + a + ' 72H' + b + '"/>' +
-          '<path class="f-dim" stroke-width="2" d="M' + (b - 5) + ' 68l5 4-5 4"/>';
-      }
-    });
-    s +=
-      /* значки внутри блоков */
-      '<path class="f-dim" d="M52 88h44"/>' +
-      '<g id="ch-stick"><path class="f-ink" stroke-width="4" d="M74 88V62"/>' +
-      '<circle class="f-ink" cx="74" cy="57" r="6" fill="#fff"/></g>' +
-      '<circle class="f-metal" cx="74" cy="88" r="3.5"/>' +
-      '<g id="ch-rod"><path class="f-ink" stroke-width="3.5" d="M192 72H272"/>' +
-      '<circle class="f-metal" cx="192" cy="72" r="4"/><circle class="f-metal" cx="272" cy="72" r="4"/></g>' +
-      '<path id="ch-wire" class="f-sig f-flow" stroke-width="2.5" d="M186 72H278"/>' +
-      '<g id="ch-crank"><path class="f-metal" d="M372 60H408L390 86Z"/>' +
-      '<circle class="f-ink" cx="390" cy="68" r="3"/></g>' +
-      '<g id="ch-cyl"><rect class="f-body" x="350" y="62" width="62" height="20" rx="4"/>' +
-      '<g id="ch-pis"><rect class="f-metal" x="376" y="64" width="8" height="16"/>' +
-      '<path class="f-ink" stroke-width="3" d="M384 72h42"/></g></g>' +
-      '<path class="f-fix" d="M498 72q0-9 14-9h40v18h-40q-14 0-14-9z"/>' +
-      '<g id="ch-surf"><path class="f-mov" d="M552 63l44 9-44 9z"/></g>' +
-      '<circle class="f-metal" cx="552" cy="72" r="3"/>' +
-
-      /* вычислитель ЭДСУ: сигнал идёт через него */
-      '<g id="ch-cpu"><path class="f-sig f-flow" stroke-width="2.5" d="M232 44V20H250M370 20H390V42"/>' +
-      '<rect class="f-body" x="250" y="6" width="120" height="28" rx="6"/>' +
-      '<text id="ch-cput" x="310" y="24" text-anchor="middle">Вычислители</text></g>' +
-
-      /* источник мощности */
-      '<g id="ch-pow"><path class="f-blue f-flow" stroke-width="2.5" d="M390 156V128"/>' +
-      '<rect class="f-body" x="316" y="156" width="148" height="26" rx="6"/>' +
-      '<text class="t-sm" id="ch-pt" x="390" y="173" text-anchor="middle"></text></g>' +
-      '<g id="ch-mus"><path class="f-red f-flow" stroke-width="2.5" d="M120 128V160H350V128"/>' +
-      '<text class="t-sm" x="235" y="153" text-anchor="middle">мощность даёт сам пилот</text></g>' +
-
-      /* обратная связь по усилию */
-      '<path id="ch-fb" stroke-width="2.5" d="M548 128V194H60V128"/>' +
-      '<text class="t-sm" id="ch-fbt" x="304" y="210" text-anchor="middle"></text>';
-
-    frame.innerHTML = svg('0 0 622 218', s);
-    controls(frame,
-      '<button class="fig-btn is-on" data-ch="direct" type="button">Прямое</button>' +
-      '<button class="fig-btn" data-ch="booster" type="button">Бустерное</button>' +
-      '<button class="fig-btn" data-ch="fbw" type="button">ЭДСУ</button>' +
-      '<span class="fig-readout" id="ch-out"></span>');
-
-    var q = function (id) { return frame.querySelector('#' + id); };
-    var MODES = {
-      direct: {
-        s: ['ручка, педали', 'тяги, качалки, тросы', 'мышцы пилота', 'руль, элерон'],
-        c: ['f-ink', 'f-ink', 'f-ink'], cpu: false, pow: '', fb: true,
-        fbt: 'шарнирный момент руля передаётся обратно в руку пилота',
-        k: 1, lim: 1,
-        note: 'пилот сам отклоняет поверхность, связь двусторонняя'
-      },
-      booster: {
-        s: ['штурвал, педали', 'тяги к золотнику', 'гидроусилитель', 'руль, элерон'],
-        c: ['f-ink', 'f-ink', 'f-ink'], cpu: false, pow: 'гидросистема', fb: false,
-        fbt: 'обратного усилия от руля нет, его имитирует пружинный загружатель',
-        k: 0.08, lim: 1,
-        note: 'пилот задаёт положение, отклоняет поверхность гидравлика'
-      },
-      fbw: {
-        s: ['боковая ручка', 'электрические провода', 'электрогидропривод', 'руль, элерон'],
-        c: ['f-sig f-flow', 'f-dim', 'f-ink'], cpu: true, pow: 'гидро- и электросистемы',
-        fb: false, fbt: 'усилие на ручке создаёт пружина внутри неё',
-        k: 0.07, lim: 0.72,
-        note: 'вычислитель пересчитывает команду и при опасности ограничивает её'
-      }
-    };
-    var mode = 'direct', surf = 0;
-
-    function setMode(id) {
-      var m = MODES[mode = id];
-      m.s.forEach(function (t, i) { q('ch-s' + i).textContent = t; });
-      m.c.forEach(function (c, i) {
-        q('ch-c' + i).setAttribute('class', c);
-        q('ch-c' + i).style.opacity = (i === 1 && m.cpu) ? 0.15 : 1;
-      });
-      q('ch-rod').style.display = m.cpu ? 'none' : '';
-      q('ch-wire').style.display = m.cpu ? '' : 'none';
-      q('ch-crank').style.display = m.pow ? 'none' : '';
-      q('ch-cyl').style.display = m.pow ? '' : 'none';
-      q('ch-cpu').style.display = m.cpu ? '' : 'none';
-      q('ch-pow').style.display = m.pow ? '' : 'none';
-      q('ch-mus').style.display = m.pow ? 'none' : '';
-      q('ch-pt').textContent = m.pow;
-      q('ch-fb').setAttribute('class', m.fb ? 'f-red f-flow' : 'f-dim');
-      q('ch-fb').setAttribute('stroke-dasharray', m.fb ? '' : '5 6');
-      q('ch-fbt').textContent = m.fbt;
-      q('ch-out').textContent = m.note;
-    }
-    pick(frame, 'data-ch', setMode);
-    setMode('direct');
-
-    var stick = q('ch-stick'), rod = q('ch-rod'), crank = q('ch-crank');
-    var pis = q('ch-pis'), surfG = q('ch-surf'), cpuT = q('ch-cput');
-    loop(frame, function (t) {
-      var m = MODES[mode];
-      var v = Math.sin(t * 0.03);
-      var cmd = clamp(v, -m.lim, m.lim);
-      surf += (cmd - surf) * m.k;
-      stick.setAttribute('transform', 'rotate(' + r1(v * 18) + ' 74 88)');
-      rod.setAttribute('transform', 'translate(' + r1(v * 8) + ' 0)');
-      crank.setAttribute('transform', 'rotate(' + r1(v * 22) + ' 390 68)');
-      pis.setAttribute('transform', 'translate(' + r1(surf * 10) + ' 0)');
-      surfG.setAttribute('transform', 'rotate(' + r1(surf * 22) + ' 552 72)');
-      var lim = m.cpu && Math.abs(v) > m.lim;
-      cpuT.textContent = lim ? 'ограничение' : 'Вычислители';
-      cpuT.setAttribute('class', lim ? 't-red' : '');
-    });
-  };
-
-  /* ═══════════════════════════════════════════════════════
-     1б. Поверхности управления: вид сверху + сечение в движении
-     ═══════════════════════════════════════════════════════ */
-  reg.surfaces = function (frame) {
-    /* Вид сверху, нос слева. Крыло и стабилизатор рисуются в верхней
-       половине и зеркалятся вниз. Киль в проекции сверху не виден,
-       поэтому он «отогнут» вверх — обычная условность для таких схем.
-       k — как поверхность движется в сечении справа, g — группа. */
-    var PARTS = [
-      { id: 'ail', n: 'Элерон', k: 'hinge', g: 'main',
-        t: 'Основная система. Управление по крену.',
-        d: 'M243 49L256 34L261 39L248 54Z', m: 1 },
-      { id: 'flap', n: 'Закрылок', k: 'fowler', g: 'aux',
-        t: 'Вспомогательная. Увеличивает подъёмную силу на взлёте и посадке.',
-        d: 'M213 85L241 51L246 56L218 90Z', m: 1 },
-      { id: 'slat', n: 'Предкрылок', k: 'slat', g: 'aux',
-        t: 'Вспомогательная. Увеличивает критический угол атаки, не даёт потоку сорваться.',
-        d: 'M189 61L236 30L240 36L193 67Z', m: 1 },
-      { id: 'krug', n: 'Щиток Крюгера', k: 'krug', g: 'aux',
-        t: 'Вспомогательная. Пластинчатый предкрылок в корневой части крыла.',
-        d: 'M150 84L187 62L191 68L154 89Z', m: 1 },
-      { id: 'spl', n: 'Спойлер (интерцептор)', k: 'spoiler', g: 'aux',
-        t: 'Вспомогательная. Гасит подъёмную силу, тормозит, помогает элеронам по крену.',
-        d: 'M207 77L219 63L225 67L213 81ZM222 61L234 47L240 51L228 65Z', m: 1 },
-      { id: 'brk', n: 'Тормозной щиток', k: 'brake', g: 'aux',
-        t: 'Вспомогательная. Работает только на земле: сокращает пробег после посадки.',
-        d: 'M193 81L203 69L209 73L199 85Z', m: 1 },
-      { id: 'elev', n: 'Руль высоты', k: 'hinge', g: 'main',
-        t: 'Основная система. Управление по тангажу.',
-        d: 'M317 89L352 62L357 67L322 94Z', m: 1 },
-      { id: 'rud', n: 'Руль направления', k: 'hinge', g: 'main', sym: 1,
-        t: 'Основная система. Управление по курсу.',
-        d: 'M330 52L356 26L362 31L336 57Z', m: 0 }
-    ];
-    var FIXED = [
-      { id: 'stab', n: 'Стабилизатор', k: 'stab', g: 'aux',
-        t: 'Переставной стабилизатор: продольная балансировка самолёта.',
-        d: 'M302 86L340 56L352 61L316 89Z', m: 1 },
-      { id: 'fin', n: 'Киль', k: 'fixed', g: '', sym: 1,
-        t: 'Неподвижная часть вертикального оперения. Здесь показан отогнутым вверх.',
-        d: 'M310 55L348 22L356 26L330 53Z', m: 0 }
-    ];
-    var MOVE = {
-      hinge: 'отклоняется вверх и вниз на шарнирах',
-      fowler: 'выдвигается назад и отклоняется вниз',
-      slat: 'выдвигается вперёд и вниз, открывая щель',
-      krug: 'откидывается с нижней поверхности вперёд',
-      spoiler: 'поднимается над верхней поверхностью',
-      brake: 'на земле поднимается на большой угол',
-      stab: 'поворачивается целиком на небольшой угол',
-      fixed: 'неподвижен'
-    };
-
-    function mirror(d) {
-      return '<g transform="translate(0 192) scale(1 -1)">' + d + '</g>';
-    }
-
-    var inner =
-      '<path class="f-fix" d="M28 96Q36 84 80 84H332Q352 87 362 96Q352 105 332 108H80Q36 108 28 96Z"/>' +
-      '<path class="f-fix" d="M146 84L236 30L256 34L212 84Z"/>' +
-      mirror('<path class="f-fix" d="M146 84L236 30L256 34L212 84Z"/>') +
-      '<path class="f-dim" stroke-dasharray="4 4" d="M306 84h56"/>' +
-      '<path class="f-dim" stroke-dasharray="5 5" d="M24 96h344"/>';
-
-    FIXED.concat(PARTS).forEach(function (p) {
-      var cls = PARTS.indexOf(p) >= 0 ? 'sf' : 'sf sf-fix';
-      var g = '<path class="' + cls + '" data-p="' + p.id + '" d="' + p.d + '"/>';
-      inner += g + (p.m ? mirror(g) : '');
-    });
-    var ALL = FIXED.concat(PARTS);
-
-    inner += '<text class="t-sm" x="366" y="14" text-anchor="end">киль отогнут вверх</text>' +
-      '<text class="t-sm" x="34" y="126">вид сверху, нос слева</text>' +
-      /* окно сечения */
-      '<rect class="f-body" x="392" y="6" width="240" height="180" rx="10"/>' +
-      '<text id="sf-t" x="512" y="28" text-anchor="middle"></text>' +
-      '<path class="f-air f-flow" d="M400 64H626M400 150H626"/>' +
-      '<g id="sf-sec"></g>' +
-      '<text class="t-sm" id="sf-m" x="512" y="176" text-anchor="middle"></text>';
-
-    frame.innerHTML = svg('0 0 640 192', inner);
-    controls(frame,
-      '<button class="fig-btn" data-g="main" type="button">Основные</button>' +
-      '<button class="fig-btn" data-g="aux" type="button">Вспомогательные</button>' +
-      '<span class="fig-readout" id="sf-out">—</span>');
-
-    var out = frame.querySelector('#sf-out');
-    var sec = frame.querySelector('#sf-sec');
-    var title = frame.querySelector('#sf-t');
-    var mv = frame.querySelector('#sf-m');
-    var cur = PARTS[0];
-
-    function select(p) {
-      cur = p;
-      frame.querySelectorAll('.sf').forEach(function (x) {
-        x.classList.toggle('is-on', x.dataset.p === p.id);
-      });
-      out.innerHTML = '<b>' + p.n + '</b> — ' + p.t;
-      title.textContent = 'сечение: ' + p.n.toLowerCase();
-      mv.textContent = MOVE[p.k];
-    }
-    frame.querySelectorAll('.sf').forEach(function (el) {
-      el.addEventListener('click', function () {
-        ALL.forEach(function (x) { if (x.id === el.dataset.p) select(x); });
-      });
-    });
-    frame.querySelectorAll('[data-g]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        var on = !b.classList.contains('is-on');
-        frame.querySelectorAll('[data-g]').forEach(function (x) { x.classList.remove('is-on'); });
-        b.classList.toggle('is-on', on);
-        frame.querySelectorAll('.sf').forEach(function (x) {
-          var p = null;
-          ALL.forEach(function (y) { if (y.id === x.dataset.p) p = y; });
-          x.classList.toggle('is-grp', on && p && p.g === b.dataset.g);
-        });
-      });
-    });
-    select(cur);
-
-    /* Сечение: хорда 180 px, носок слева */
-    var SX = 410, SY = 108, SC = 180;
-    function sh(list, cls) { return '<path class="' + cls + '" d="' + closed(list) + '"/>'; }
-    function panel(u1, u2, upper, deg) {
-      var side = foilSide(SX, SY, SC, 0.12, 0.03, u1, u2, upper, 6);
-      var a = side[0], b = rot(side[6][0], side[6][1], a[0], a[1], deg);
-      return '<path class="f-blue" stroke-width="4.5" d="M' + poly([a, b]) + '"/>';
-    }
-    function draw(t) {
-      var p = cur, m = p.sym ? 0 : 0.03;
-      var e = (1 - Math.cos(t * 0.035)) / 2, sw = Math.sin(t * 0.035);
-      var full = foilPts(SX, SY, SC, 0.12, m, 0, 1);
-      var hx, hy, s = '';
-      switch (p.k) {
-        case 'hinge':
-          hx = SX + 0.75 * SC; hy = camY(SY, SC, m, 0.75);
-          s = sh(move(foilPts(SX, SY, SC, 0.12, m, 0.73, 1), hx, hy, sw * 20), 'f-mov') +
-            sh(foilPts(SX, SY, SC, 0.12, m, 0, 0.76), 'f-fix');
-          break;
-        case 'fowler':
-          hx = SX + 0.73 * SC; hy = camY(SY, SC, m, 0.73);
-          s = sh(move(foilPts(SX, SY, SC, 0.12, m, 0.73, 1), hx, hy, e * 30,
-            e * 0.18 * SC, e * 0.05 * SC), 'f-mov') +
-            sh(foilPts(SX, SY, SC, 0.12, m, 0, 0.76), 'f-fix');
-          break;
-        case 'slat':
-          hx = SX + 0.13 * SC; hy = camY(SY, SC, m, 0.13);
-          s = sh(foilPts(SX, SY, SC, 0.12, m, 0.1, 1), 'f-fix') +
-            sh(move(foilPts(SX, SY, SC, 0.12, m, 0, 0.13), hx, hy, -e * 22,
-              -e * 0.07 * SC, e * 0.03 * SC), 'f-mov');
-          break;
-        case 'krug':
-          s = sh(full, 'f-fix') + panel(0.04, 0.22, false, e * 125);
-          break;
-        case 'spoiler':
-          s = sh(full, 'f-fix') + panel(0.58, 0.74, true, -e * 40);
-          break;
-        case 'brake':
-          s = sh(full, 'f-fix') + panel(0.56, 0.72, true, -e * 60);
-          break;
-        case 'stab':
-          s = sh(move(full, SX + 0.3 * SC, SY, sw * 5), 'f-mov');
-          break;
-        default:
-          s = sh(full, 'f-fix');
-      }
-      sec.innerHTML = s;
-    }
-    loop(frame, draw);
-    frame.querySelectorAll('.sf').forEach(function (el) {
-      el.addEventListener('click', function () { if (reduced) draw(40); });
-    });
-  };
-
-  /* ═══════════════════════════════════════════════════════
-     1в. Три вида проводки в движении
-     ═══════════════════════════════════════════════════════ */
+     1в. Три вида проводки на одном самолёте — DA 40 NG
+         (AMM 6.02.15: 27-30 руль высоты, 27-20 руль направления,
+         27-38 триммер руля высоты)
+     ═══════════════════════════════════════════════════════
+     Жёсткая тяга — руль высоты: ручка на торсионе → короткая тяга →
+     промежуточный рычаг на переднем главном шпангоуте → длинная тяга в трёх
+     роликовых направляющих → качалка внизу киля → вертикальная тяга →
+     кабанчик руля высоты (Т-образное оперение).
+     Трос — руль направления: педали → тросы кабины (наружный через ролик
+     на пультовом шпангоуте) → коромысло под центральным пультом → тросы
+     фюзеляжа с тандерами, перекрещенные в хвосте → нижний кронштейн руля.
+     Гибкий трос — триммер: штурвальчик → шестерня → зубчатый сектор с
+     внутренними зубьями (он же указатель) → сердечник троса в оболочке →
+     тяги триммера. Все тяги и тросы считаются нерастяжимыми: каждое следующее
+     звено ставится по длине предыдущего. */
   reg.wiring = function (frame) {
-    /* Сечение троса 7×19: семь прядей, в каждой 19 проволок */
-    function cable719() {
-      var s = '<circle class="f-dim" cx="110" cy="98" r="58"/>';
-      var centres = [[0, 0]];
-      for (var i = 0; i < 6; i++) {
-        centres.push([36 * Math.cos(i * Math.PI / 3), 36 * Math.sin(i * Math.PI / 3)]);
-      }
-      centres.forEach(function (c) {
-        s += '<circle class="f-metal" cx="' + r1(110 + c[0]) + '" cy="' + r1(98 + c[1]) + '" r="18"/>';
-        var w = [[0, 0]];
-        for (var k = 0; k < 6; k++) w.push([5.6 * Math.cos(k * Math.PI / 3), 5.6 * Math.sin(k * Math.PI / 3)]);
-        for (var k2 = 0; k2 < 12; k2++) w.push([11.4 * Math.cos(k2 * Math.PI / 6), 11.4 * Math.sin(k2 * Math.PI / 6)]);
-        w.forEach(function (p) {
-          s += '<circle fill="#aeb7c1" stroke="#8d97a3" stroke-width=".6" cx="' +
-            r1(110 + c[0] + p[0]) + '" cy="' + r1(98 + c[1] + p[1]) + '" r="2.5"/>';
-        });
-      });
-      return s;
-    }
+    var q = function (id) { return frame.querySelector('#' + id); };
+    var mode = 'rod', v = 0, dt = 0.5, grab = 0;
 
-    /* Наконечники тяги крупно */
-    var ENDS =
-      '<path class="f-metal" d="M96 86h188v24H96z"/>' +
-      '<text class="t-sm" x="190" y="80" text-anchor="middle">труба тяги</text>' +
-      '<circle class="f-metal" cx="46" cy="98" r="18"/>' +
-      '<circle class="f-body" cx="46" cy="98" r="8"/>' +
-      '<path class="f-metal" d="M64 92h32v12H64z"/>' +
-      '<path class="f-ink" stroke-width="2" d="M70 92v12M76 92v12M82 92v12"/>' +
-      '<text class="t-sm" x="46" y="132" text-anchor="middle">торцевой</text>' +
-      '<text class="t-sm" x="46" y="144" text-anchor="middle">подшипник</text>' +
-      '<path class="f-metal" d="M88 86h10v24H88z"/>' +
-      '<text class="t-sm" x="104" y="62">зажимная гайка</text>' +
-      '<path class="f-dim" d="M100 66v16"/>' +
-      '<circle class="f-red" cx="112" cy="98" r="4"/>' +
-      '<path class="f-red" d="M112 122v-18"/>' +
-      '<text class="t-sm" x="112" y="136" text-anchor="middle">контрольное</text>' +
-      '<text class="t-sm" x="112" y="148" text-anchor="middle">отверстие</text>' +
-      '<path class="f-metal" d="M284 88h22v8h-22zM284 100h22v8h-22z"/>' +
-      '<circle class="f-metal" cx="316" cy="98" r="14"/>' +
-      '<circle class="f-body" cx="316" cy="98" r="6"/>' +
-      '<text class="t-sm" x="316" y="132" text-anchor="middle">вильчатый</text>' +
-      '<text class="t-sm" x="316" y="144" text-anchor="middle">наконечник</text>';
-
-    var BOW = 'M70 90C160 90 170 150 260 150S430 110 520 110';
-
-    var VIEWS = {
-      rod: {
-        svg:
-          '<path class="f-dim" d="M20 112H580"/>' +
-          '<g id="wr-stick"><path class="f-ink" stroke-width="5" d="M50 112V42"/>' +
-          '<circle class="f-ink" cx="50" cy="36" r="8"/></g>' +
-          '<circle class="f-metal" cx="50" cy="112" r="5"/>' +
-          '<text class="t-sm" x="50" y="128" text-anchor="middle">рычаг</text>' +
-          '<path id="wr-rod1" stroke="#98a3ae" stroke-width="9"/>' +
-          '<path id="wr-rod2" stroke="#e1e6ec" stroke-width="5"/>' +
-          '<g id="wr-crank"><path class="f-ink" stroke-width="5" d="M520 68V90H556"/></g>' +
-          '<circle class="f-metal" cx="520" cy="90" r="5"/>' +
-          '<text class="t-sm" x="540" y="128" text-anchor="middle">качалка → к рулю</text>' +
-          '<g id="wr-f"></g>' +
-          '<text class="t-sm" id="wr-ft" x="290" y="52" text-anchor="middle"></text>' +
-          '<text class="t-sm" x="24" y="156">наконечники</text>' +
-          '<text class="t-sm" x="24" y="168">(крупно)</text>' +
-          '<g transform="translate(130 76)">' + ENDS + '</g>',
-        paint: function (v) {
-          var th = v * 16;
-          var S = rot(50, 68, 50, 112, th);
-          var phi = Math.asin(clamp((S[0] - 50) / 22, -1, 1)) / DEG;
-          var T = rot(520, 68, 520, 90, phi);
-          var d = 'M' + poly([S, T]);
-          q('wr-rod1').setAttribute('d', d);
-          q('wr-rod2').setAttribute('d', d);
-          q('wr-stick').setAttribute('transform', 'rotate(' + r1(th) + ' 50 112)');
-          q('wr-crank').setAttribute('transform', 'rotate(' + r1(phi) + ' 520 90)');
-          var L = Math.abs(v) * 34, f = '';
-          if (L > 3) {
-            var inw = v > 0;   /* толкаем — тяга сжата, тянем — растянута */
-            var y = S[1] + (T[1] - S[1]) * 0.5;
-            f = inw
-              ? arrow(S[0] + 18 + L, y - 12, S[0] + 18, y - 12, 'f-red') +
-                arrow(T[0] - 18 - L, y - 12, T[0] - 18, y - 12, 'f-red')
-              : arrow(S[0] + 18, y - 12, S[0] + 18 + L, y - 12, 'f-red') +
-                arrow(T[0] - 18, y - 12, T[0] - 18 - L, y - 12, 'f-red');
-          }
-          q('wr-f').innerHTML = f;
-          q('wr-ft').textContent = Math.abs(v) < 0.08 ? 'нейтраль'
-            : v > 0 ? 'рычаг толкает — тяга работает на сжатие'
-              : 'рычаг тянет — тяга работает на растяжение';
-        }
-      },
-      cable: {
-        svg:
-          '<path class="f-ink" stroke-width="1.6" d="M80 60A40 40 0 0 0 80 140M520 60A40 40 0 0 1 520 140"/>' +
-          '<g id="wc-dl"><circle class="f-metal" cx="80" cy="100" r="38"/>' +
-          '<path class="f-dim" d="M80 64V136M44 100H116"/>' +
-          '<path class="f-ink" stroke-width="5" d="M80 100H24"/>' +
-          '<circle class="f-ink" cx="24" cy="100" r="7"/></g>' +
-          '<g id="wc-dr"><circle class="f-metal" cx="520" cy="100" r="38"/>' +
-          '<path class="f-dim" d="M520 64V136M484 100H556"/>' +
-          '<path class="f-ink" stroke-width="5" d="M520 100H576"/></g>' +
-          '<circle class="f-body" cx="80" cy="100" r="6"/><circle class="f-body" cx="520" cy="100" r="6"/>' +
-          '<path id="wc-up" stroke-width="2.4" stroke-dasharray="3 11"/>' +
-          '<path id="wc-lo" stroke-width="2.4" stroke-dasharray="3 11"/>' +
-          '<g id="wc-tu"><rect class="f-metal" x="280" y="55" width="40" height="10" rx="3"/>' +
-          '<path class="f-ink" stroke-width="1.2" d="M288 55v10M296 55v10M304 55v10M312 55v10"/></g>' +
-          '<g id="wc-tl"><rect class="f-metal" x="280" y="135" width="40" height="10" rx="3"/>' +
-          '<path class="f-ink" stroke-width="1.2" d="M288 135v10M296 135v10M304 135v10M312 135v10"/></g>' +
-          '<text class="t-sm" x="24" y="40">от рычага</text>' +
-          '<text class="t-sm" x="576" y="40" text-anchor="end">к рулю</text>' +
-          '<text class="t-sm" x="300" y="46" text-anchor="middle">тандер</text>' +
-          '<text class="t-sm" id="wc-t" x="300" y="170" text-anchor="middle"></text>' +
-          '<g transform="translate(20 150) scale(.42)">' + cable719() + '</g>' +
-          '<text class="t-sm" x="100" y="200">сечение троса 7×19:</text>' +
-          '<text class="t-sm" x="100" y="213">7 прядей по 19 проволок</text>' +
-          '<text class="t-sm" x="580" y="200" text-anchor="end">тандер: натяжение троса</text>' +
-          '<text class="t-sm" x="580" y="213" text-anchor="end">и компенсация его вытяжки</text>',
-        paint: function (v) {
-          var th = v * 28, disp = 40 * th * DEG;
-          q('wc-dl').setAttribute('transform', 'rotate(' + r1(th) + ' 80 100)');
-          q('wc-dr').setAttribute('transform', 'rotate(' + r1(th) + ' 520 100)');
-          var sag = Math.abs(v) * 9, tight = Math.abs(v) > 0.06;
-          var loT = v > 0;   /* ведущий диск тянет ту ветвь, которую наматывает */
-          function branch(id, y, isT, dir) {
-            var el = q(id), sg = isT || !tight ? 0 : sag * (y < 100 ? 1 : -1);
-            el.setAttribute('d', 'M80 ' + y + 'Q300 ' + r1(y + sg * 2) + ' 520 ' + y);
-            el.setAttribute('class', isT && tight ? 'f-red' : 'f-ink');
-            el.setAttribute('stroke-dashoffset', r1(dir * disp));
-          }
-          branch('wc-up', 60, !loT, -1);
-          branch('wc-lo', 140, loT, 1);
-          q('wc-tu').setAttribute('transform', 'translate(' + r1(disp) + ' ' + r1(loT && tight ? sag : 0) + ')');
-          q('wc-tl').setAttribute('transform', 'translate(' + r1(-disp) + ' ' + r1(!loT && tight ? -sag : 0) + ')');
-          q('wc-t').textContent = !tight ? 'обе ветви под одинаковым предварительным натяжением'
-            : (loT ? 'нижняя' : 'верхняя') + ' ветвь натянута и передаёт усилие, вторая ослаблена';
-        }
-      },
-      bowden: {
-        svg:
-          '<path d="' + BOW + '" stroke="#aab4bf" stroke-width="17"/>' +
-          '<path d="' + BOW + '" stroke="#e6eaee" stroke-width="12"/>' +
-          '<path id="wb-core" class="f-blue" d="' + BOW + '" stroke-width="2.6" stroke-dasharray="4 8"/>' +
-          '<path id="wb-l" class="f-blue" stroke-width="2.6"/>' +
-          '<g id="wb-h"><rect class="f-ink" x="-5" y="78" width="10" height="24" rx="3" fill="#414d59"/></g>' +
-          '<path id="wb-r" class="f-blue" stroke-width="2.6"/>' +
-          '<g id="wb-e"><rect class="f-metal" x="0" y="103" width="18" height="14" rx="3"/></g>' +
-          '<path class="f-dim" d="M30 116v10M70 116v10M30 121h40"/>' +
-          '<text class="t-sm" x="50" y="140" text-anchor="middle">рабочий ход</text>' +
-          '<text class="t-sm" x="150" y="76">жёсткая оболочка</text>' +
-          '<text class="t-sm" x="560" y="96" text-anchor="middle">к заслонке</text>' +
-          '<text class="t-sm" x="300" y="190" text-anchor="middle">' +
-          'трос ходит внутри оболочки вперёд и назад без бокового смещения,</text>' +
-          '<text class="t-sm" x="300" y="203" text-anchor="middle">' +
-          'а саму оболочку можно плавно изогнуть в обход препятствия</text>',
-        paint: function (v) {
-          var d = v * 20, xl = 50 - d, xr = 554 - d;
-          q('wb-core').setAttribute('stroke-dashoffset', r1(d));
-          q('wb-l').setAttribute('d', 'M70 90H' + r1(xl));
-          q('wb-h').setAttribute('transform', 'translate(' + r1(xl) + ' 0)');
-          q('wb-r').setAttribute('d', 'M520 110H' + r1(xr));
-          q('wb-e').setAttribute('transform', 'translate(' + r1(xr) + ' 0)');
-        }
-      }
-    };
-
-    var NOTE = {
-      rod: 'жёсткая: работает и на сжатие, и на растяжение',
-      cable: 'гибкая: трос работает только на растяжение, поэтому ветвей две',
-      bowden: 'смешанная: гибкость троса при жёсткости оболочки'
-    };
-
-    frame.innerHTML = svg('0 0 600 238', VIEWS.rod.svg);
+    ammPanels(frame, [
+      { id: 'wA', tag: '', w: 440, h: 300, over: '<g id="wA-l"></g><circle class="a-hit" id="w-grab" r="22"/><path class="a-hit" id="w-rud"/>' },
+      { id: 'wB', tag: '', w: 260, h: 300, over: '<g id="wB-l"></g><circle class="a-hit" id="w-end" r="26"/>' +
+        '<rect class="a-hit" id="w-tb" x="94" y="178" width="72" height="36" rx="8"/>' }
+    ]);
+    frame.querySelector('.amm-grid').style.setProperty('--a', '1.7fr');
+    var tags = frame.querySelectorAll('.amm-tag');
     controls(frame,
       '<div class="fig-row">' +
       '<button class="fig-btn is-on" data-w="rod" type="button">Жёсткая тяга</button>' +
       '<button class="fig-btn" data-w="cable" type="button">Трос</button>' +
-      '<button class="fig-btn" data-w="bowden" type="button">Боуден</button>' +
-      '<span class="fig-readout" id="wr-out">' + NOTE.rod + '</span></div>' +
-      '<span class="fig-label">Ход рычага</span>' +
-      '<input class="fig-range" id="wr-in" type="range" min="-100" max="100" value="0" ' +
-      'aria-label="Ход рычага">' + AUTO);
+      '<button class="fig-btn" data-w="bowden" type="button">Гибкий трос</button></div>' +
+      '<span class="fig-label" id="w-lab">Ручка</span>' +
+      '<input class="fig-range" id="wr-in" type="range" min="-100" max="100" value="0" aria-label="Ход органа управления">' +
+      AUTO + '<span class="fig-readout" id="wr-out"></span>');
+    var svgA = q('wA').ownerSVGElement, svgB = q('wB').ownerSVGElement;
+    var out = q('wr-out');
 
-    var host = frame.querySelector('.figure-svg svg');
-    var q = function (id) { return host.querySelector('#' + id); };
-    var view = 'rod', val = 0;
-    var out = frame.querySelector('#wr-out');
-    var drv = driver(frame.querySelector('#wr-in'), function (x) {
-      val = x / 100;
-      VIEWS[view].paint(val);
-    }, 240, frame.querySelector('.fig-auto'));
-    pick(frame, 'data-w', function (id) {
-      view = id;
-      host.innerHTML = VIEWS[id].svg;
-      out.textContent = NOTE[id];
-      VIEWS[id].paint(val);
-    });
-    loop(frame, drv.tick);
+    /* ── жёсткая тяга: руль высоты, вид слева ── */
+    var T = [64, 206], I = [146, 214], B = [372, 200], E = [404, 54];
+    var T_LO = [0, 24], I_S = [0, 18], I_L = [0, 34], B_D = [0, 22], B_A = [20, 0], E_H = [-22, 6];
+    var L1 = dist2(tip(T, T_LO, 0), tip(I, I_S, 0));
+    var L2 = dist2(tip(I, I_L, 0), tip(B, B_D, 0));
+    var L3 = dist2(tip(B, B_A, 0), tip(E, E_H, 0));
+    var GUIDES = [212, 262, 312];
+    function elev(v) {
+      var a = v * 16;
+      var lo = tip(T, T_LO, a);
+      var ai = follow(I, I_S, lo, L1, -45, 45);
+      var il = tip(I, I_L, ai);
+      var ab = follow(B, B_D, il, L2, -60, 60);
+      var ba = tip(B, B_A, ab);
+      var ae = follow(E, E_H, ba, L3, -50, 50);
+      return { a: a, lo: lo, ai: ai, is: tip(I, I_S, ai), il: il, ab: ab, bd: tip(B, B_D, ab), ba: ba, ae: ae, eh: tip(E, E_H, ae) };
+    }
+    function drawRod() {
+      var k = elev(v), s = '';
+      s += ghost2('M146 150V262M20 226H150');
+      s += '<path class="a-ln" d="M352 54Q352 48 362 48H404V60H362Q352 60 352 54Z"/>';
+      /* роликовые направляющие на шпангоутах: три ролика вокруг тяги */
+      GUIDES.forEach(function (x) {
+        var t = (x - k.il[0]) / (k.bd[0] - k.il[0]), y = k.il[1] + (k.bd[1] - k.il[1]) * t;
+        s += ghost2('M' + x + ' ' + r1(y + 26) + 'V' + r1(y - 34));
+        s += '<circle class="a-ln" cx="' + x + '" cy="' + r1(y - 8.6) + '" r="4.4"/>' +
+          '<circle class="a-ln" cx="' + (x - 6) + '" cy="' + r1(y + 7.4) + '" r="4.4"/>' +
+          '<circle class="a-ln" cx="' + (x + 6) + '" cy="' + r1(y + 7.4) + '" r="4.4"/>';
+      });
+      /* ручка на торсионе */
+      s += '<g transform="rotate(' + r1(k.a) + ' ' + T[0] + ' ' + T[1] + ')">' +
+        '<path class="a-mv" d="M61 206V116h6v90z"/><rect class="a-mv a-grip" x="58" y="96" width="12" height="28" rx="5"/>' +
+        '<path class="a-mv" d="M60 206h8v24h-8z"/></g>' +
+        '<circle class="a-ln" cx="' + T[0] + '" cy="' + T[1] + '" r="9"/>' + pivot2(T, 3.4);
+      s += rod2(k.lo, k.is) + lever2(I, [I_S, I_L], k.ai) + rod2(k.il, k.bd) + lever2(B, [B_D, B_A], k.ab) + rod2(k.ba, k.eh);
+      /* руль высоты на шарнире, кабанчик вперёд-вниз */
+      s += '<g transform="rotate(' + r1(k.ae) + ' ' + E[0] + ' ' + E[1] + ')">' +
+        '<path class="a-mv a-surf" d="M400 49L440 53V55L400 59Q396 54 400 49Z"/>' +
+        '<path class="a-mv" d="M404 54L382 58L386 62L404 58Z"/></g>' + pivot2(E, 3);
+      /* усилия: тянем ручку — тяги растянуты, толкаем — сжаты */
+      s += load2(k.lo, k.is, v, v) + load2(k.il, k.bd, v, v);
+      q('wA').innerHTML = s;
+      var g = tip(T, [0, -96], k.a);
+      hit('w-grab', g);
+      leadReset();
+      q('wA-l').innerHTML =
+        leader(12, 40, g, 'Ручка') +
+        leader(12, 290, k.lo, 'Рычаг торсиона') +
+        leader(150, 290, I, 'Промежуточный рычаг') +
+        leader(206, 140, [262, (k.il[1] + k.bd[1]) / 2 - 8], 'Роликовые направляющие') +
+        leader(436, 290, [336, (k.il[1] * 0.17 + k.bd[1] * 0.83)], 'Длинная тяга', 'end') +
+        leader(436, 250, B, 'Качалка', 'end') +
+        leader(300, 100, [388, 130], 'Вертикальная тяга', 'end') +
+        leader(300, 22, k.eh, 'Кабанчик', 'end') +
+        leader(436, 22, tip(E, [30, 0], k.ae), 'Руль высоты', 'end');
+      var de = -k.ae;
+      out.innerHTML = (Math.abs(v) < 0.06 ? 'нейтраль' : v > 0 ? 'ручка на себя — тяги <b>растянуты</b>' : 'ручка от себя — тяги <b>сжаты</b>') +
+        ' · руль высоты ' + (Math.round(de) === 0 ? '0°' : (de > 0 ? '↑ ' : '↓ ') + Math.abs(Math.round(de)) + '°');
+    }
+
+    /* наконечник крупно: контрольное отверстие в трубе тяги */
+    var eng = 0.5;
+    function drawEnd() {
+      var e = 14 + eng * 50, hole = 112, inner = 150 - e, ok = inner < hole - 4;
+      var s = '';
+      s += '<path class="a-ln" d="M18 132H150V164H18"/>' + ghost2('M18 136H146M18 160H146');
+      s += '<path class="a-ln2" stroke-dasharray="3 3" d="M' + r1(inner) + ' 140H150M' + r1(inner) + ' 156H150M' + r1(inner) + ' 140V156"/>';
+      s += '<circle class="' + (ok ? 'a-ln' : 'a-hole') + '" cx="' + hole + '" cy="148" r="3.4"/>';
+      s += '<path class="a-mv" d="M150 140H200V156H150Z"/>';
+      for (var x = 154; x < 198; x += 5) s += '<path class="a-ln2" stroke-width=".8" d="M' + x + ' 140l3 16"/>';
+      s += '<path class="a-ln" d="M156 134H170V162H156Z"/>' +
+        '<circle class="a-mv" cx="222" cy="148" r="22"/><circle class="a-ln" cx="222" cy="148" r="11"/><circle class="a-hole" cx="222" cy="148" r="4"/>';
+      s += '<path class="' + (ok ? 'f-green' : 'f-red') + '" stroke-width="2" d="M' + r1(inner) + ' 176V168M' + r1(inner) + ' 172H' + hole + 'M' + hole + ' 176V168"/>';
+      q('wB').innerHTML = s;
+      hit('w-end', [222, 148]); hit('w-tb', null);
+      leadReset();
+      q('wB-l').innerHTML = leader(12, 100, [60, 132], 'Труба тяги') + leader(160, 100, [163, 134], 'Контргайка') +
+        leader(250, 226, [222, 170], 'Шарнирный наконечник', 'end') + leader(12, 200, [hole, 151], 'Контрольное отверстие') +
+        '<text class="a-tx ' + (ok ? 't-ok' : 't-red') + '" x="130" y="250" text-anchor="middle">' +
+        (ok ? 'резьба закрывает отверстие — можно' : 'резьба не дошла до отверстия — нельзя') + '</text>' +
+        '<text class="a-tx a-sm" x="130" y="268" text-anchor="middle">проволока в отверстие пройти не должна</text>';
+    }
+
+    /* ── трос: руль направления, вид сверху (нос слева, правый борт вверху) ── */
+    var PL = [44, 207], PR = [44, 176], PU = [137, 200], Y = [170, 148], H = [394, 148];
+    var PX = [144, 200];   /* трос сходит с ролика вертикально к переднему плечу коромысла */
+    var Y_F = [-26, 0], Y_L = [6, 28], Y_R = [6, -28], H_L = [-8, 20], H_R = [-8, -20];
+    var CL0 = dist2(PX, tip(Y, Y_F, 0)), CR0 = dist2(PR, tip(Y, Y_L, 0));
+    var F10 = dist2(tip(Y, Y_R, 0), tip(H, H_L, 0)), F20 = dist2(tip(Y, Y_L, 0), tip(H, H_R, 0));
+    function sagLine(a, b, L0, cls) {
+      var L = dist2(a, b), slack = Math.max(0, L0 - L), sg = Math.min(9, Math.sqrt(3 * L * slack / 8));
+      var m = [(a[0] + b[0]) / 2 - (b[1] - a[1]) / L * sg, (a[1] + b[1]) / 2 + (b[0] - a[0]) / L * sg];
+      return '<path class="' + (slack > 0.2 ? 'a-cab' : cls) + '" d="M' + poly([a]) + 'Q' + r1(m[0]) + ' ' + r1(m[1]) + ' ' + r1(b[0]) + ' ' + r1(b[1]) + '"/>';
+    }
+    function rud(v) {
+      var d = v * 12, pl = [PL[0] - d, PL[1]], pr = [PR[0] + d, PR[1]];
+      var ay = v >= 0 ? follow(Y, Y_F, PX, CL0 - d, -60, 0.0001)
+        : follow(Y, Y_L, pr, CR0, -0.0001, 60);
+      var yr = tip(Y, Y_R, ay), yl = tip(Y, Y_L, ay), yf = tip(Y, Y_F, ay);
+      /* вторую педаль оттягивает назад её трос от коромысла (AMM 27-20, п. 3) */
+      if (v >= 0) pr = [yl[0] - Math.sqrt(CR0 * CR0 - (yl[1] - PR[1]) * (yl[1] - PR[1])), PR[1]];
+      else pl = [PL[0] + (dist2(PX, yf) - CL0), PL[1]];
+      var ah = v >= 0 ? follow(H, H_L, yr, F10, -0.0001, 60) : follow(H, H_R, yl, F20, -60, 0.0001);
+      return { d: PL[0] - pl[0], pl: pl, pr: pr, ay: ay, yf: yf, yl: yl, yr: yr, ah: ah, hl: tip(H, H_L, ah), hr: tip(H, H_R, ah) };
+    }
+    function buckle(a, b, f) {
+      var p = [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f], ang = Math.atan2(b[1] - a[1], b[0] - a[0]) / DEG;
+      return '<g transform="translate(' + r1(p[0]) + ' ' + r1(p[1]) + ') rotate(' + r1(ang) + ')">' +
+        '<rect class="a-mv" x="-10" y="-3.4" width="20" height="6.8" rx="2"/><path class="a-ln2" stroke-width=".8" d="M-5 -3.4v6.8M0 -3.4v6.8M5 -3.4v6.8"/></g>';
+    }
+    function drawCable() {
+      var k = rud(v), s = '', pos = v >= 0;
+      s += ghost2('M137 88V212');
+      s += '<text class="a-tx a-sm" x="16" y="124">правый борт ↑</text>';
+      /* тросы кабины */
+      s += '<path class="' + (pos ? 'a-cabT' : 'a-cab') + '" d="M' + poly([k.pl, [PU[0], PU[1] + 7]]) + 'A7 7 0 0 0 ' + PX[0] + ' ' + PX[1] + '"/>';
+      s += sagLine(PX, k.yf, CL0 - (pos ? k.d : 0), pos ? 'a-cabT' : 'a-cab');
+      s += sagLine(k.pr, k.yl, CR0, pos ? 'a-cab' : 'a-cabT');
+      s += '<circle class="a-ln" cx="' + PU[0] + '" cy="' + PU[1] + '" r="7"/>' + pivot2(PU, 2.6);
+      /* тросы фюзеляжа, перекрещены */
+      s += sagLine(k.yr, k.hl, F10, pos ? 'a-cabT' : 'a-cab') + sagLine(k.yl, k.hr, F20, pos ? 'a-cab' : 'a-cabT');
+      s += buckle(k.yr, k.hl, 0.18) + buckle(k.yl, k.hr, 0.18);
+      /* педали */
+      [k.pl, k.pr].forEach(function (p) {
+        s += '<rect class="a-mv" x="' + r1(p[0] - 14) + '" y="' + r1(p[1] - 7) + '" width="16" height="14" rx="2"/>';
+      });
+      s += lever2(Y, [Y_F, Y_L, Y_R], k.ay, 'a-mv', 6);
+      /* киль и руль в плане */
+      s += '<path class="a-ln" d="M352 148Q352 144 360 144L394 145V151L360 152Q352 152 352 148Z"/>';
+      s += '<g transform="rotate(' + r1(k.ah) + ' ' + H[0] + ' ' + H[1] + ')"><path class="a-mv a-surf" d="M394 144.5L432 147.6V148.4L394 151.5Z"/></g>';
+      s += lever2(H, [H_L, H_R], k.ah, 'a-mv', 4);
+      q('wA').innerHTML = s;
+      var rt = tip(H, [38, 0], k.ah);
+      hit('w-grab', [k.pl[0] - 6, k.pl[1]]);
+      q('w-rud').setAttribute('d', 'M' + poly([[H[0], H[1] - 16], [rt[0] + 8, rt[1] - 16], [rt[0] + 8, rt[1] + 16], [H[0], H[1] + 16]]) + 'Z');
+      q('w-rud').style.display = '';
+      leadReset();
+      q('wA-l').innerHTML =
+        leader(12, 290, k.pl, 'Педали') +
+        leader(12, 30, PU, 'Ролик на пультовом шпангоуте') +
+        leader(150, 290, Y, 'Коромысло') +
+        leader(140, 60, [(k.yr[0] * 0.82 + k.hl[0] * 0.18), (k.yr[1] * 0.82 + k.hl[1] * 0.18) - 4], 'Тандеры') +
+        leader(300, 268, [300, 162], 'Тросы перекрещены', 'middle') +
+        leader(436, 290, k.hl, 'Кронштейн руля', 'end') +
+        leader(436, 60, rt, 'Руль направления', 'end');
+      var ar = Math.round(k.ah);
+      out.innerHTML = (Math.abs(v) < 0.06 ? 'обе ветви натянуты одинаково'
+        : (v > 0 ? 'левая педаль вперёд' : 'правая педаль вперёд') + ' — тянет <b class="t-red">одна ветвь</b>, другая провисает') +
+        ' · руль ' + (ar === 0 ? '0°' : (ar > 0 ? 'влево ' : 'вправо ') + Math.abs(ar) + '°');
+    }
+
+    /* трос 7×19 и тандер крупно */
+    var turn = 0.85;
+    function drawRope() {
+      var s = '<text class="a-tx a-sm" x="130" y="40" text-anchor="middle">сечение троса 7×19</text>';
+      var C = [70, 92];
+      for (var i = 0; i < 7; i++) {
+        var a = i * Math.PI / 3, cx = C[0] + (i ? 22 * Math.cos(a) : 0), cy = C[1] + (i ? 22 * Math.sin(a) : 0);
+        s += '<circle class="a-ln" cx="' + r1(cx) + '" cy="' + r1(cy) + '" r="11"/>';
+        for (var j = 0; j < 7; j++) {
+          var b = j * Math.PI / 3, wx = cx + (j ? 6 * Math.cos(b) : 0), wy = cy + (j ? 6 * Math.sin(b) : 0);
+          s += '<circle class="a-ln" stroke-width=".5" cx="' + r1(wx) + '" cy="' + r1(wy) + '" r="2.6"/>';
+        }
+      }
+      s += '<text class="a-tx a-sm" x="110" y="80">7 прядей</text><text class="a-tx a-sm" x="110" y="96">по 19 проволок</text>';
+      /* тандер: вращение муфты стягивает или разводит концы */
+      var g = 6 + turn * 26, ex = Math.round(10 - turn * 9), ok = ex <= 3;
+      s += '<text class="a-tx a-sm" x="130" y="150" text-anchor="middle">тандер</text>';
+      s += '<path class="a-cabT" d="M10 196H' + r1(130 - g - 18) + 'M' + r1(130 + g + 18) + ' 196H250"/>';
+      s += '<path class="a-mv" d="M' + r1(130 - g - 22) + ' 192H' + r1(130 - 22) + 'V200H' + r1(130 - g - 22) + 'Z"/>' +
+        '<path class="a-mv" d="M' + r1(130 + 22) + ' 192H' + r1(130 + g + 22) + 'V200H' + r1(130 + 22) + 'Z"/>';
+      s += '<rect class="a-ln" x="98" y="186" width="64" height="20" rx="4"/>';
+      for (var t = 0; t < 7; t++) s += '<path class="a-ln2" stroke-width=".8" d="M' + r1(104 + ((t * 9 + turn * 40) % 56)) + ' 186v20"/>';
+      q('wB').innerHTML = s;
+      hit('w-end', null); hit('w-tb', true);
+      leadReset();
+      q('wB-l').innerHTML = leader(12, 240, [100, 196], 'Муфта') + leader(250, 240, [130 + g + 12, 196], 'Наконечник', 'end') +
+        '<text class="a-tx ' + (ok ? 't-ok' : 't-red') + '" x="130" y="270" text-anchor="middle">' +
+        'снаружи ' + ex + ' нит' + (ex === 1 ? 'ка' : ex > 1 && ex < 5 ? 'ки' : 'ок') + ' резьбы — ' + (ok ? 'можно' : 'мало ввёрнуто') + '</text>' +
+        '<text class="a-tx a-sm" x="130" y="288" text-anchor="middle">тяните муфту — она вращается</text>';
+    }
+
+    /* ── гибкий трос: триммер руля высоты ── */
+    var W = [92, 112], RW = 50, RG = 9, S = [128, 240];
+    var RS = dist2(S, W) + RG;
+    var SEG0 = Math.atan2(W[1] - S[1], W[0] - S[0]);
+    /* шаровая опора сидит на самом секторе, ниже штурвальчика: при повороте
+       сектора она ходит почти горизонтально — вдоль троса */
+    var STUD = [RS * 0.42 * Math.cos(SEG0 + 0.3), RS * 0.42 * Math.sin(SEG0 + 0.3)];
+    var AN = [236, Math.round(S[1] + STUD[1])];
+    var Th = [190, 112], TH_HORN = [-4, 16], CB = [50, 222];
+    var LT = dist2([CB[0], CB[1]], tip(Th, TH_HORN, 0));
+    function trim(v) {
+      var w = v * 330, sg = w * RG / RS;            /* шестерня и сектор с внутренними зубьями вращаются в одну сторону */
+      var st = tip(S, STUD, sg), st0 = tip(S, STUD, 0);
+      var ux = AN[0] - st0[0], uy = AN[1] - st0[1], ul = Math.sqrt(ux * ux + uy * uy);
+      var ds = ((st[0] - st0[0]) * ux + (st[1] - st0[1]) * uy) / ul;   /* ход сердечника */
+      var cb = [CB[0] - ds * 0.45, CB[1]];   /* нос вверх — сердечник тянет, триммер вниз */
+      var at = follow(Th, TH_HORN, cb, LT, -40, 40);
+      return { w: w, sg: sg, st: st, ds: ds, cb: cb, at: at, th: tip(Th, TH_HORN, at) };
+    }
+    function drawBowden() {
+      var k = trim(v), s = '';
+      s += ghost2('M8 60H250M8 270H250M160 60V270');
+      /* сектор с внутренними зубьями — он же указатель */
+      var a0 = SEG0 - 0.42, a1 = SEG0 + 0.42, seg = '';
+      var p0 = [S[0] + RS * Math.cos(a0), S[1] + RS * Math.sin(a0)], p1 = [S[0] + RS * Math.cos(a1), S[1] + RS * Math.sin(a1)];
+      seg += '<path class="a-mv" d="M' + poly([S]) + 'L' + poly([[S[0] + (RS + 12) * Math.cos(a0), S[1] + (RS + 12) * Math.sin(a0)]]) +
+        'A' + r1(RS + 12) + ' ' + r1(RS + 12) + ' 0 0 1 ' + poly([[S[0] + (RS + 12) * Math.cos(a1), S[1] + (RS + 12) * Math.sin(a1)]]) + 'Z"/>';
+      for (var a = a0 + 0.03; a < a1; a += 0.045) {
+        seg += '<path class="a-ln2" stroke-width="1" d="M' + poly([[S[0] + RS * Math.cos(a), S[1] + RS * Math.sin(a)],
+          [S[0] + (RS + 4) * Math.cos(a), S[1] + (RS + 4) * Math.sin(a)]]) + '"/>';
+      }
+      var mk = [S[0] + (RS + 12) * Math.cos(SEG0), S[1] + (RS + 12) * Math.sin(SEG0)];
+      seg += '<path stroke="#fff" stroke-width="2.2" d="M' + poly([[S[0] + (RS - 2) * Math.cos(SEG0), S[1] + (RS - 2) * Math.sin(SEG0)], mk]) + '"/>';
+      s += '<g transform="rotate(' + r1(k.sg) + ' ' + S[0] + ' ' + S[1] + ')">' + seg + '</g>' + pivot2(S, 4);
+      /* шкала указателя на крышке */
+      [[-0.33, 'нос ↓'], [0, 'взлёт'], [0.33, 'нос ↑']].forEach(function (m) {
+        var aa = SEG0 + m[0] * 0.5, r = RS + 20;
+        s += '<text class="a-tx a-sm" x="' + r1(S[0] + r * Math.cos(aa)) + '" y="' + r1(S[1] + r * Math.sin(aa)) + '" text-anchor="middle">' + m[1] + '</text>';
+      });
+      /* штурвальчик с насечкой и шестерня */
+      var hw = '<circle class="a-ln" cx="' + W[0] + '" cy="' + W[1] + '" r="' + RW + '"/><circle class="a-ln" cx="' + W[0] + '" cy="' + W[1] + '" r="' + (RW - 8) + '"/>';
+      for (var n = 0; n < 36; n++) {
+        var b = n * 10 * DEG;
+        hw += '<path class="a-ln2" stroke-width=".8" d="M' + poly([[W[0] + (RW - 8) * Math.cos(b), W[1] + (RW - 8) * Math.sin(b)], [W[0] + RW * Math.cos(b), W[1] + RW * Math.sin(b)]]) + '"/>';
+      }
+      hw += '<circle class="a-mv" cx="' + W[0] + '" cy="' + W[1] + '" r="' + RG + '"/>';
+      s += '<g transform="rotate(' + r1(k.w) + ' ' + W[0] + ' ' + W[1] + ')">' + hw + '</g>' + pivot2(W, 3);
+      /* сердечник от шаровой опоры до упора оболочки, оболочка уходит в хвост */
+      s += '<path class="a-ln2" d="M' + poly([k.st, AN]) + '"/>';
+      s += '<path class="a-bow" d="M' + AN[0] + ' ' + AN[1] + 'C300 200 330 150 440 150"/>';
+      s += '<path class="a-ln" d="M' + (AN[0] - 4) + ' ' + (AN[1] - 12) + 'h8v24h-8z"/>';
+      s += '<circle class="a-mv" cx="' + r1(k.st[0]) + '" cy="' + r1(k.st[1]) + '" r="5"/>';
+      q('wA').innerHTML = s;
+      hit('w-grab', [W[0], W[1] - RW + 4]);
+      leadReset();
+      q('wA-l').innerHTML =
+        leader(12, 24, [W[0] - 30, W[1] - 40], 'Штурвальчик') +
+        leader(12, 290, [S[0] - 40, S[1] - 20], 'Сектор с внутренними зубьями') +
+        leader(300, 120, k.st, 'Шаровая опора', 'end') +
+        leader(300, 260, [AN[0], AN[1] + 12], 'Упор оболочки', 'middle') +
+        leader(436, 120, [380, 157], 'Трос в оболочке', 'end');
+      drawTab(k);
+      var at = Math.round(k.at);
+      out.innerHTML = 'сердечник ' + (Math.abs(k.ds) < 0.5 ? 'в нейтрали' : k.ds > 0 ? '<b>тянет</b>' : '<b>толкает</b>') + ' · триммер ' +
+        (at === 0 ? '0°' : (at > 0 ? '↓ ' : '↑ ') + Math.abs(at) + '°') + ' · ' + (Math.abs(v) < 0.06 ? 'взлётное положение' : v > 0 ? 'нос вверх' : 'нос вниз');
+    }
+    function drawTab(k) {
+      var s = '';
+      s += '<path class="a-ln" d="M14 108Q14 98 30 98L190 108V116L30 118Q14 118 14 108Z"/>';
+      s += '<g transform="rotate(' + r1(k.at) + ' ' + Th[0] + ' ' + Th[1] + ')"><path class="a-mv a-surf" d="M190 108L238 111.4V112.6L190 116Z"/>' +
+        '<path class="a-mv" d="M190 112L186 128L192 128L194 114Z"/></g>' + pivot2(Th, 2.6);
+      s += '<path class="a-bow" d="M-10 222H' + (CB[0] - 18) + '"/>';
+      s += '<path class="a-ln" d="M' + (CB[0] - 22) + ' 212H' + (CB[0] + 30) + 'V232H' + (CB[0] - 22) + 'Z"/>';
+      s += '<path class="a-ln2" d="M' + (CB[0] - 18) + ' 222H' + r1(k.cb[0]) + '"/>';
+      s += rod2(k.cb, k.th);
+      q('wB').innerHTML = s;
+      hit('w-end', null); hit('w-tb', null);
+      leadReset();
+      q('wB-l').innerHTML = leader(12, 60, [60, 106], 'Руль высоты') + leader(250, 60, tip(Th, [30, 0], k.at), 'Триммер', 'end') +
+        leader(12, 270, [CB[0], 232], 'Демпфер трения') + leader(250, 270, [(k.cb[0] + k.th[0]) / 2 + 4, (k.cb[1] + k.th[1]) / 2], 'Тяга триммера', 'end');
+    }
+
+    var VIEWS = {
+      rod: { a: 'А · руль высоты, вид слева', b: 'Б · наконечник', lab: 'Ручка', main: drawRod, side: drawEnd,
+        note: 'жёсткая тяга работает и на растяжение, и на сжатие' },
+      cable: { a: 'А · руль направления, вид сверху', b: 'Б · трос и тандер', lab: 'Педали', main: drawCable, side: drawRope,
+        note: 'трос работает только на растяжение, поэтому ветвей две' },
+      bowden: { a: 'А · штурвальчик триммера', b: 'Б · триммер руля высоты', lab: 'Штурвальчик', main: drawBowden, side: function () {},
+        note: 'сердечник ходит в оболочке и толкает, и тянет' }
+    };
+    /* Зоны захвата постоянные: перерисовка вида не трогает элемент под
+       пальцем, иначе перетаскивание обрывалось бы на первом кадре. */
+    function hit(id, p) {
+      var el = q(id);
+      if (!p) { el.style.display = 'none'; return; }
+      el.style.display = '';
+      if (p.length) { el.setAttribute('cx', r1(p[0])); el.setAttribute('cy', r1(p[1])); }
+    }
+    function grabDir() { return mode === 'rod' ? [96 * Math.sin(16 * DEG), 0] : mode === 'cable' ? [-22, 0] : [RW * 330 * DEG, 0]; }
+    function setV(x) { v = clamp(x, -1, 1); rng.value = Math.round(v * 100); paint(); }
+    function paint() {
+      if (mode !== 'cable') q('w-rud').style.display = 'none';
+      VIEWS[mode].main();
+    }
+    function show(id) {
+      mode = id;
+      var m = VIEWS[id];
+      tags[0].textContent = m.a; tags[1].textContent = m.b;
+      q('w-lab').textContent = m.lab;
+      m.side();
+      paint();
+    }
+    var rng = q('wr-in');
+    var drv = driver(rng, function (x) { v = x / 100; paint(); }, 300, frame.querySelector('.fig-auto'));
+    dragAlong(q('w-grab'), svgA, function () { drv.stop(); return v; }, setV, grabDir);
+    dragAlong(q('w-rud'), svgA, function () { drv.stop(); return v; }, setV, function () { return [0, 38 * Math.sin(25 * DEG)]; });
+    dragAlong(q('w-end'), svgB, function () { return eng * 2 - 1; }, function (x) { eng = (x + 1) / 2; drawEnd(); }, function () { return [-50, 0]; });
+    dragAlong(q('w-tb'), svgB, function () { return turn * 2 - 1; }, function (x) { turn = (x + 1) / 2; drawRope(); }, function () { return [60, 0]; });
+    pick(frame, 'data-w', show);
+    show('rod');
+    loop(frame, function () { drv.tick(); });
   };
 
   /* ═══════════════════════════════════════════════════════
      1г. Три способа стопорения рулей: порыв ветра и стопор
      ═══════════════════════════════════════════════════════ */
   reg.locks = function (frame) {
-    var WX = 60, WY = 112, WC = 420, HU = 0.77;
-    var hx = WX + HU * WC, hy = camY(WY, WC, 0.02, HU);
-    var EH = [298, 100], LOCK = 14, AMAX = 18;
-    var hole = rot(EH[0], EH[1] + 34, EH[0], EH[1], LOCK);
-
-    var WIND = '<path id="lk-w" class="f-air f-flow" d="M0 30H600M0 46H600M0 172H600M0 188H600"/>';
-
-    var VIEWS = {
-      clamp:
-        WIND +
-        '<g id="lk-surf"><path class="f-mov" d="' +
-        closed(foilPts(WX, WY, WC, 0.12, 0.02, HU - 0.02, 1)) + '"/></g>' +
-        '<path class="f-fix" d="' + closed(foilPts(WX, WY, WC, 0.12, 0.02, 0, HU + 0.01)) + '"/>' +
-        '<circle class="f-metal" cx="' + r1(hx) + '" cy="' + r1(hy) + '" r="3.5"/>' +
-        '<circle id="lk-hit" class="f-red" stroke-width="3" cx="' + r1(hx) + '" cy="' + r1(hy) +
-        '" r="16" opacity="0"/>' +
-        '<text class="t-sm" x="220" y="140" text-anchor="middle">крыло</text>' +
-        '<text class="t-sm" x="440" y="150" text-anchor="middle">элерон</text>' +
-        '<g id="lk-lock"><path class="f-red-fill" d="M356 80h80v10h-70v44h70v10h-80z"/>' +
-        '<path class="f-red" stroke-width="2.5" d="M398 144v22"/>' +
-        '<path class="f-red-fill" d="M398 166l40 8-40 8z"/>' +
-        '<text class="t-sm t-red" x="444" y="182">снять перед полётом</text></g>',
-      gust:
-        '<rect class="f-body" x="90" y="30" width="420" height="160" rx="12"/>' +
-        '<text class="t-sm" x="300" y="22" text-anchor="middle">кабина, вид спереди</text>' +
-        '<path class="f-ink" stroke-width="5" d="M220 170H380"/>' +
-        '<g id="lk-s1"><path class="f-ink" stroke-width="6" d="M220 170v-56"/>' +
-        '<circle class="f-ink" cx="220" cy="108" r="9"/></g>' +
-        '<g id="lk-s2"><path class="f-ink" stroke-width="6" d="M380 170v-56"/>' +
-        '<circle class="f-ink" cx="380" cy="108" r="9"/></g>' +
-        '<circle class="f-metal" cx="220" cy="170" r="6"/><circle class="f-metal" cx="380" cy="170" r="6"/>' +
-        '<text class="t-sm" x="300" y="184" text-anchor="middle">общий вал ручек</text>' +
-        '<path class="f-fix" d="M14 150h50v8H14zM536 150h50v8h-50z"/>' +
-        '<g id="lk-a1"><path class="f-mov" d="M64 150h22v8H64z"/></g>' +
-        '<g id="lk-a2"><path class="f-mov" d="M514 150h22v8h-22z"/></g>' +
-        '<text class="t-sm" x="50" y="176" text-anchor="middle">элерон</text>' +
-        '<text class="t-sm" x="550" y="176" text-anchor="middle">элерон</text>' +
-        '<g id="lk-lock"><path stroke="#a92920" stroke-width="10" d="M206 122L394 98"/>' +
-        '<text class="t-sm t-red" x="300" y="84" text-anchor="middle">Gust Lock</text></g>',
-      electro:
-        WIND +
-        '<g id="lk-surf">' +
-        '<path class="f-mov" d="' + closed(foilPts(40, 100, 330, 0.12, 0, 0.76, 1)) + '"/>' +
-        '<path class="f-mov" d="M292 100h12v40h-12z"/>' +
-        '<circle class="f-body" cx="298" cy="134" r="4"/></g>' +
-        '<path class="f-fix" d="' + closed(foilPts(40, 100, 330, 0.12, 0, 0, 0.785)) + '"/>' +
-        '<circle class="f-metal" cx="298" cy="100" r="3.5"/>' +
-        '<text class="t-sm" x="316" y="160">нервюра руля</text>' +
-        '<text class="t-sm" x="360" y="78">руль</text>' +
-        '<path id="lk-pin" class="f-ink" stroke-width="6"/>' +
-        '<rect class="f-body" x="180" y="' + r1(hole[1] - 9) + '" width="56" height="18" rx="4"/>' +
-        '<text class="t-sm" x="208" y="' + r1(hole[1] + 24) + '" text-anchor="middle">электромеханизм</text>' +
-        '<path class="f-sig" stroke-width="2" stroke-dasharray="5 4" d="M90 58V' + r1(hole[1]) + 'H180"/>' +
-        '<rect class="f-body" x="20" y="16" width="140" height="42" rx="6"/>' +
-        '<text class="t-sm" x="90" y="30" text-anchor="middle">панель стопорения</text>' +
-        '<rect id="lk-lamp" x="28" y="36" width="124" height="16" rx="3" fill="#e3e7ec"/>' +
-        '<text id="lk-lampt" class="t-sm" x="90" y="48" text-anchor="middle">стопоры сняты</text>' +
-        '<text id="lk-near" class="t-sm" x="500" y="150" text-anchor="middle"></text>' +
-        '<text id="lk-near2" class="t-sm" x="500" y="163" text-anchor="middle"></text>'
-    };
-    var NOTE = {
-      clamp: 'лёгкие ВС · ставит техник после полёта, снимает перед полётом',
-      gust: 'лёгкие ВС · ставит экипаж в кабине, видно с места пилота',
-      electro: 'магистральные ВС · стопор входит в отверстие нервюры по команде пилота'
-    };
-
-    frame.innerHTML = svg('0 0 600 206', VIEWS.clamp);
+    /* Три способа стопорения. Порыв ветра раскачивает поверхность, пока
+       стопор снят; со стопором она стоит. Тянуть можно саму поверхность или
+       ручку — со стопором они лишь вздрагивают.
+       Gust lock DA 40 NG — по AMM 10-10: педали до упора назад, замок
+       заводится на педали, ручки пристёгиваются ремнями и затягиваются.
+       Через жёсткую проводку замок в кабине держит и рули. */
+    var q = function (id) { return frame.querySelector('#' + id); };
+    ammPanels(frame, [
+      { id: 'lkA', tag: '', w: 420, h: 260, over: '<g id="lkA-l"></g><circle class="a-hit" id="lk-grab" r="22"/>' },
+      { id: 'lkB', tag: '', w: 300, h: 260, over: '<g id="lkB-l"></g><path class="a-hit" id="lk-surf"/>' }
+    ]);
+    var grid = frame.querySelector('.amm-grid'), views = frame.querySelectorAll('.amm-view'), tags = frame.querySelectorAll('.amm-tag');
     controls(frame,
       '<div class="fig-row">' +
-      '<button class="fig-btn is-on" data-l="clamp" type="button">Струбцина</button>' +
-      '<button class="fig-btn" data-l="gust" type="button">Gust Lock</button>' +
+      '<button class="fig-btn" data-l="clamp" type="button">Струбцина</button>' +
+      '<button class="fig-btn is-on" data-l="gust" type="button">Gust lock DA 40 NG</button>' +
       '<button class="fig-btn" data-l="electro" type="button">Электромеханическое</button></div>' +
       '<button class="fig-btn" id="lk-btn" type="button">Поставить стопор</button>' +
-      '<span class="fig-readout" id="lk-out">' + NOTE.clamp + '</span>');
+      '<span class="fig-readout" id="lk-out"></span>');
+    var svgA = q('lkA').ownerSVGElement, svgB = q('lkB').ownerSVGElement;
+    var btn = q('lk-btn'), out = q('lk-out');
+    var view = 'gust', locked = false, p = 0, hand = null, handT = 0, shake = 0, pin = 0;
+    var NOTE = {
+      clamp: 'ставит техник на стоянке; флажок «снять перед полётом» видно снаружи',
+      gust: 'ставит экипаж в кабине: держит ручки и педали, а через проводку — и рули',
+      electro: 'магистральные ВС: штырь входит в отверстие нервюры по команде из кабины'
+    };
 
-    var host = frame.querySelector('.figure-svg svg');
-    var q = function (id) { return host.querySelector('#' + id); };
-    var btn = frame.querySelector('#lk-btn');
-    var out = frame.querySelector('#lk-out');
-    var view = 'clamp', locked = false, p = 0, last = 0;
-
-    function paint(t) {
-      last = t;
+    /* порыв: медленная огибающая и быстрые толчки */
+    function gust(t) {
       var g = 0.55 + 0.45 * Math.sin(t * 0.017) * Math.sin(t * 0.0071 + 1);
-      var a = clamp(AMAX * 1.25 * g * (0.65 * Math.sin(t * 0.19) + 0.35 * Math.sin(t * 0.31 + 2)),
-        -AMAX, AMAX);
-      var w = q('lk-w');
-      if (w) w.style.opacity = r1(0.25 + 0.75 * g);
-      var lk = q('lk-lock');
-      if (view === 'clamp') {
-        var ang = a * (1 - p);
-        q('lk-surf').setAttribute('transform', 'rotate(' + r1(ang) + ' ' + r1(hx) + ' ' + r1(hy) + ')');
-        q('lk-hit').setAttribute('opacity', Math.abs(ang) > AMAX * 0.93 ? 0.8 : 0);
-        lk.setAttribute('transform', 'translate(0 ' + r1(-90 * (1 - p)) + ')');
-        lk.style.opacity = p;
-      } else if (view === 'gust') {
-        var s = a * 0.7 * (1 - p);
-        q('lk-s1').setAttribute('transform', 'rotate(' + r1(s) + ' 220 170)');
-        q('lk-s2').setAttribute('transform', 'rotate(' + r1(s) + ' 380 170)');
-        q('lk-a1').setAttribute('transform', 'rotate(' + r1(-s * 1.4) + ' 64 154)');
-        q('lk-a2').setAttribute('transform', 'rotate(' + r1(-s * 1.4) + ' 536 154)');
-        lk.setAttribute('transform', 'translate(0 ' + r1(-40 * (1 - p)) + ')');
-        lk.style.opacity = p;
-      } else {
-        var k1 = clamp(p * 2, 0, 1), k2 = clamp(p * 2 - 1, 0, 1);
-        var e = a * (1 - k1) + LOCK * k1;
-        q('lk-surf').setAttribute('transform', 'rotate(' + r1(e) + ' 298 100)');
-        q('lk-pin').setAttribute('d', 'M236 ' + r1(hole[1]) + 'H' + r1(236 + k2 * (hole[0] - 236)));
-        var on = p > 0.98;
-        q('lk-lamp').setAttribute('fill', on ? '#f3c46b' : '#e3e7ec');
-        q('lk-lampt').textContent = on ? 'РУЛИ ЗАСТОПОРЕНЫ' : 'стопоры сняты';
-        q('lk-near').textContent = p > 0.4 ? 'руль стопорится у положения,' : '';
-        q('lk-near2').textContent = p > 0.4 ? 'близкого к крайнему' : '';
-      }
+      return { g: g, a: g * (0.65 * Math.sin(t * 0.19) + 0.35 * Math.sin(t * 0.31 + 2)) };
+    }
+    function wind(g, w, h) {
+      var s = '';
+      [0.16, 0.26, 0.74, 0.84].forEach(function (y) {
+        s += '<path class="f-air f-flow" opacity="' + r1(0.25 + 0.75 * g) + '" d="M0 ' + r1(h * y) + 'H' + w + '"/>';
+      });
+      return s;
+    }
+    /* профиль с поверхностью на шарнире: nose — носок, c — хорда, hu — доля хорды шарнира */
+    function foilHinge(x0, y0, c, hu, a, tint) {
+      var hx = x0 + hu * c, hy = camY(y0, c, 0.02, hu);
+      return { hx: hx, hy: hy, s: '<g transform="rotate(' + r1(a) + ' ' + r1(hx) + ' ' + r1(hy) + ')"><path class="a-mv ' + (tint || 'a-surf') + '" d="' +
+        closed(foilPts(x0, y0, c, 0.12, 0.02, hu - 0.02, 1)) + '"/></g>' +
+        '<path class="a-ln" d="' + closed(foilPts(x0, y0, c, 0.12, 0.02, 0, hu + 0.01)) + '"/>' + pivot2([hx, hy], 3) };
     }
 
+    function paint(t) {
+      var G = gust(t), free = 1 - p;
+      var a = hand !== null ? hand : clamp(G.a * 18, -18, 18) * free;
+      if (hand !== null && locked) a = shake;             /* застопорено: только дрожь */
+      var sA = '', sB = '', lA = '', lB = '', surfD = '';
+      leadReset();
+      if (view === 'gust') {
+        /* кабина, вид слева: педали, ручка; руль высоты — вид Б */
+        var el = a, st = el * 0.9;                         /* ручка ходит с рулём: проводка жёсткая */
+        var ped = -16 * p;
+        sA += ghost2('M10 222H410M300 222V120Q300 96 330 96H380');
+        sA += '<g transform="rotate(' + r1(ped) + ' 74 214)"><path class="a-mv" d="M71 214L66 168h8l3 46z"/><rect class="a-mv" x="58" y="158" width="20" height="12" rx="2"/></g>' + pivot2([74, 214], 3.4);
+        sA += '<g transform="rotate(' + r1(st) + ' 210 206)"><path class="a-mv" d="M207 206V112h6v94z"/><rect class="a-mv a-grip" x="204" y="92" width="12" height="28" rx="5"/></g>' +
+          '<circle class="a-ln" cx="210" cy="206" r="9"/>' + pivot2([210, 206], 3.4);
+        var pp = tip([74, 214], [-6, -50], ped), gk = tip([210, 206], [0, -76], st);
+        /* замок: рама от педалей к ручке и ремень вокруг ручки */
+        sA += '<g style="opacity:' + r1(p) + '" transform="translate(' + r1(-40 * free) + ' ' + r1(-30 * free) + ')">' +
+          '<path class="a-lock" d="M' + poly([pp, [pp[0] + 30, pp[1] - 4], [gk[0] - 10, gk[1] + 6]]) + '"/>' +
+          '<path class="a-strap" d="M' + r1(gk[0] - 10) + ' ' + r1(gk[1] - 4) + 'h20v12h-20z"/>' +
+          '<path class="a-lock" d="M' + r1(pp[0] - 10) + ' ' + r1(pp[1] - 6) + 'h20"/>' +
+          '<text class="a-tx t-red" x="' + r1((pp[0] + gk[0]) / 2 - 10) + '" y="' + r1(Math.min(pp[1], gk[1]) - 22) + '" text-anchor="middle">GUST LOCK</text></g>';
+        lA += leader(12, 24, [68, 160], 'Педали') + leader(300, 24, gk, 'Ручка', 'middle');
+        var F = foilHinge(20, 130, 260, 0.62, el);
+        sB += wind(G.g, 300, 260) + F.s;
+        surfD = 'M' + poly(move(foilPts(20, 130, 260, 0.12, 0.02, 0.6, 1), F.hx, F.hy, el)) + 'Z';
+        lB += leader(14, 236, [80, 132], 'Стабилизатор') + leader(286, 236, tip([F.hx, F.hy], [80, 0], el), 'Руль высоты', 'end');
+        q('lk-grab').setAttribute('cx', r1(gk[0])); q('lk-grab').setAttribute('cy', r1(gk[1]));
+      } else if (view === 'clamp') {
+        var C = foilHinge(20, 130, 380, 0.72, a, 'a-surf');
+        sA += wind(G.g, 420, 260) + C.s;
+        /* струбцина обжимает заднюю часть крыла и элерон, флажок свисает вниз */
+        var cx = C.hx - 6;
+        sA += '<g style="opacity:' + r1(p) + '" transform="translate(0 ' + r1(-80 * free) + ')">' +
+          '<path class="a-lock" d="M' + (cx - 34) + ' 112H' + (cx + 52) + 'M' + (cx - 34) + ' 146H' + (cx + 52) + 'M' + (cx + 52) + ' 112V146"/>' +
+          '<path class="a-strap" d="M' + (cx - 40) + ' 108h12v8h-12zM' + (cx - 40) + ' 142h12v8h-12z"/>' +
+          '<path class="a-ln2" d="M' + (cx + 52) + ' 146V196"/><path class="a-flag" d="M' + (cx + 52) + ' 196h70v18h-70z"/>' +
+          '<text class="a-tx" fill="#fff" x="' + (cx + 87) + '" y="209" text-anchor="middle" style="fill:#fff;font-size:9px">REMOVE BEFORE FLIGHT</text></g>';
+        surfD = 'M' + poly(move(foilPts(20, 130, 380, 0.12, 0.02, 0.7, 1), C.hx, C.hy, a)) + 'Z';
+        lA += leader(14, 236, [120, 132], 'Крыло') + leader(406, 40, tip([C.hx, C.hy], [80, 0], a), 'Элерон', 'end');
+      } else {
+        /* руль направления, вид сверху: на нервюре отверстие, штырь от электромеханизма */
+        var LOCKA = 8;
+        if (pin > 0) a = LOCKA + (hand !== null && pin > 0.98 ? shake : 0);   /* штырь вошёл — руль держит */
+        var E = foilHinge(20, 110, 380, 0.7, a, 'a-surf');
+        var H = [E.hx, E.hy], hole = tip(H, [0, 34], LOCKA);
+        sA += wind(G.g, 420, 260) + E.s;
+        sA += '<g transform="rotate(' + r1(a) + ' ' + r1(H[0]) + ' ' + r1(H[1]) + ')"><path class="a-mv" d="M' + r1(H[0] - 5) + ' ' + r1(H[1]) + 'h10v40h-10z"/>' +
+          '<circle class="a-ln" cx="' + r1(H[0]) + '" cy="' + r1(H[1] + 34) + '" r="4"/></g>';
+        var px = hole[0] - 62 + 52 * pin;
+        sA += '<rect class="a-ln" x="' + r1(hole[0] - 120) + '" y="' + r1(hole[1] - 10) + '" width="58" height="20"/>' +
+          '<path class="a-lock" d="M' + r1(hole[0] - 62) + ' ' + r1(hole[1]) + 'H' + r1(px) + '"/>';
+        sA += '<rect class="a-ln" x="14" y="16" width="130" height="38"/><text class="a-tx a-sm" x="79" y="30" text-anchor="middle">панель стопорения</text>' +
+          '<rect x="20" y="36" width="118" height="12" fill="' + (pin > 0.98 ? 'var(--green-ink)' : locked ? 'var(--amber-ink)' : '#e3e7ec') + '"/>' +
+          '<text class="a-tx a-sm" x="79" y="46" text-anchor="middle" style="fill:' + (pin > 0.02 || locked ? '#fff' : '#5f6a82') + '">' +
+          (pin > 0.98 ? 'застопорено' : locked ? 'ждёт совпадения' : 'стопоры сняты') + '</text>';
+        surfD = 'M' + poly(move(foilPts(20, 110, 380, 0.12, 0.02, 0.68, 1), H[0], H[1], a)) + 'Z';
+        lA += leader(14, 236, [hole[0] - 90, hole[1] + 10], 'Электромеханизм') +
+          leader(406, 236, tip(H, [0, 38], a), 'Нервюра руля с отверстием', 'end') +
+          leader(406, 40, tip(H, [80, 0], a), 'Руль направления', 'end');
+        if (locked && pin < 1 && Math.abs(a - LOCKA) < 2.5) pin = Math.min(1, pin + 0.08);
+        if (!locked) pin = Math.max(0, pin - 0.08);
+      }
+      q('lkA').innerHTML = sA; q('lkA-l').innerHTML = lA;
+      q('lkB').innerHTML = sB; q('lkB-l').innerHTML = lB;
+      var hit = q('lk-surf');
+      if (view === 'gust') { hit.setAttribute('d', surfD); }
+      else { svgA.appendChild(hit); hit.setAttribute('d', surfD); }
+      var still = view === 'electro' ? pin > 0.98 : p > 0.98;
+      out.textContent = (hand !== null && still ? 'застопорено — поверхность не поддаётся · ' : '') + NOTE[view];
+    }
+
+    function show(id) {
+      view = id;
+      var two = id === 'gust';
+      views[1].style.display = two ? '' : 'none';
+      grid.style.setProperty('--a', two ? '1.3fr' : '1fr');
+      grid.style.gridTemplateColumns = two ? '' : 'minmax(0, 620px)';
+      grid.style.justifyContent = 'center';
+      grid.style.background = two ? '' : '#fff';
+      tags[0].textContent = id === 'gust' ? 'А · кабина, вид слева' : id === 'clamp' ? 'Сечение крыла у элерона' : 'Руль направления, вид сверху';
+      tags[1].textContent = 'Б · руль высоты на ветру';
+      q('lk-grab').style.display = two ? '' : 'none';
+      if (two) svgB.appendChild(q('lk-surf'));
+    }
     function setLock(on) {
       locked = on;
       btn.textContent = on ? 'Снять стопор' : 'Поставить стопор';
       btn.classList.toggle('is-on', on);
-      if (reduced) { p = on ? 1 : 0; paint(last); }
     }
     btn.addEventListener('click', function () { setLock(!locked); });
-    pick(frame, 'data-l', function (id) {
-      view = id;
-      host.innerHTML = VIEWS[id];
-      out.textContent = NOTE[id];
-      paint(last);
-    });
+    pick(frame, 'data-l', function (id) { show(id); setLock(false); p = 0; pin = 0; });
 
+    /* руками: пока стопор снят, поверхность идёт за пальцем; со стопором — дрожь */
+    function grabber(el, svgEl, dir) {
+      dragger(el, svgEl, function () { hand = 0; handT = 0; },
+        function (dx, dy) {
+          var x = clamp((dx * dir[0] + dy * dir[1]) / (dir[0] * dir[0] + dir[1] * dir[1]), -1, 1) * 18;
+          if (locked && (view !== 'electro' || pin > 0.98)) { shake = clamp(x * 0.04, -0.8, 0.8); hand = shake; }
+          else hand = x;
+        },
+        function () { hand = null; });
+    }
+    grabber(q('lk-grab'), svgA, [76 * Math.sin(16 * DEG), 0]);
+    grabber(q('lk-surf'), svgB, [0, 90 * Math.sin(18 * DEG)]);
+    show('gust');
+    setLock(false);
+    var last = 0;
     loop(frame, function (t) {
-      p = clamp(p + (locked ? 0.025 : -0.025), 0, 1);
+      last = t;
+      var target = view === 'electro' ? 0 : locked ? 1 : 0;
+      p = clamp(p + (target > p ? 0.03 : -0.03), 0, 1);
+      if (view === 'electro') p = 0;
       paint(t);
     });
   };
 
   /* ═══════════════════════════════════════════════════════
-     2. Прямое механическое управление элероном
-     ═══════════════════════════════════════════════════════ */
+     Чертёж «как в AMM»: изометрия по трёхмерным точкам
+     ═══════════════════════════════════════════════════════
+     Узлы схемы задаются в метрах в осях самолёта (x — вправо по полёту,
+     y — вперёд, z — вверх) и проецируются ортографически, как рисунки
+     руководства по ТО. Кинематика считается в тех же метрах, поэтому
+     качалки и тяги двигаются так, как на самолёте, а не «на глаз».
+     Чертёж — несколько панелей-видов; на телефоне они встают в столбик,
+     и каждый вид остаётся крупным, без прокрутки вбок. */
+  function v3(a, b, k) { return [a[0] + b[0] * k, a[1] + b[1] * k, a[2] + b[2] * k]; }
+  function dot3(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+  function unit3(a) { var l = Math.sqrt(dot3(a, a)) || 1; return [a[0] / l, a[1] / l, a[2] / l]; }
+  function cross3(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
+
+  /* Вид: направление на наблюдателя eye, вписывание точек fit в рамку box. */
+  function isoView(eye, fit, box) {
+    var f = unit3([-eye[0], -eye[1], -eye[2]]);
+    var r = unit3(cross3(f, [0, 0, 1])), u = cross3(r, f);
+    var x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    fit.forEach(function (p) {
+      var a = dot3(p, r), b = -dot3(p, u);
+      x0 = Math.min(x0, a); x1 = Math.max(x1, a); y0 = Math.min(y0, b); y1 = Math.max(y1, b);
+    });
+    var k = Math.min(box[2] / (x1 - x0), box[3] / (y1 - y0));
+    var ox = box[0] + (box[2] - (x1 - x0) * k) / 2 - x0 * k;
+    var oy = box[1] + (box[3] - (y1 - y0) * k) / 2 - y0 * k;
+    function P(p) { return [ox + k * dot3(p, r), oy - k * dot3(p, u), dot3(p, f)]; }
+    P.k = k;
+    return P;
+  }
+
+  /* Сборщик кадра: детали рисуются от дальних к ближним (художник). */
+  function ammScene(P) {
+    var items = [];
+    function add(depth, s) { items.push([depth, s]); }
+    return {
+      P: P,
+      /* труба/тяга: контур цилиндра и торцы */
+      tube: function (a, b, rad, cls) {
+        var A = P(a), B = P(b), dx = B[0] - A[0], dy = B[1] - A[1];
+        var L = Math.sqrt(dx * dx + dy * dy) || 1, w = rad * P.k;
+        var nx = -dy / L * w, ny = dx / L * w;
+        var far = A[2] > B[2] ? A : B, near = far === A ? B : A;
+        add((A[2] + B[2]) / 2,
+          '<circle class="' + cls + '" cx="' + r1(far[0]) + '" cy="' + r1(far[1]) + '" r="' + r1(w) + '"/>' +
+          '<path class="' + cls + '" d="M' + poly([[A[0] + nx, A[1] + ny], [B[0] + nx, B[1] + ny],
+            [B[0] - nx, B[1] - ny], [A[0] - nx, A[1] - ny]]) + 'Z"/>' +
+          '<path class="a-in" d="M' + poly([[A[0] + nx, A[1] + ny], [B[0] + nx, B[1] + ny]]) + 'M' +
+            poly([[A[0] - nx, A[1] - ny], [B[0] - nx, B[1] - ny]]) + '"/>' +
+          '<circle class="' + cls + '" cx="' + r1(near[0]) + '" cy="' + r1(near[1]) + '" r="' + r1(w) + '"/>');
+      },
+      /* тяга: труба с наконечниками-шарнирами на концах */
+      rod: function (a, b, cls) {
+        var d = unit3([b[0] - a[0], b[1] - a[1], b[2] - a[2]]);
+        var L = Math.sqrt(dot3([b[0] - a[0], b[1] - a[1], b[2] - a[2]], [b[0] - a[0], b[1] - a[1], b[2] - a[2]]));
+        var e = Math.min(0.045, L * 0.2);
+        this.tube(v3(a, d, e), v3(b, d, -e), 0.011, cls);
+        this.tube(a, v3(a, d, e), 0.005, 'a-ln');
+        this.tube(b, v3(b, d, -e), 0.005, 'a-ln');
+        this.eye(a); this.eye(b);
+      },
+      /* сферический подшипник наконечника */
+      eye: function (p) {
+        var Q = P(p), w = 0.016 * P.k;
+        add(Q[2] - 0.001, '<circle class="a-ln" cx="' + r1(Q[0]) + '" cy="' + r1(Q[1]) + '" r="' + r1(w) + '"/>' +
+          '<circle class="a-hole" cx="' + r1(Q[0]) + '" cy="' + r1(Q[1]) + '" r="' + r1(w * 0.42) + '"/>');
+      },
+      /* плоская деталь: качалка, кронштейн, кабанчик */
+      plate: function (pts, cls, holes) {
+        var S = pts.map(P), d = 0;
+        S.forEach(function (q) { d += q[2]; });
+        var s = '<path class="' + cls + '" d="M' + poly(S) + 'Z"/>';
+        (holes || []).forEach(function (h) {
+          var Q = P(h);
+          s += '<circle class="a-hole" cx="' + r1(Q[0]) + '" cy="' + r1(Q[1]) + '" r="' + r1(0.008 * P.k) + '"/>';
+        });
+        add(d / S.length, s);
+      },
+      /* контур конструкции штрихпунктиром, как шпангоуты и нервюры в AMM */
+      ghost: function (pts, closedPath) {
+        var S = pts.map(P);
+        add(99, '<path class="a-st" d="M' + poly(S) + (closedPath ? 'Z' : '') + '"/>');
+      },
+      raw: function (depth, s) { add(depth, s); },
+      svg: function () {
+        items.sort(function (a, b) { return b[0] - a[0]; });
+        return items.map(function (x) { return x[1]; }).join('');
+      }
+    };
+  }
+
+  /* Перетаскивание в единицах viewBox; работает пальцем и мышью. */
+  function dragger(el, svgEl, onStart, onMove, onEnd) {
+    var start = null;
+    function pt(e) {
+      var host = el.ownerSVGElement || svgEl, m = host.getScreenCTM();
+      if (!m) return [0, 0];
+      var p = host.createSVGPoint();
+      p.x = e.clientX; p.y = e.clientY;
+      p = p.matrixTransform(m.inverse());
+      return [p.x, p.y];
+    }
+    el.addEventListener('pointerdown', function (e) {
+      if (e.button > 0) return;
+      e.preventDefault();
+      start = pt(e);
+      try { el.setPointerCapture(e.pointerId); } catch (err) { /* указатель уже отпущен */ }
+      el.classList.add('is-drag');
+      onStart(start);
+    });
+    el.addEventListener('pointermove', function (e) {
+      if (!start) return;
+      var p = pt(e);
+      onMove(p[0] - start[0], p[1] - start[1], p);
+    });
+    function end() {
+      if (!start) return;
+      start = null;
+      el.classList.remove('is-drag');
+      if (onEnd) onEnd();
+    }
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+  }
+
+  /* Панели чертежа: подпись вида в углу, как «Detail A» в AMM. */
+  function ammPanels(frame, list) {
+    frame.innerHTML = '<div class="amm-grid">' + list.map(function (p) {
+      return '<div class="amm-view' + (p.wide ? ' is-wide' : '') + '">' +
+        '<div class="amm-tag">' + p.tag + '</div>' +
+        '<svg viewBox="0 0 ' + p.w + ' ' + p.h + '" role="img" aria-label="' + p.tag + '">' +
+        '<g class="amm-body" id="' + p.id + '"></g>' + (p.over || '') + '</svg></div>';
+    }).join('') + '</div>';
+    fitText(frame);
+  }
+
+  /* Выноски. Каждая подпись ищет свободное место: если её рамка пересекает
+     уже поставленную на этом виде, она сдвигается вниз (у нижнего края —
+     вверх) шагами по строке. leadReset() вызывается перед подписями вида. */
+  var leadBox = [], LEAD_W = 7.1, LEAD_H = 15;
+  function leadReset() { leadBox = []; }
+  function leader(x, y, to, text, anchor) {
+    var a = anchor || 'start', w = text.length * LEAD_W;
+    function rect(yy) {
+      var tx = a === 'end' ? x - w : a === 'middle' ? x - w / 2 : x;
+      return [tx - 2, yy - LEAD_H + 3, tx + w + 2, yy + 4];
+    }
+    function hit(r) {
+      return leadBox.some(function (b) { return r[0] < b[2] && b[0] < r[2] && r[1] < b[3] && b[1] < r[3]; });
+    }
+    var dir = y > 200 ? -1 : 1, yy = y, n = 0;
+    while (hit(rect(yy)) && n < 12) { n++; yy = y + dir * LEAD_H * Math.ceil(n / 1) ; }
+    if (hit(rect(yy))) yy = y;
+    leadBox.push(rect(yy));
+    y = yy;
+    var tx = a === 'end' ? x - w : a === 'middle' ? x - w / 2 : x;
+    var ex = to[0] < tx ? tx - 3 : to[0] > tx + w ? tx + w + 3 : to[0];
+    var ey = to[1] < y - 10 ? y - 13 : y + 4;
+    return '<path class="a-ld" d="M' + r1(ex) + ' ' + r1(ey) + 'L' + r1(to[0]) + ' ' + r1(to[1]) + '"/>' +
+      '<circle class="a-dot" cx="' + r1(to[0]) + '" cy="' + r1(to[1]) + '" r="1.8"/>' +
+      '<text class="a-tx" x="' + r1(x) + '" y="' + r1(y) + '" text-anchor="' + a + '">' + text + '</text>';
+  }
+
+  /* ── Плоские виды «как в AMM» (сбоку, сверху): те же правила линии ── */
+  function dist2(a, b) { return Math.sqrt((a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1])); }
+  /* Угол рычага (pivot + arm, поворот deg), при котором жёсткая тяга длиной L
+     от точки A достаёт до конца рычага. Длина тяги монотонна по углу на
+     рабочем ходе, поэтому хватает деления пополам. */
+  function follow(pivot, arm, A, L, lo, hi) {
+    function f(a) { return dist2(rot(pivot[0] + arm[0], pivot[1] + arm[1], pivot[0], pivot[1], a), A) - L; }
+    var flo = f(lo);
+    for (var i = 0; i < 40; i++) {
+      var m = (lo + hi) / 2, fm = f(m);
+      if ((fm > 0) === (flo > 0)) { lo = m; flo = fm; } else hi = m;
+    }
+    return (lo + hi) / 2;
+  }
+  function tip(pivot, arm, a) { return rot(pivot[0] + arm[0], pivot[1] + arm[1], pivot[0], pivot[1], a); }
+  /* тяга: труба и наконечники с подшипником */
+  function rod2(a, b, cls, w) {
+    w = w || 3.4;
+    var dx = b[0] - a[0], dy = b[1] - a[1], L = Math.sqrt(dx * dx + dy * dy) || 1;
+    var ux = dx / L, uy = dy / L, e = Math.min(14, L * 0.22), nx = -uy * w, ny = ux * w;
+    var A = [a[0] + ux * e, a[1] + uy * e], B = [b[0] - ux * e, b[1] - uy * e];
+    return '<path class="a-ln" d="M' + poly([a, A]) + 'M' + poly([B, b]) + '" stroke-width="2.2"/>' +
+      '<path class="' + (cls || 'a-mv') + '" d="M' + poly([[A[0] + nx, A[1] + ny], [B[0] + nx, B[1] + ny],
+        [B[0] - nx, B[1] - ny], [A[0] - nx, A[1] - ny]]) + 'Z"/>' +
+      eye2(a) + eye2(b);
+  }
+  function eye2(p) {
+    return '<circle class="a-ln" cx="' + r1(p[0]) + '" cy="' + r1(p[1]) + '" r="4.2"/>' +
+      '<circle class="a-hole" cx="' + r1(p[0]) + '" cy="' + r1(p[1]) + '" r="1.6"/>';
+  }
+  /* неподвижная ось: болт в кронштейне */
+  function pivot2(p, r) {
+    r = r || 4.6;
+    return '<circle class="a-ln" cx="' + r1(p[0]) + '" cy="' + r1(p[1]) + '" r="' + r + '"/>' +
+      '<path class="a-ln2" stroke-width="1" d="M' + r1(p[0] - r * 0.6) + ' ' + r1(p[1]) + 'h' + r1(r * 1.2) + 'M' +
+      r1(p[0]) + ' ' + r1(p[1] - r * 0.6) + 'v' + r1(r * 1.2) + '"/>';
+  }
+  /* рычаг-пластина вокруг оси по списку точек плеч */
+  function lever2(p, arms, a, cls, w) {
+    w = w || 6;
+    var s = '';
+    arms.forEach(function (arm) {
+      var t = tip(p, arm, a), L = Math.sqrt(arm[0] * arm[0] + arm[1] * arm[1]) || 1;
+      var nx = -(t[1] - p[1]) / L * w, ny = (t[0] - p[0]) / L * w;
+      s += '<path class="' + (cls || 'a-mv') + '" d="M' + r1(p[0] + nx) + ' ' + r1(p[1] + ny) + 'L' + r1(t[0] + nx * 0.7) + ' ' +
+        r1(t[1] + ny * 0.7) + 'A' + r1(w * 0.7) + ' ' + r1(w * 0.7) + ' 0 0 0 ' + r1(t[0] - nx * 0.7) + ' ' + r1(t[1] - ny * 0.7) +
+        'L' + r1(p[0] - nx) + ' ' + r1(p[1] - ny) + 'Z"/>';
+    });
+    return s + '<circle class="' + (cls || 'a-mv') + '" cx="' + r1(p[0]) + '" cy="' + r1(p[1]) + '" r="' + r1(w * 1.25) + '"/>' +
+      '<circle class="a-hole" cx="' + r1(p[0]) + '" cy="' + r1(p[1]) + '" r="1.8"/>';
+  }
+  /* штрихпунктир конструкции */
+  function ghost2(d) { return '<path class="a-st" d="' + d + '"/>'; }
+  /* стрелка усилия в тяге: растяжение — от середины к концам, сжатие — к середине */
+  function load2(a, b, sign, k) {
+    if (Math.abs(k) < 0.08) return '';
+    var dx = b[0] - a[0], dy = b[1] - a[1], L = Math.sqrt(dx * dx + dy * dy) || 1, ux = dx / L, uy = dy / L;
+    var nx = -uy * 11, ny = ux * 11, l = 10 + 16 * Math.abs(k);
+    var m1 = [a[0] + dx * 0.3 + nx, a[1] + dy * 0.3 + ny], m2 = [a[0] + dx * 0.7 + nx, a[1] + dy * 0.7 + ny];
+    return sign > 0
+      ? arrow(m1[0], m1[1], m1[0] - ux * l, m1[1] - uy * l, 'f-red', 2) + arrow(m2[0], m2[1], m2[0] + ux * l, m2[1] + uy * l, 'f-red', 2)
+      : arrow(m1[0] - ux * l, m1[1] - uy * l, m1[0], m1[1], 'f-red', 2) + arrow(m2[0] + ux * l, m2[1] + uy * l, m2[0], m2[1], 'f-red', 2);
+  }
+  /* хват по направлению: смещение пальца проецируется на ход детали;
+     dir() — куда и на сколько пикселей уходит деталь при полном ходе */
+  function dragAlong(el, svgEl, get, set, dir) {
+    var g0 = 0, d = [1, 0];
+    dragger(el, svgEl, function () { g0 = get(); d = dir(); },
+      function (dx, dy) { set(clamp(g0 + (dx * d[0] + dy * d[1]) / (d[0] * d[0] + d[1] * d[1] || 1), -1, 1)); });
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     2. Прямое механическое управление элеронами DA 40 NG
+        (AMM 6.02.15, 27-10-00, рис. 1 и 2)
+     ═══════════════════════════════════════════════════════
+     Цепочка по AMM: ручки → поперечные тяги → передняя качалка у пультового
+     шпангоута → тяга под центральным пультом → промежуточный рычаг на
+     переднем главном шпангоуте → короткая тяга → задняя качалка на заднем
+     главном шпангоуте → тяги центроплана и длинные тяги в крыльях (по три
+     роликовые направляющие) → качалки элеронов → короткие регулируемые
+     тяги → кабанчики элеронов. Ручка влево: тяги у ручки идут вправо,
+     тяга под пультом — назад, тяги в крыльях — влево, левый элерон
+     вверх, правый вниз (AMM 27-10-00, п. 3). */
   reg.direct = function (frame) {
-    var WX = 330, WY = 92, WC = 240, WM = 0.02, HU = 0.76;
-    var hx = WX + HU * WC, hy = camY(WY, WC, WM, HU);
-    var AIL = foilPts(WX, WY, WC, 0.12, WM, HU - 0.02, 1);
-    var TE0 = [WX + WC, camY(WY, WC, WM, 1)];
-    var HORN = [hx - 12, hy + 28];
-    var AIR = [[54, 0.35, -1], [70, 0.7, -1], [118, 0.7, 1], [134, 0.35, 1]];
+    var TH_MAX = 20 * DEG;                 /* ход ручки по крену */
+    var L_ST = 0.62, L_LO = 0.09;          /* ручка над осью торсиона и рычаг под ней */
 
-    var s =
-      '<text class="t-sm" x="40" y="12">усилие на ручке по крену (условная модель: растёт как V²·δ)</text>' +
-      '<rect class="f-body" x="40" y="20" width="260" height="12" rx="6"/>' +
-      '<rect id="d-bar" x="40" y="20" width="0" height="12" rx="6"/>' +
-      '<path class="f-ink" stroke-width="1.5" d="M78 16v20M239 16v20"/>' +
-      '<text class="t-sm" x="78" y="48" text-anchor="middle">2,2 кгс — длительно</text>' +
-      '<text class="t-sm" x="239" y="48" text-anchor="middle">11,5 кгс — кратковременно</text>' +
-      AIR.map(function (a, i) { return '<path id="d-a' + i + '" class="f-air f-flow"/>'; }).join('') +
-      '<path class="f-dim" d="M30 206H300"/>' +
-      '<text class="t-sm" x="34" y="224">кабина</text>' +
-      '<g id="d-stick"><path class="f-ink" stroke-width="5" d="M80 206V120"/>' +
-      '<circle class="f-ink" cx="80" cy="112" r="9"/></g>' +
-      '<circle class="f-metal" cx="80" cy="206" r="5"/>' +
-      '<g id="d-hf"></g>' +
-      '<path id="d-rod" class="f-blue" stroke-width="4"/>' +
-      '<text class="t-sm" x="270" y="144" text-anchor="middle">жёсткая тяга</text>' +
-      '<g id="d-crank"><path class="f-ink" stroke-width="5" d="M470 154V180H500"/></g>' +
-      '<circle class="f-metal" cx="470" cy="180" r="5"/>' +
-      '<text class="t-sm" x="470" y="202" text-anchor="middle">качалка</text>' +
-      '<path id="d-push" class="f-blue" stroke-width="3"/>' +
-      '<g id="d-ail"></g>' +
-      '<path class="f-fix" d="' + closed(foilPts(WX, WY, WC, 0.12, WM, 0, HU + 0.01)) + '"/>' +
-      '<circle class="f-metal" cx="' + r1(hx) + '" cy="' + r1(hy) + '" r="3"/>' +
-      '<text class="t-sm" x="420" y="96" text-anchor="middle">крыло</text>' +
-      '<text class="t-sm" x="596" y="176" text-anchor="middle">элерон</text>' +
-      '<g id="d-hm"></g>';
+    function rz(c, v, a) {
+      var cs = Math.cos(a), sn = Math.sin(a);
+      return [c[0] + v[0] * cs - v[1] * sn, c[1] + v[0] * sn + v[1] * cs, c[2] + v[2]];
+    }
+    /* поворот вокруг поперечной оси (элерон, промежуточный рычаг): вверх + = задняя кромка вверх */
+    function rx(c, v, a) {
+      var cs = Math.cos(a), sn = Math.sin(a);
+      return [c[0] + v[0], c[1] + v[1] * cs + v[2] * sn, c[2] - v[1] * sn + v[2] * cs];
+    }
 
-    frame.innerHTML = svg('0 0 640 232', s);
+    /* длина короткой тяги в нейтрали: от качалки элерона до кабанчика */
+    var SHORT = (function () {
+      var a = rz([-3.5, -0.88, 0], [-0.08, 0, 0], 0), b = rx([-3.58, -1.08, 0], [0, 0.04, -0.09], 0);
+      return Math.sqrt(Math.pow(a[0] - b[0], 2) + Math.pow(a[1] - b[1], 2) + Math.pow(a[2] - b[2], 2));
+    })();
+    /* Кинематика всей цепочки по углу ручки th (вправо +) */
+    function chain(th) {
+      var dLo = -L_LO * Math.sin(th);                      /* поперечные тяги у ручек */
+      var phF = Math.asin(clamp(dLo / 0.07, -1, 1));       /* передняя качалка */
+      var dC = -0.08 * Math.sin(phF);                      /* тяга под пультом, вперёд + */
+      var ps = Math.asin(clamp(-dC / 0.16, -1, 1));        /* промежуточный рычаг */
+      var dO = -0.22 * Math.sin(ps);                       /* короткая тяга к задней качалке */
+      var phR = Math.asin(clamp(-dO / 0.08, -1, 1));       /* задняя качалка */
+      var dX = -0.05 * Math.sin(phR);                      /* тяги в крыльях, вправо + */
+      var phW = Math.asin(clamp(-dX / 0.06, -1, 1));       /* качалка левого элерона */
+      /* левый элерон (вверх +): угол, при котором короткая тяга от качалки
+         до кабанчика сохраняет свою длину — тяга жёсткая, не тянется */
+      var wOut = rz([-3.5, -0.88, 0], [-0.08, 0, 0], phW), lo = -0.8, hi = 0.8;
+      for (var n = 0; n < 30; n++) {
+        var mid = (lo + hi) / 2, hA = rx([-3.58, -1.08, 0], [0, 0.04, -0.09], mid);
+        var dl = Math.sqrt(Math.pow(hA[0] - wOut[0], 2) + Math.pow(hA[1] - wOut[1], 2) + Math.pow(hA[2] - wOut[2], 2));
+        if (dl > SHORT) hi = mid; else lo = mid;
+      }
+      return { th: th, phF: phF, ps: ps, phR: phR, dX: dX, phW: phW, del: (lo + hi) / 2 };
+    }
+    /* ── вид А: фюзеляж ── */
+    /* взгляд сзади-слева сверху, как из-за спины пилота: ручка влево —
+       и на рисунке влево, левое крыло слева */
+    var EYE_A = [-0.55, -1, 0.8];
+    var FIT_A = [[-0.5, 0.2, 0.7], [0.5, 0.2, 0.7], [-0.5, 0.2, -0.3], [0.5, -1.0, -0.3],
+      [-0.7, -0.95, 0.1], [0.7, -0.95, 0.1], [-0.5, -1.0, 0.2], [0.7, -0.95, -0.1]];
+    var PA = isoView(EYE_A, FIT_A, [14, 40, 392, 272]);
+    /* ── вид Б: левое крыло у элерона ── */
+    var EYE_B = EYE_A;
+    var FIT_B = [[-3.1, -0.7, 0.1], [-4.0, -0.7, 0.1], [-3.1, -1.42, -0.12], [-4.0, -1.42, 0.12], [-3.1, -0.7, -0.1]];
+    var PB = isoView(EYE_B, FIT_B, [12, 44, 296, 240]);
+
+    ammPanels(frame, [
+      { id: 'dA', tag: 'А · в фюзеляже', w: 420, h: 330, span: 1.3,
+        over: '<g id="dA-l"></g><circle class="a-hit" id="dA-hit" r="26"/>' +
+          '<g class="a-cue" id="dA-cue"><rect x="-46" y="-34" width="92" height="20" rx="10"/>' +
+          '<text x="0" y="-20" text-anchor="middle">тяните ручку</text></g>' },
+      { id: 'dB', tag: 'Б · левое крыло, у элерона', w: 320, h: 330,
+        over: '<g id="dB-l"></g><path class="a-hit" id="dB-hit"/>' },
+      { id: 'dC', tag: 'В · вид сзади: что делает самолёт', w: 640, h: 210, wide: true }
+    ]);
     controls(frame,
       '<div class="fig-row"><span class="fig-label">Ручка</span>' +
-      '<input class="fig-range" id="d-in" type="range" min="-100" max="100" value="0" ' +
-      'aria-label="Ход ручки">' + AUTO + '</div>' +
+      '<input class="fig-range" id="d-in" type="range" min="-100" max="100" value="0" aria-label="Ход ручки по крену">' +
+      AUTO + '</div>' +
       '<span class="fig-label">Скорость</span>' +
-      '<input class="fig-range" id="d-v" type="range" min="100" max="300" value="200" ' +
-      'aria-label="Скорость полёта">' +
+      '<input class="fig-range" id="d-v" type="range" min="100" max="300" value="200" aria-label="Скорость полёта">' +
       '<button class="fig-btn" id="d-gust" type="button">Порыв</button>' +
       '<span class="fig-readout" id="d-out"></span>');
 
     var q = function (id) { return frame.querySelector('#' + id); };
-    var stickV = 0, V = 200, gT = 999;
+    var svgA = q('dA').ownerSVGElement, svgB = q('dB').ownerSVGElement;
+    var stickV = 0, V = 200, gT = 999, grab = null, touched = false;
+    var STICKS = [-0.28, 0.28];
 
-    function setSpeed() {
-      AIR.forEach(function (a, i) { q('d-a' + i).style.animationDuration = r1(170 / V) + 's'; });
+    function viewA(c) {
+      var S = ammScene(PA), th = c.th;
+      /* конструкция: пультовой, передний и задний главные шпангоуты */
+      S.ghost([[-0.42, 0.13, -0.28], [0.42, 0.13, -0.28], [0.42, 0.13, 0.04], [-0.42, 0.13, 0.04]], true);
+      S.ghost([[-0.6, -0.5, -0.32], [0.6, -0.5, -0.32], [0.6, -0.5, 0.06], [-0.6, -0.5, 0.06]], true);
+      S.ghost([[-0.6, -0.88, -0.2], [0.6, -0.88, -0.2], [0.6, -0.88, 0.12], [-0.6, -0.88, 0.12]], true);
+      /* ручки на торсионах */
+      var lo = [];
+      STICKS.forEach(function (x0, i) {
+        S.tube([x0, 0.14, 0], [x0, -0.3, 0], 0.02, 'a-ln');
+        var top = [x0 + L_ST * Math.sin(th), 0, L_ST * Math.cos(th)];
+        var g0 = [x0 + 0.47 * Math.sin(th), 0, 0.47 * Math.cos(th)];
+        var low = [x0 - L_LO * Math.sin(th), 0, -L_LO * Math.cos(th)];
+        lo.push(low);
+        S.tube(low, g0, 0.011, 'a-mv');
+        S.tube(g0, top, 0.022, 'a-mv a-grip');
+        S.plate([[x0 - 0.035, 0.03, -0.03], [x0 + 0.035, 0.03, -0.03], [x0 + 0.02, 0.03, 0.05], [x0 - 0.02, 0.03, 0.05]], 'a-ln');
+      });
+      /* передняя качалка: ось вертикальная */
+      var F = [0, 0.07, -0.09];
+      var fIn = rz(F, [0, -0.07, 0], c.phF), fOut = rz(F, [-0.08, 0, 0], c.phF);
+      S.plate([rz(F, [0.02, 0.015, 0], c.phF), fIn, fOut, rz(F, [-0.02, 0.03, 0], c.phF)], 'a-mv', [F]);
+      S.rod(lo[0], v3(fIn, [0, 1, 0], 0.012), 'a-mv');
+      S.rod(lo[1], v3(fIn, [0, 1, 0], -0.012), 'a-mv');
+      /* промежуточный рычаг: ось поперечная */
+      var I = [-0.08, -0.5, -0.25];
+      /* rx поворачивает верх рычага назад при отрицательном угле — отсюда минус */
+      var iIn = rx(I, [0, 0, 0.16], -c.ps), iOut = rx(I, [0, 0, 0.22], -c.ps);
+      S.plate([rx(I, [0, 0.025, -0.02], -c.ps), rx(I, [0, 0.02, 0.23], -c.ps), rx(I, [0, -0.02, 0.23], -c.ps),
+        rx(I, [0, -0.025, -0.02], -c.ps)], 'a-mv', [I]);
+      S.rod(fOut, iIn, 'a-mv');
+      /* задняя качалка: вертикальная труба на заднем шпангоуте */
+      var R = [0, -0.92, -0.03];
+      S.tube([0, -0.92, -0.14], [0, -0.92, 0.09], 0.016, 'a-mv');
+      var rIn = rz(R, [-0.08, 0, 0], c.phR), rOut = rz(R, [0, 0.05, 0], c.phR);
+      S.plate([rz(R, [0.02, -0.02, 0], c.phR), rIn, rz(R, [-0.02, 0.06, 0], c.phR), rOut, rz(R, [0.03, 0.03, 0], c.phR)], 'a-mv', [R]);
+      S.rod(iOut, rIn, 'a-mv');
+      /* тяги центроплана к крыльям */
+      var wl = [-0.66 + c.dX, -0.87, -0.03], wr = [0.66 + c.dX, -0.87, -0.03];
+      S.rod(rOut, wl, 'a-mv');
+      S.rod(rOut, wr, 'a-mv');
+      q('dA').innerHTML = S.svg();
+
+      /* выноски */
+      var Gl = PA([STICKS[0] + L_ST * Math.sin(th), 0, L_ST * Math.cos(th)]);
+      leadReset();
+      q('dA-l').innerHTML =
+        leader(20, 70, PA([STICKS[0] + 0.5 * Math.sin(th), 0, 0.5 * Math.cos(th)]), 'Левая ручка') +
+        leader(250, 60, PA([STICKS[1] + 0.5 * Math.sin(th), 0, 0.5 * Math.cos(th)]), 'Правая ручка') +
+        leader(20, 214, PA([0, 0.07, -0.09]), 'Передняя качалка') +
+        leader(20, 252, PA(v3(fOut, unit3([iIn[0] - fOut[0], iIn[1] - fOut[1], iIn[2] - fOut[2]]), 0.3)), 'Тяга под пультом') +
+        leader(300, 322, PA(I), 'Промежуточный рычаг', 'middle') +
+        leader(406, 300, PA([0, -0.92, 0.09]), 'Задняя качалка', 'end') +
+        leader(406, 228, PA([0.4 + c.dX, -0.88, -0.03]), 'К правому крылу', 'end') +
+        leader(14, 322, PA([-0.45 + c.dX, -0.88, -0.03]), '← К левому крылу');
+      var hit = q('dA-hit');
+      hit.setAttribute('cx', r1(Gl[0])); hit.setAttribute('cy', r1(Gl[1]));
+      var cue = q('dA-cue');
+      cue.setAttribute('transform', 'translate(' + r1(Gl[0]) + ' ' + r1(Gl[1]) + ')');
+      cue.style.opacity = touched ? 0 : 1;
     }
 
+    function viewB(c) {
+      var S = ammScene(PB), d = c.del, X0 = -3.18, X1 = -3.98;
+      /* конструкция: задний лонжерон и нервюра управления элероном */
+      S.ghost([[X0, -0.95, -0.06], [X1, -0.95, -0.06], [X1, -0.95, 0.07], [X0, -0.95, 0.07]], true);
+      S.ghost([[-3.5, -0.62, 0.075], [-3.5, -1.0, 0.065], [-3.5, -1.0, -0.055], [-3.5, -0.62, -0.06]], true);
+      S.ghost([[X0, -0.62, 0.075], [X1, -0.62, 0.075]], false);
+      /* длинная тяга в крыле и роликовая направляющая */
+      var tip = rz([-3.5, -0.88, 0], [0, 0.06, 0], c.phW);
+      S.rod([X0 + 0.02 + c.dX, -0.82, 0], tip, 'a-mv');
+      S.plate([[-3.3, -0.77, -0.06], [-3.24, -0.77, -0.06], [-3.24, -0.87, -0.06], [-3.3, -0.87, -0.06]], 'a-ln');
+      S.plate([[-3.27, -0.79, -0.06], [-3.27, -0.79, 0.0], [-3.27, -0.85, 0.0], [-3.27, -0.85, -0.06]], 'a-ln');
+      [[-3.27, -0.82, 0.025], [-3.27, -0.82, -0.025]].forEach(function (p) {
+        var Q = PB(p);
+        S.raw(Q[2] - 0.01, '<circle class="a-ln" cx="' + r1(Q[0]) + '" cy="' + r1(Q[1]) + '" r="' + r1(0.014 * PB.k) + '"/>');
+      });
+      /* качалка элерона */
+      var W = [-3.5, -0.88, 0];
+      var wOut = rz(W, [-0.08, 0, 0], c.phW);
+      S.plate([rz(W, [0.02, 0.02, 0], c.phW), tip, rz(W, [-0.03, 0.03, 0], c.phW), wOut, rz(W, [-0.02, -0.03, 0], c.phW)], 'a-mv', [W]);
+      S.tube([-3.5, -0.88, -0.05], [-3.5, -0.88, 0.03], 0.006, 'a-ln');
+      /* элерон: шарнир по оси x, хорда 0,30 м */
+      var H = [0, -1.08, 0], c0 = 0.035;
+      function A(x, y, z) { return rx([x, H[1], H[2]], [0, y, z], d); }
+      var xs = [-3.32, -3.86];
+      var le = [A(xs[0], 0, c0), A(xs[1], 0, c0), A(xs[1], 0, -c0), A(xs[0], 0, -c0)];
+      var te = [A(xs[0], -0.3, 0.004), A(xs[1], -0.3, 0.004)];
+      S.plate([le[0], le[1], te[1], te[0]], 'a-mv a-surf');
+      S.plate([le[3], le[2], te[1], te[0]], 'a-mv a-surf2');
+      S.plate([le[0], le[1], le[2], le[3]], 'a-ln');
+      /* кабанчик и короткая регулируемая тяга */
+      var hx = -3.58, hA = A(hx, 0.04, -0.09);
+      S.plate([A(hx, 0.02, -0.03), A(hx, -0.04, -0.02), A(hx, 0.02, -0.1), hA], 'a-mv', [hA]);
+      S.rod(wOut, hA, 'a-mv');
+      q('dB').innerHTML = S.svg();
+
+      var teMid = PB(A(-3.75, -0.3, 0));
+      leadReset();
+      q('dB-l').innerHTML =
+        leader(306, 72, PB([-3.2 + c.dX, -0.82, 0]), 'Тяга в крыле', 'end') +
+        leader(306, 94, PB([-3.27, -0.82, -0.03]), 'Роликовая направляющая', 'end') +
+        leader(14, 140, PB(W), 'Качалка элерона') +
+        leader(14, 196, PB(v3(wOut, unit3([hA[0] - wOut[0], hA[1] - wOut[1], hA[2] - wOut[2]]), 0.08)), 'Регулируемая тяга') +
+        leader(14, 238, PB(hA), 'Кабанчик') +
+        leader(306, 304, teMid, 'Элерон', 'end');
+      /* зона захвата — сам элерон */
+      var pts = [le[0], le[1], te[1], te[0]].map(PB);
+      q('dB-hit').setAttribute('d', 'M' + poly(pts) + 'Z');
+
+    }
+    /* Вид сзади во всю ширину: крыло с поперечным V, элероны у задней
+       кромки. Отклонённый элерон виден сзади как сдвиг его задней кромки
+       вверх или вниз относительно крыла — крыло при этом не гнётся.
+       Стрелки — прирост и потеря подъёмной силы, дуга — крен. */
+    function viewC(c, v) {
+      var cx = 320, cy = 124, SP = 270, DI = Math.tan(5 * DEG), bank = v * 7, dl = c.del / DEG, s = '';
+      function wy(x) { return cy - Math.abs(x) * DI; }
+      function wing(side) {
+        var tip = cx + side * SP, root = cx + side * 30;
+        return '<path class="a-ln" d="M' + poly([[root, wy(30) - 5], [tip, wy(SP) - 3], [tip, wy(SP) + 3], [root, wy(30) + 5]]) + 'Z"/>';
+      }
+      function ail(side, d) {
+        var x1 = cx + side * SP * 0.55, x2 = cx + side * SP * 0.95, k = 30 * Math.sin(Math.abs(d) * DEG) * (d > 0 ? -1 : 1);
+        var p1 = [x1, wy(SP * 0.55)], p2 = [x2, wy(SP * 0.95)];
+        var out = '<path class="a-mv a-surf2" d="M' + poly([p1, p2, [p2[0], p2[1] + k], [p1[0], p1[1] + k]]) + 'Z"/>' +
+          '<path class="a-ln2" stroke-width="2" d="M' + poly([[p1[0], p1[1] + k], [p2[0], p2[1] + k]]) + '"/>';
+        var mx = (x1 + x2) / 2, my = wy(SP * 0.75), L = 34 * Math.abs(d) / 25;
+        if (L > 4) out += d < 0 ? arrow(mx, my - 14, mx, my - 14 - L, 'f-green', 2.6) : arrow(mx, my + 14, mx, my + 14 + L, 'f-red', 2.6);
+        return out;
+      }
+      s += '<g transform="rotate(' + r1(bank) + ' ' + cx + ' ' + cy + ')">' +
+        wing(-1) + wing(1) + ail(-1, dl) + ail(1, -dl) +
+        '<path class="a-ln" d="M' + (cx - 78) + ' ' + (cy - 92) + 'h156v6h-156z"/>' +
+        '<path class="a-ln" d="M' + (cx - 4) + ' ' + (cy - 86) + 'h8v60h-8z"/>' +
+        '<ellipse class="a-ln" cx="' + cx + '" cy="' + cy + '" rx="34" ry="30"/>' +
+        '<ellipse class="a-ln" cx="' + cx + '" cy="' + (cy - 10) + '" rx="24" ry="14"/>' +
+        '</g>';
+      if (Math.abs(v) > 0.06) {
+        /* дуга крена над фюзеляжем: верх самолёта уходит в сторону крена */
+        var sg = v < 0 ? -1 : 1, r = 58;
+        var a0 = (-90 + sg * 50) * DEG, a1 = (-90 - sg * 50) * DEG;
+        var p0 = [cx + r * Math.cos(a0), cy + 10 + r * Math.sin(a0)], p1 = [cx + r * Math.cos(a1), cy + 10 + r * Math.sin(a1)];
+        s += '<path class="a-roll" d="M' + poly([p1]) + 'A' + r + ' ' + r + ' 0 0 ' + (sg < 0 ? 0 : 1) + ' ' + poly([p0]) + '"/>' +
+          arrow(p0[0] - sg * 9, p0[1] - 7, p0[0], p0[1], 'a-rollA', 2.4);
+      }
+      leadReset();
+      var lab = '<text class="a-tx a-sm" x="16" y="196">левое крыло</text><text class="a-tx a-sm" x="624" y="196" text-anchor="end">правое крыло</text>' +
+        '<text class="a-tx" x="' + cx + '" y="196" text-anchor="middle">' + (Math.abs(v) < 0.06 ? 'ручка в нейтрали — крена нет'
+          : v < 0 ? 'ручка влево → левый элерон вверх, правый вниз → <tspan class="t-blue">крен влево</tspan>'
+            : 'ручка вправо → левый элерон вниз, правый вверх → <tspan class="t-blue">крен вправо</tspan>') + '</text>' +
+        '<text class="a-tx" x="' + r1(cx - SP * 0.75) + '" y="22" text-anchor="middle">элерон ' + fmt(dl) + '</text>' +
+        '<text class="a-tx" x="' + r1(cx + SP * 0.75) + '" y="22" text-anchor="middle">элерон ' + fmt(-dl) + '</text>';
+      q('dC').innerHTML = s + lab;
+    }
+    function fmt(a) {
+      var n = Math.round(Math.abs(a));
+      return n === 0 ? '0°' : (a > 0 ? '↑ ' : '↓ ') + n + '°';
+    }
+
+    function setSpeed() { V = +q('d-v').value; }
     function paint() {
       var gv = gT < 260 ? 0.55 * Math.exp(-gT / 55) * Math.sin(gT * 0.2) : 0;
       var v = clamp(stickV + gv, -1.2, 1.2);
-      var th = v * 12;
-      var S = rot(80, 156, 80, 206, th);
-      var phi = Math.asin(clamp((S[0] - 80) / 26, -1, 1)) / DEG;
-      var A1 = rot(470, 154, 470, 180, phi), A2 = rot(500, 180, 470, 180, phi);
-      var del = -phi * 0.7;
-      var Ht = rot(HORN[0], HORN[1], hx, hy, del);
-      var TE = rot(TE0[0], TE0[1], hx, hy, del);
-
-      q('d-stick').setAttribute('transform', 'rotate(' + r1(th) + ' 80 206)');
-      q('d-rod').setAttribute('d', 'M' + poly([S, A1]));
-      q('d-crank').setAttribute('transform', 'rotate(' + r1(phi) + ' 470 180)');
-      q('d-push').setAttribute('d', 'M' + poly([A2, Ht]));
-      q('d-ail').innerHTML = '<path class="f-mov" d="' + closed(move(AIL, hx, hy, del)) + '"/>' +
-        '<path class="f-ink" stroke-width="3" d="M' + poly([[hx, hy], Ht]) + '"/>';
-
-      var off = TE[1] - TE0[1];
-      AIR.forEach(function (a, i) {
-        var y = a[0], w = a[1], b = a[2] < 0 ? 8 * w : -3 * w, o = off * w;
-        q('d-a' + i).setAttribute('d', 'M310 ' + y + 'C390 ' + r1(y - b) + ' 470 ' + r1(y - b) +
-          ' 540 ' + r1(y + o * 0.5) + 'S600 ' + r1(y + o) + ' 640 ' + r1(y + o));
-      });
-
-      /* шарнирный момент: поток стремится вернуть элерон в нейтраль */
-      var qd = Math.pow(V / 250, 2), L = 46 * qd * Math.abs(del) / 25;
-      var M = rot(hx + 34, hy, hx, hy, del), hm = '';
-      if (L > 4) {
-        hm = del > 0
-          ? arrow(M[0], M[1] + 12 + L, M[0], M[1] + 8, 'f-red')
-          : arrow(M[0], M[1] - 12 - L, M[0], M[1] - 8, 'f-red');
-        hm += '<text class="t-sm t-red" x="' + r1(M[0] - 8) + '" y="' +
-          r1(del > 0 ? M[1] + 20 + L : M[1] - 14 - L) + '" text-anchor="end">шарнирный момент</text>';
-      }
-      q('d-hm').innerHTML = hm;
-
-      var F = 12 * qd * Math.abs(v);
-      var Kn = rot(80, 112, 80, 206, th), sg = v >= 0 ? 1 : -1;
-      q('d-hf').innerHTML = F > 0.3
-        ? arrow(Kn[0] + sg * 12, Kn[1], Kn[0] + sg * (12 + 3 * F), Kn[1], 'f-red', 3) : '';
-      var bar = q('d-bar');
-      bar.setAttribute('width', r1(Math.min(F, 15) / 15 * 260));
-      bar.setAttribute('class', F > 11.5 ? 'f-red-fill' : F > 2.2 ? 'f-amber-fill' : 'f-green-fill');
-      q('d-out').textContent = 'элерон ' + (del > 0.5 ? 'вниз ' : del < -0.5 ? 'вверх ' : '') +
-        Math.abs(del).toFixed(0) + '° · усилие ≈ ' + F.toFixed(1).replace('.', ',') + ' кгс' +
-        (gT < 140 ? ' · порыв сместил ручку в руке' : '');
+      var c = chain(v * TH_MAX);
+      viewA(c);
+      viewB(c);
+      viewC(c, v);
+      var qd = Math.pow(V / 250, 2), F = 12 * qd * Math.abs(v);
+      var del = c.del / DEG;
+      q('d-out').innerHTML = 'левый элерон <b>' + fmt(del) + '</b>, правый <b>' + fmt(-del) + '</b> · усилие ≈ <b>' +
+        F.toFixed(1).replace('.', ',') + ' кгс</b>' +
+        (gT < 140 ? ' · <span class="t-red">порыв толкнул ручку</span>' : '');
     }
 
-    q('d-v').addEventListener('input', function () { V = +q('d-v').value; setSpeed(); if (reduced) paint(); });
-    q('d-gust').addEventListener('click', function () { gT = 0; if (reduced) paint(); });
-    var drv = driver(q('d-in'), function (x) { stickV = x / 100; if (reduced) paint(); },
+    /* хват за ручку: ход ручки по горизонтали в пикселях вида */
+    var rng = q('d-in');
+    var drv = driver(rng, function (x) { stickV = x / 100; if (reduced) paint(); },
       320, frame.querySelector('.fig-auto'));
+    function setStick(v) {
+      stickV = clamp(v, -1, 1);
+      rng.value = Math.round(stickV * 100);
+      if (reduced) paint();
+    }
+    /* Хват переводит смещение пальца в ход ручки по проекции: на сколько
+       пикселей и куда уходит деталь при полном ходе ручки. */
+    function along(P0, P1) {
+      var gx = P1[0] - P0[0], gy = P1[1] - P0[1], gg = gx * gx + gy * gy || 1;
+      return function (dx, dy) { return (dx * gx + dy * gy) / gg; };
+    }
+    var byGrip = along(PA([STICKS[0], 0, L_ST]),
+      PA([STICKS[0] + L_ST * Math.sin(TH_MAX), 0, L_ST * Math.cos(TH_MAX)]));
+    var dFull = chain(TH_MAX).del;
+    var byTE = along(PB(rx([-3.75, -1.08, 0], [0, -0.3, 0], 0)), PB(rx([-3.75, -1.08, 0], [0, -0.3, 0], dFull)));
+    dragger(q('dA-hit'), svgA, function () { drv.stop(); grab = stickV; touched = true; },
+      function (dx, dy) { setStick(grab + byGrip(dx, dy)); });
+    /* хват за элерон: тянем заднюю кромку вверх-вниз — ручка ходит в ответ,
+       так видна двусторонняя связь прямого управления */
+    dragger(q('dB-hit'), svgB, function () { drv.stop(); grab = stickV; touched = true; },
+      function (dx, dy) { setStick(grab + byTE(dx, dy)); });
+
+    q('d-v').addEventListener('input', function () { setSpeed(); if (reduced) paint(); });
+    q('d-gust').addEventListener('click', function () { gT = 0; if (reduced) paint(); });
     setSpeed();
+    paint();
     loop(frame, function () {
       drv.tick();
       if (gT < 999) gT++;
@@ -975,36 +1300,53 @@ var Figures = (function () {
      2б. Способы компенсации аэродинамической нагрузки
      ═══════════════════════════════════════════════════════ */
   reg.comp = function (frame) {
-    var PX = 168, PY = 108;
-    var AIR = [[58, 0.5], [76, 1], [140, 1], [158, 0.5]];
+    /* Сечение руля за неподвижной частью (симметричный профиль). Для каждого
+       способа компенсации меняется устройство руля: носок впереди оси, рог,
+       камера с диафрагмой или компенсатор на задней кромке. Компенсатор
+       связан тягой с неподвижной частью, и его угол не задан, а следует из
+       длины тяги — поэтому он отклоняется против руля (сервокомпенсатор) или
+       вместе с ним (антисервокомпенсатор) сам, как на самолёте. */
+    var X0 = 20, Y0 = 112, C = 400, TH = 0.12, HU = 0.62, TU = 0.9;
+    var H = [X0 + HU * C, Y0], TB = [X0 + TU * C, Y0];
+    var q = function (id) { return frame.querySelector('#' + id); };
 
-    var s =
-      AIR.map(function (a, i) { return '<path id="c-a' + i + '" class="f-air f-flow"/>'; }).join('') +
-      '<path class="f-fix" d="M16 86h136q14 0 14 22t-14 22H16z"/>' +
-      '<text class="t-sm" x="72" y="112" text-anchor="middle">неподвижная часть</text>' +
-      '<g id="c-cav"><rect x="126" y="94" width="42" height="28" rx="4" fill="#fbfbf8" stroke="#9aa7b6"/>' +
-      '<text class="t-sm t-blue" id="c-pu" x="140" y="90"></text>' +
-      '<text class="t-sm t-blue" id="c-pl" x="140" y="136"></text></g>' +
-      '<g id="c-surf">' +
-      '<path id="c-nose" class="f-mov" d="M168 93l-21 15 21 15z"/>' +
-      '<path id="c-horn" class="f-mov" d="M168 93l-20 8 20 6z"/>' +
-      '<path class="f-mov" d="M168 93l112 15-112 15z"/>' +
-      '<g id="c-tab"><path class="f-mov2" d="M276 102l40 6-40 6z"/></g>' +
-      '</g>' +
-      '<path id="c-dia" class="f-ink" stroke-width="2"/>' +
-      '<circle class="f-metal" cx="168" cy="108" r="6"/>' +
-      '<text class="t-sm" x="168" y="80" text-anchor="middle">ось вращения</text>' +
-      '<path id="c-link" class="f-blue" stroke-width="2" stroke-dasharray="5 4"/>' +
-      '<g id="c-arr"></g>' +
-      '<text class="t-sm" x="396" y="28" text-anchor="middle">шарнирный момент</text>' +
-      '<rect id="c-b0" x="360" y="180" width="28" height="0" rx="3" fill="none" ' +
-      'stroke="#a3adb6" stroke-dasharray="4 3"/>' +
-      '<rect id="c-b1" x="404" y="180" width="28" height="0" rx="3" fill="#a92920"/>' +
-      '<path class="f-dim" d="M350 180H442"/>' +
-      '<text class="t-sm" x="374" y="194" text-anchor="middle">без</text>' +
-      '<text class="t-sm" x="418" y="194" text-anchor="middle">с ней</text>';
+    function side(a, b, up) { return foilSide(X0, Y0, C, TH, 0, a, b, up, 16); }
+    /* кусок профиля со скруглённым носком в точке a */
+    function piece(a, b) {
+      var up = side(a, b, true), lo = side(a, b, false), r = Math.abs(lo[0][1] - up[0][1]) / 2, nose = [];
+      for (var i = 1; i < 10; i++) {
+        var t = (90 + 180 * i / 10) * DEG;
+        nose.push([up[0][0] + r * Math.cos(t), Y0 + r * Math.sin(t)]);
+      }
+      return lo.slice().reverse().concat(nose, up);
+    }
+    /* неподвижная часть с вогнутым «гнездом» под носок руля */
+    function fixedPart(end) {
+      var up = side(0, end, true), lo = side(0, end, false).reverse(), r = Math.abs(up[up.length - 1][1] - Y0);
+      return 'M' + poly(up) + 'A' + r1(r) + ' ' + r1(r) + ' 0 0 0 ' + poly([lo[0]]) + 'L' + poly(lo.slice(1)) + 'Z';
+    }
 
-    frame.innerHTML = svg('0 0 452 200', s);
+    var MODES = {
+      axis: { nose: HU - 0.07, fix: HU - 0.085, k: 0.45, note: 'носок руля вынесен вперёд от оси — поток на нём помогает отклонять руль' },
+      horn: { nose: HU, fix: HU - 0.01, horn: 1, k: 0.6, note: 'рог на конце руля выступает вперёд оси; чем больше отклонение, тем сильнее помогает' },
+      inner: { nose: HU - 0.07, fix: HU - 0.01, cav: 1, k: 0.5, note: 'носок в закрытой камере с диафрагмой: помогает перепад давлений, щели снаружи нет' },
+      servo: { nose: HU, fix: HU - 0.01, tab: 'servo', k: 0.35, note: 'сервокомпенсатор связан тягой с неподвижной частью и сам отклоняется против руля' },
+      anti: { nose: HU, fix: HU - 0.01, tab: 'anti', k: 1.35, note: 'антисервокомпенсатор отклоняется вместе с рулём и утяжеляет управление' },
+      srv: { nose: HU, fix: HU - 0.01, tab: 'srv', k: 0.12, note: 'пилот двигает только серворуль, а руль отклоняет сила потока на нём' },
+      trim: { nose: HU, fix: HU - 0.01, tab: 'trim', k: 0, note: 'триммер ставится отдельно (на DA 40 — гибким тросом) и снимает усилие' }
+    };
+    /* узлы тяг компенсатора: кабанчик под осью компенсатора, опора на неподвижной части */
+    var HORN = [-4, 16];
+    var ANCH = { servo: [X0 + 0.5 * C, Y0 + 26], anti: [X0 + 0.5 * C, Y0 - 26] };
+    var HORN_A = { servo: [-4, 16], anti: [-4, -16] };
+    var LEN = {};
+    ['servo', 'anti'].forEach(function (k) { LEN[k] = dist2(ANCH[k], [TB[0] + HORN_A[k][0], TB[1] + HORN_A[k][1]]); });
+
+    ammPanels(frame, [
+      { id: 'cA', tag: 'Сечение: неподвижная часть и руль', w: 460, h: 230, over: '<path class="a-hit" id="c-hit"/>' },
+      { id: 'cB', tag: 'Шарнирный момент', w: 170, h: 230 }
+    ]);
+    frame.querySelector('.amm-grid').style.setProperty('--a', '2.6fr');
     controls(frame,
       '<div class="fig-row">' +
       '<button class="fig-btn is-on" data-c="axis" type="button">Осевая</button>' +
@@ -1015,83 +1357,85 @@ var Figures = (function () {
       '<button class="fig-btn" data-c="srv" type="button">Серворуль</button>' +
       '<button class="fig-btn" data-c="trim" type="button">Триммер</button></div>' +
       '<span class="fig-label">Отклонение</span>' +
-      '<input class="fig-range" id="c-in" type="range" min="-100" max="100" value="40" ' +
-      'aria-label="Отклонение руля">' + AUTO +
+      '<input class="fig-range" id="c-in" type="range" min="-100" max="100" value="40" aria-label="Отклонение руля">' + AUTO +
       '<span class="fig-readout" id="c-out"></span>');
-
-    var q = function (id) { return frame.querySelector('#' + id); };
-    var MODES = {
-      axis: { nose: 1, k: function () { return 0.45; },
-        note: 'часть площади вынесена вперёд от оси — поток помогает отклонять руль' },
-      horn: { horn: 1, k: function (a) { return 0.95 - 0.5 * a; },
-        note: 'рог у края руля: чем больше отклонение, тем сильнее он помогает' },
-      inner: { nose: 1, cav: 1, k: function () { return 0.5; },
-        note: 'носок в закрытой камере с диафрагмой: помогает перепад давлений, щелей нет' },
-      servo: { tab: -0.9, k: function () { return 0.35; },
-        note: 'сервокомпенсатор отклоняется против руля и уменьшает шарнирный момент' },
-      anti: { tab: 0.9, k: function () { return 1.35; },
-        note: 'антисервокомпенсатор отклоняется вместе с рулём и утяжеляет управление' },
-      srv: { tab: -1.5, link: 1, k: function () { return 0.12; },
-        note: 'пилот двигает только серворуль, руль отклоняет сила потока на нём' },
-      trim: { tab: -1.1, k: function () { return 0; },
-        note: 'триммер управляется отдельно и снимает усилие полностью' }
-    };
     var mode = 'axis', val = 0.4;
 
     function paint() {
-      var m = MODES[mode], v = val, a = Math.abs(v), ang = v * 22;
-      var tabRel = m.tab ? clamp(m.tab * ang, -32, 32) : 0;
-      q('c-surf').setAttribute('transform', 'rotate(' + r1(ang) + ' ' + PX + ' ' + PY + ')');
-      q('c-nose').style.display = m.nose ? '' : 'none';
-      q('c-horn').style.display = m.horn ? '' : 'none';
-      q('c-cav').style.display = m.cav ? '' : 'none';
-      q('c-tab').style.display = m.tab ? '' : 'none';
-      q('c-tab').setAttribute('transform', 'rotate(' + r1(tabRel) + ' 276 108)');
-
-      var tip = rot(147, 108, PX, PY, ang);
-      q('c-dia').setAttribute('d', m.cav ? 'M128 108Q' + r1((128 + tip[0]) / 2) + ' ' +
-        r1(tip[1] + 3) + ' ' + r1(tip[0]) + ' ' + r1(tip[1]) : '');
-      q('c-pu').textContent = m.cav ? (ang > 1 ? '−' : ang < -1 ? '+' : '') : '';
-      q('c-pl').textContent = m.cav ? (ang > 1 ? '+' : ang < -1 ? '−' : '') : '';
-
-      var root = rot(276, 114, PX, PY, ang);
-      q('c-link').setAttribute('d', m.link ? 'M16 150H240L' + r1(root[0]) + ' ' + r1(root[1]) : '');
-
-      /* стрелки аэродинамических сил */
-      var sM = ang >= 0 ? -1 : 1, L = 30 * a, arr = '';
-      function force(pt, len, dir, cls) {
-        if (len < 3) return '';
-        return arrow(pt[0], pt[1] - dir * (7 + len), pt[0], pt[1] - dir * 7, cls);
+      var m = MODES[mode], v = val, a = Math.abs(v), ang = v * 22, tabRel = 0, s = '', lab = '';
+      leadReset();
+      if (m.tab === 'srv') { tabRel = -v * 28; ang = v * 18; }
+      if (m.tab === 'trim') tabRel = -v * 20;
+      var tb = rot(TB[0], TB[1], H[0], H[1], ang);
+      if (m.tab === 'servo' || m.tab === 'anti') {
+        var arm = rot(HORN_A[m.tab][0], HORN_A[m.tab][1], 0, 0, ang);
+        tabRel = follow(tb, arm, ANCH[m.tab], LEN[m.tab], -60, 60);
       }
-      arr += force(rot(224, 108, PX, PY, ang), L, sM, 'f-red');
-      if (m.nose) arr += force(rot(155, 108, PX, PY, ang), L * 0.8, sM, 'f-green');
-      if (m.horn) arr += force(rot(158, 100, PX, PY, ang), L * (0.2 + 0.8 * a), sM, 'f-green');
-      if (m.tab) {
-        var tm = rot(rot(298, 108, 276, 108, tabRel)[0], rot(298, 108, 276, 108, tabRel)[1], PX, PY, ang);
-        var sT = tabRel >= 0 ? -1 : 1;
-        arr += force(tm, 20 * Math.abs(tabRel) / 22, sT, sT === sM ? 'f-amber' : 'f-green');
-      }
-      q('c-arr').innerHTML = arr;
-
-      var te = m.tab ? rot(rot(316, 108, 276, 108, tabRel)[0], rot(316, 108, 276, 108, tabRel)[1], PX, PY, ang)
-        : rot(280, 108, PX, PY, ang);
-      var off = te[1] - 108;
-      AIR.forEach(function (x, i) {
-        var y = x[0], o = off * x[1];
-        q('c-a' + i).setAttribute('d', 'M0 ' + y + 'H140C210 ' + y + ' 250 ' + r1(y + o * 0.5) +
-          ' 336 ' + r1(y + o));
+      /* воздух огибает профиль и уходит за заднюю кромку */
+      var te = m.tab ? rot(tb[0] + (X0 + C - TB[0]), tb[1], tb[0], tb[1], ang + tabRel) : rot(X0 + C, Y0, H[0], H[1], ang);
+      [[-56, 0.5], [-38, 1], [38, 1], [56, 0.5]].forEach(function (x) {
+        var y = Y0 + x[0], o = (te[1] - Y0) * x[1];
+        s += '<path class="f-air f-flow" d="M0 ' + y + 'H' + r1(H[0] - 40) + 'C' + r1(H[0] + 40) + ' ' + y + ' ' + r1(H[0] + 90) + ' ' + r1(y + o * 0.5) + ' 460 ' + r1(y + o) + '"/>';
       });
+      if (m.cav) s += '<path class="a-ln" d="M' + r1(X0 + (m.nose - 0.02) * C) + ' ' + r1(Y0 - 13) + 'H' + r1(H[0] - 2) + 'M' + r1(X0 + (m.nose - 0.02) * C) + ' ' + r1(Y0 + 13) + 'H' + r1(H[0] - 2) + '"/>';
+      /* руль с компенсатором */
+      var rud = '<path class="a-mv a-surf" d="' + closed(piece(m.nose, m.tab ? TU : 1)) + '"/>';
+      if (m.horn) rud += '<path class="a-mv a-surf" stroke-dasharray="4 3" d="' + closed(piece(HU - 0.11, HU + 0.02).map(function (p) { return [p[0], Y0 + (p[1] - Y0) * 0.7]; })) + '"/>';
+      s += '<g transform="rotate(' + r1(ang) + ' ' + H[0] + ' ' + H[1] + ')">' + rud + '</g>';
+      if (m.tab) {
+        s += '<g transform="rotate(' + r1(ang + tabRel) + ' ' + r1(tb[0]) + ' ' + r1(tb[1]) + ')" >' +
+          '<g transform="translate(' + r1(tb[0] - TB[0]) + ' ' + r1(tb[1] - TB[1]) + ')"><path class="a-mv a-surf2" d="' + closed(piece(TU, 1)) + '"/>' +
+          (m.tab === 'servo' || m.tab === 'anti' || m.tab === 'srv' || m.tab === 'trim' ? '<path class="a-mv" d="M' + TB[0] + ' ' + TB[1] + 'L' + (TB[0] + (m.tab === 'anti' ? -4 : -4)) + ' ' + (TB[1] + (m.tab === 'anti' ? -16 : 16)) + 'L' + (TB[0] + 3) + ' ' + TB[1] + 'Z"/>' : '') +
+          '</g></g>' + pivot2(tb, 2.4);
+        var hornTip = rot(tb[0] + HORN_A[m.tab === 'anti' ? 'anti' : 'servo'][0], tb[1] + HORN_A[m.tab === 'anti' ? 'anti' : 'servo'][1], tb[0], tb[1], ang + tabRel);
+        if (m.tab === 'servo' || m.tab === 'anti') s += rod2(ANCH[m.tab], hornTip) + pivot2(ANCH[m.tab], 3);
+        if (m.tab === 'srv') s += '<path class="f-sig" stroke-width="2" stroke-dasharray="5 4" d="M0 ' + (Y0 + 70) + 'H' + r1(hornTip[0] - 40) + 'L' + r1(hornTip[0]) + ' ' + r1(hornTip[1]) + '"/>' +
+          '<text class="a-tx a-sm" x="10" y="' + (Y0 + 64) + '">тяга от пилота</text>';
+        if (m.tab === 'trim') s += '<path class="a-bow" stroke-width="4" d="M120 ' + (Y0 + 70) + 'H' + r1(hornTip[0] - 50) + '"/><path class="a-ln2" d="M' + r1(hornTip[0] - 50) + ' ' + (Y0 + 70) + 'L' + r1(hornTip[0]) + ' ' + r1(hornTip[1]) + '"/>' +
+          '<text class="a-tx a-sm" x="120" y="' + (Y0 + 64) + '">гибкий трос от штурвальчика</text>';
+      }
+      s += '<path class="a-ln" d="' + fixedPart(m.fix) + '"/>' + pivot2(H, 3.4);
+      if (m.cav) {
+        var dt = rot(X0 + m.nose * C - 4, Y0, H[0], H[1], ang);
+        s += '<path class="a-ln2" stroke-width="1.6" d="M' + r1(X0 + (m.nose - 0.06) * C) + ' ' + Y0 + 'Q' + r1((X0 + (m.nose - 0.06) * C + dt[0]) / 2) + ' ' + r1(dt[1] + 3) + ' ' + r1(dt[0]) + ' ' + r1(dt[1]) + '"/>' +
+          '<text class="a-tx t-blue" x="' + r1(X0 + (m.nose - 0.04) * C) + '" y="' + (Y0 - 4) + '">' + (ang > 1 ? '−' : ang < -1 ? '+' : '') + '</text>' +
+          '<text class="a-tx t-blue" x="' + r1(X0 + (m.nose - 0.04) * C) + '" y="' + (Y0 + 12) + '">' + (ang > 1 ? '+' : ang < -1 ? '−' : '') + '</text>';
+      }
+      /* силы: красная — на руле, зелёная помогает пилоту, жёлтая мешает */
+      var sM = ang >= 0 ? -1 : 1, L = 30 * a;
+      function force(pt, len, dir, cls) { return len < 3 ? '' : arrow(pt[0], pt[1] - dir * (8 + len), pt[0], pt[1] - dir * 8, cls); }
+      s += force(rot(H[0] + 70, Y0, H[0], H[1], ang), L, sM, 'f-red');
+      if (m.nose < HU - 0.01 && !m.cav) s += force(rot(H[0] - 14, Y0, H[0], H[1], ang), L * 0.8, sM, 'f-green');
+      if (m.horn) s += force(rot(H[0] - 22, Y0, H[0], H[1], ang), L * (0.2 + 0.8 * a), sM, 'f-green');
+      if (m.tab) {
+        var tm = rot(tb[0] + 22, tb[1], tb[0], tb[1], ang + tabRel), sT = (ang + tabRel) >= 0 ? -1 : 1;
+        s += force(tm, 20 * Math.abs(tabRel) / 22, sT, sT === sM ? 'f-amber' : 'f-green');
+      }
+      lab += leader(14, 22, [X0 + 0.3 * C, Y0 - 14], m.horn || m.tab ? 'Неподвижная часть' : 'Стабилизатор (киль)') +
+        leader(300, 22, H, 'Ось руля', 'middle') +
+        leader(446, 22, rot(H[0] + 90, Y0, H[0], H[1], ang), 'Руль', 'end');
+      if (m.tab) lab += leader(446, 220, rot(tb[0] + 20, tb[1], tb[0], tb[1], ang + tabRel), mode === 'trim' ? 'Триммер' : mode === 'srv' ? 'Серворуль' : 'Компенсатор', 'end');
+      if (m.cav) lab += leader(14, 220, [X0 + (m.nose - 0.05) * C, Y0 + 2], 'Камера с диафрагмой');
+      if (m.horn) lab += leader(14, 220, [H[0] - 26, Y0 + 4], 'Рог (на конце руля)');
+      q('cA').innerHTML = s;
+      q('c-lab').innerHTML = lab;
+      var rp = piece(m.nose, m.tab ? TU : 1).map(function (p) { return rot(p[0], p[1], H[0], H[1], ang); });
+      q('c-hit').setAttribute('d', closed(rp));
 
-      var k = m.k(a), h0 = 130 * a, h1 = Math.min(150, 130 * a * k);
-      q('c-b0').setAttribute('height', r1(h0)); q('c-b0').setAttribute('y', r1(180 - h0));
-      q('c-b1').setAttribute('height', r1(h1)); q('c-b1').setAttribute('y', r1(180 - h1));
-      q('c-out').innerHTML = m.note + (a < 0.03 ? '' : '<br><b>усилие ' + Math.round(k * 100) +
-        ' %</b> от усилия без компенсации');
+      var k = m.k * (mode === 'horn' ? (1.5 - a) : 1), h0 = 150 * a, h1 = Math.min(170, 150 * a * k);
+      q('cB').innerHTML = '<path class="a-ln2" stroke-width="1" d="M14 200H160"/>' +
+        '<rect class="a-ln" stroke-dasharray="4 3" fill="none" x="30" y="' + r1(200 - h0) + '" width="40" height="' + r1(h0) + '"/>' +
+        '<rect class="' + (k > 1 ? 'f-red-fill' : 'a-bar') + '" x="96" y="' + r1(200 - h1) + '" width="40" height="' + r1(h1) + '"/>' +
+        '<text class="a-tx a-sm" x="50" y="218" text-anchor="middle">без</text><text class="a-tx a-sm" x="116" y="218" text-anchor="middle">с ней</text>';
+      q('c-out').innerHTML = m.note + (a < 0.03 ? '' : '<br><b>усилие ' + Math.round(k * 100) + ' %</b> от усилия без компенсации');
     }
 
+    q('cA').ownerSVGElement.insertAdjacentHTML('beforeend', '<g id="c-lab"></g>');
     pick(frame, 'data-c', function (id) { mode = id; paint(); });
-    var drv = driver(q('c-in'), function (x) { val = x / 100; paint(); }, 300,
-      frame.querySelector('.fig-auto'));
+    var drv = driver(q('c-in'), function (x) { val = x / 100; paint(); }, 300, frame.querySelector('.fig-auto'));
+    dragAlong(q('c-hit'), q('cA').ownerSVGElement, function () { drv.stop(); return val; },
+      function (x) { val = x; q('c-in').value = Math.round(x * 100); paint(); },
+      function () { return [0, 0.38 * C * Math.sin(22 * DEG)]; });
     loop(frame, drv.tick);
   };
 
@@ -1101,10 +1445,16 @@ var Figures = (function () {
   reg.flap = function (frame) {
     var X0 = 36, Y0 = 122, C = 300, T = 0.12, M = 0.03;
     var TYPES = {
-      plain: { slot: 0, rail: 0, k: 0.55, cut: 0.74,
-        parts: [{ a: 0.74, b: 1, dx: 0, dy: 0, d: 40 }] },
-      slot: { slot: 1, rail: 0, k: 0.75, cut: 0.72,
-        parts: [{ a: 0.72, b: 1, dx: 0.03, dy: 0.035, d: 40 }] },
+      plain: { slot: 0, rail: 0, k: 0.55, cut: 0.74, piv: [0.745, 0.035],
+        parts: [{ a: 0.74, b: 1, d: 40 }] },
+      /* щелевой на опущенном кронштейне: ось ниже профиля и чуть впереди
+         носка закрылка — при повороте носок уходит назад-вниз и открывает щель */
+      slot: { slot: 1, rail: 0, k: 0.75, cut: 0.72, piv: [0.715, 0.055],
+        parts: [{ a: 0.72, b: 1, d: 40 }] },
+      /* DA 40 NG, AMM 27-50: тот же щелевой закрылок на внешних кронштейнах,
+         электропривод, положения UP 0°, T/O 20°, LDG 42° */
+      da40: { slot: 1, rail: 0, k: 0.8, cut: 0.72, piv: [0.715, 0.06], da: 1,
+        parts: [{ a: 0.72, b: 1, d: 42 }] },
       fowler: { slot: 1, rail: 1, k: 0.9, cut: 0.72,
         parts: [{ a: 0.72, b: 1, dx: 0.24, dy: 0.06, d: 35 }] },
       double: { slot: 1, rail: 1, k: 1, cut: 0.70,
@@ -1145,6 +1495,7 @@ var Figures = (function () {
         'L' + poly(lo.slice(1)) + 'Z';
     }
     function place(tp, part, e) {
+      if (tp.piv) return { piv: [X0 + tp.piv[0] * C, Y0 + tp.piv[1] * C], rot: part.d * e, slide: 0, turn: e };
       var slide = tp.rail ? Math.min(1, e / 0.6) : e;
       var turn = tp.rail ? Math.max(0, (e - 0.25) / 0.75) : e;
       return { dx: part.dx * C * slide, dy: part.dy * C * slide, rot: 3 + part.d * turn,
@@ -1157,24 +1508,35 @@ var Figures = (function () {
       '<g id="fl-parts"></g>' +
       '<path id="fl-main" class="f-fix"/>' +
       '<g id="fl-jet"></g>' +
-      '<text class="t-sm" x="150" y="126" text-anchor="middle">крыло</text>' +
-      '<text class="t-sm" id="fl-lbl" x="240" y="236" text-anchor="middle"></text>' +
-      ['хорда профиля', 'отклонение закрылка', 'подъёмная сила (условно)'].map(function (t, i) {
-        var y = 60 + i * 50;
-        return '<text class="t-sm" x="486" y="' + (y - 6) + '">' + t + '</text>' +
-          '<rect class="f-body" x="486" y="' + y + '" width="140" height="12" rx="6"/>' +
-          '<rect id="fl-b' + i + '" class="' + (i === 2 ? 'f-green-fill' : 'f-blue-fill') +
-          '" x="486" y="' + y + '" width="0" height="12" rx="6"/>' +
-          '<text class="t-mono" id="fl-v' + i + '" x="626" y="' + (y + 26) + '" text-anchor="end"></text>';
-      }).join('');
+      '<g id="fl-mech"></g>' +
+      '<text class="a-tx" x="150" y="126" text-anchor="middle">крыло</text>' +
+      '<text class="a-tx a-sm" id="fl-lbl" x="235" y="240" text-anchor="middle"></text>';
+    var bars = ['хорда профиля', 'отклонение', 'подъёмная сила'].map(function (t, i) {
+      var y = 52 + i * 62;
+      return '<text class="a-tx" x="20" y="' + (y - 8) + '">' + t + '</text>' +
+        '<rect class="a-ln" x="20" y="' + y + '" width="160" height="10"/>' +
+        '<rect id="fl-b' + i + '" class="' + (i === 2 ? 'f-green-fill' : 'a-bar') + '" x="20" y="' + y + '" width="0" height="10"/>' +
+        '<text class="a-tx" id="fl-v' + i + '" x="180" y="' + (y - 8) + '" text-anchor="end"></text>';
+    }).join('') + '<g id="fl-det"></g>';
 
-    frame.innerHTML = svg('0 0 640 246', s);
+    ammPanels(frame, [
+      { id: 'flA', tag: 'Сечение крыла у закрылка', w: 470, h: 250, over: '<path class="a-hit" id="fl-hit"/>' },
+      { id: 'flB', tag: 'Что меняется', w: 200, h: 250 }
+    ]);
+    frame.querySelector('.amm-grid').style.setProperty('--a', '2.35fr');
+    frame.querySelector('#flA').innerHTML = s;
+    frame.querySelector('#flB').innerHTML = bars;
     controls(frame,
       '<div class="fig-row">' +
       '<button class="fig-btn" data-f="plain" type="button">Простой</button>' +
       '<button class="fig-btn" data-f="slot" type="button">Щелевой</button>' +
       '<button class="fig-btn is-on" data-f="fowler" type="button">Фаулера</button>' +
-      '<button class="fig-btn" data-f="double" type="button">Двухщелевой</button></div>' +
+      '<button class="fig-btn" data-f="double" type="button">Двухщелевой</button>' +
+      '<button class="fig-btn" data-f="da40" type="button">DA 40 NG</button></div>' +
+      '<div class="fig-row" id="fl-sel" hidden><span class="fig-label">Переключатель</span>' +
+      '<button class="fig-btn" data-p="0" type="button">UP 0°</button>' +
+      '<button class="fig-btn" data-p="20" type="button">T/O 20°</button>' +
+      '<button class="fig-btn" data-p="42" type="button">LDG 42°</button></div>' +
       '<span class="fig-label">Выпуск</span>' +
       '<input class="fig-range" id="fl-in" type="range" min="0" max="100" value="0" ' +
       'aria-label="Выпуск закрылка">' + AUTO +
@@ -1184,12 +1546,15 @@ var Figures = (function () {
     var type = 'fowler', val = 0;
 
     function paint() {
-      var tp = TYPES[type], e = val, parts = '', jets = '', te = null, rail = '';
+      var tp = TYPES[type], e = val, parts = '', jets = '', te = null, rail = '', flapPts = null;
       var last = null;
       tp.parts.forEach(function (p) {
         var sh = partPts(p.a, p.b), pl = place(tp, p, e);
-        var pts = move(sh.pts, sh.le[0], sh.le[1], pl.rot, pl.dx, pl.dy);
+        var pts = pl.piv ? move(sh.pts, pl.piv[0], pl.piv[1], pl.rot)
+          : move(sh.pts, sh.le[0], sh.le[1], pl.rot, pl.dx, pl.dy);
+        if (pl.piv) { sh.le = rot(sh.le[0], sh.le[1], pl.piv[0], pl.piv[1], pl.rot); pl.dx = 0; pl.dy = 0; }
         parts += '<path class="f-mov" d="' + closed(pts) + '"/>';
+        if (p === tp.parts[tp.parts.length - 1]) flapPts = pts;
         te = pts[pts.length - 1];
         var le = [sh.le[0] + pl.dx, sh.le[1] + pl.dy];
         if (tp.rail) {
@@ -1197,7 +1562,10 @@ var Figures = (function () {
           var b = [sh.le[0] + end.dx, sh.le[1] + end.dy];
           rail += 'M' + poly([sh.le]) + 'Q' + r1((sh.le[0] + b[0]) / 2) + ' ' + r1(b[1] + 6) + ' ' +
             r1(b[0]) + ' ' + r1(b[1]);
-          parts += '<circle class="f-metal" cx="' + r1(le[0]) + '" cy="' + r1(le[1] + 4) + '" r="3.5"/>';
+          /* каретка на рельсе: два ролика */
+          parts += '<rect class="a-ln" x="' + r1(le[0] - 7) + '" y="' + r1(le[1] + 2) + '" width="14" height="6"/>' +
+            '<circle class="a-ln" cx="' + r1(le[0] - 5) + '" cy="' + r1(le[1] + 9) + '" r="3"/>' +
+            '<circle class="a-ln" cx="' + r1(le[0] + 5) + '" cy="' + r1(le[1] + 9) + '" r="3"/>';
         }
         if (tp.slot) {
           var g = clamp((e - 0.05) * 4, 0, 1);
@@ -1209,6 +1577,8 @@ var Figures = (function () {
         last = pl;
       });
       q('fl-parts').innerHTML = parts;
+      q('fl-mech').innerHTML = mech(tp, e);
+      q('fl-hit').setAttribute('d', closed(flapPts));
       q('fl-jet').innerHTML = jets;
       q('fl-rail').setAttribute('d', rail);
       q('fl-main').setAttribute('d', mainPath(tp));
@@ -1228,16 +1598,24 @@ var Figures = (function () {
       });
 
       var lp = tp.parts[tp.parts.length - 1];
-      var gain = lp.dx * last.slide, deg = lp.d * last.turn;
+      var gain = (lp.dx || 0) * last.slide, deg = lp.d * last.turn;
       var cl = tp.k * (0.4 * gain / 0.28 + 0.6 * deg / 45);
-      q('fl-b0').setAttribute('width', r1(140 * (1 + gain) / 1.3));
-      q('fl-b1').setAttribute('width', r1(140 * deg / 45));
-      q('fl-b2').setAttribute('width', r1(140 * cl));
+      q('fl-b0').setAttribute('width', r1(160 * (1 + gain) / 1.3));
+      q('fl-b1').setAttribute('width', r1(160 * deg / 45));
+      q('fl-b2').setAttribute('width', r1(160 * cl));
+      q('fl-det').innerHTML = tp.da ? [0, 20, 42].map(function (d, i) {
+        var x = 20 + 160 * d / 45;
+        return '<path class="a-ln2" stroke-width="1" d="M' + r1(x) + ' 110V128"/>' +
+          '<text class="a-tx a-sm" x="' + r1(x) + '" y="140" text-anchor="' + (i ? 'middle' : 'start') + '">' + ['UP', 'T/O', 'LDG'][i] + '</text>';
+      }).join('') + '<text class="a-tx a-sm" x="20" y="236">AMM 27-50: 0° · 20° · 42°</text>' : '';
       q('fl-v0').textContent = gain < 0.005 ? 'исходная' : '+' + Math.round(gain * 100) + ' %';
       q('fl-v1').textContent = Math.round(deg) + '°';
       q('fl-v2').textContent = Math.round(cl * 100) + ' %';
-      q('fl-out').textContent = Math.round(e * 100) + ' %';
-      q('fl-lbl').textContent = e < 0.04 ? 'закрылок убран — профиль крыла целый'
+      q('fl-out').textContent = tp.da ? Math.round(deg) + '°' : Math.round(e * 100) + ' %';
+      q('fl-lbl').textContent = tp.da ? (Math.abs(val - aim) > 0.004 ? 'привод ведёт закрылок к положению ' + Math.round(aim * 42) + '°'
+          : Math.round(deg) === 0 ? 'UP — закрылок убран' : Math.round(deg) === 20 ? 'T/O — взлётное положение'
+            : Math.round(deg) === 42 ? 'LDG — посадочное положение' : 'промежуточное положение')
+        : e < 0.04 ? 'закрылок убран — профиль крыла целый'
         : type === 'plain' ? 'поворот увеличивает кривизну профиля, щели нет'
           : type === 'slot' ? 'щель подаёт воздух с нижней поверхности на верхнюю'
             : e < 0.6 ? 'выдвижение назад по рельсу: растёт площадь, открывается щель'
@@ -1245,888 +1623,50 @@ var Figures = (function () {
                 : 'отклонение вниз: растёт кривизна профиля';
     }
 
-    pick(frame, 'data-f', function (id) { type = id; paint(); });
-    var drv = driver(q('fl-in'), function (x) { val = x / 100; paint(); }, 420,
-      frame.querySelector('.fig-auto'));
-    loop(frame, drv.tick);
-  };
-
-  /* ═══════════════════════════════════════════════════════
-     3. Гидроусилитель со следящим золотником
-     ═══════════════════════════════════════════════════════ */
-  reg.booster = function (frame) {
-    var PRESS = '#c3d8f2', RET = '#eef1f4', LOCK = '#dbe5f0';
-    var s =
-      '<path id="b-P" stroke-width="3" d="M300 8V30"/>' +
-      '<path id="b-T1" stroke-width="3" d="M232 30V8"/>' +
-      '<path id="b-T2" stroke-width="3" d="M368 30V8"/>' +
-      '<text class="t-mono" x="308" y="12">P</text>' +
-      '<text class="t-mono" x="240" y="12">T</text><text class="t-mono" x="376" y="12">T</text>' +
-      '<rect class="f-body" x="200" y="30" width="200" height="50" rx="7"/>' +
-      '<rect id="b-portL" x="258" y="80" width="14" height="8" rx="2"/>' +
-      '<rect id="b-portR" x="328" y="80" width="14" height="8" rx="2"/>' +
-      '<g id="b-spool"><path class="f-ink" stroke-width="4" d="M186 55H351"/>' +
-      '<rect class="f-metal" x="240" y="38" width="22" height="34" rx="3"/>' +
-      '<rect class="f-metal" x="284" y="38" width="32" height="34" rx="3"/>' +
-      '<rect class="f-metal" x="338" y="38" width="22" height="34" rx="3"/></g>' +
-      '<text class="t-sm" x="412" y="40">золотниковый</text>' +
-      '<text class="t-sm" x="412" y="53">распределитель</text>' +
-      '<text class="t-sm" x="14" y="118">P — питание от насоса</text>' +
-      '<text class="t-sm" x="14" y="132">T — слив в бак</text>' +
-
-      '<path id="b-A" stroke-width="3" d="M265 88V100H226V121"/>' +
-      '<path id="b-B" stroke-width="3" d="M335 88V100H374V121"/>' +
-      '<path class="f-dim" stroke-width="2" d="M212 116V180M204 126l8-8M204 138l8-8M204 150l8-8' +
-      'M204 162l8-8M204 174l8-8"/>' +
-      '<rect class="f-body" x="220" y="120" width="160" height="56" rx="6"/>' +
-      '<rect id="b-cL" x="223" y="123" height="50"/>' +
-      '<rect id="b-cR" y="123" height="50"/>' +
-      '<g id="b-piston"><rect class="f-metal" x="290" y="122" width="20" height="52" rx="2"/>' +
-      '<path class="f-ink" stroke-width="6" d="M310 148H470"/></g>' +
-      '<text class="t-sm" x="300" y="192" text-anchor="middle">силовой цилиндр</text>' +
-
-      '<path class="f-fix" d="M412 70h50q8 0 8 8t-8 8h-50z"/>' +
-      '<g id="b-surf"><path class="f-mov" d="M470 70l110 8-110 8z"/>' +
-      '<path class="f-ink" stroke-width="5" d="M470 78V146"/></g>' +
-      '<circle class="f-metal" cx="470" cy="78" r="5"/>' +
-      '<path id="b-link" class="f-ink" stroke-width="3"/>' +
-      '<text class="t-sm" x="560" y="124" text-anchor="middle">руль</text>' +
-
-      '<path id="b-inl" class="f-blue" stroke-width="3"/>' +
-      '<text class="t-sm" x="16" y="22">от ручки пилота</text>' +
-      '<path id="b-lever" class="f-blue" stroke-width="4"/>' +
-      '<path id="b-splink" class="f-ink" stroke-width="3"/>' +
-      '<path id="b-rock" class="f-green" stroke-width="4"/>' +
-      '<circle class="f-metal" cx="160" cy="147" r="5"/>' +
-      '<path id="b-fb1" class="f-green" stroke-width="3"/>' +
-      '<path id="b-fb2" class="f-green" stroke-width="3"/>' +
-      '<circle id="b-pin-in" class="f-blue-fill" cy="30" r="5"/>' +
-      '<circle id="b-pin-sp" class="f-amber-fill" cy="55" r="5"/>' +
-      '<circle id="b-pin-fb" class="f-green-fill" cy="80" r="5"/>' +
-      '<text class="t-sm" x="300" y="232" text-anchor="middle">' +
-      'обратная связь: шток через качалку возвращает золотник в нейтраль</text>';
-
-    frame.innerHTML = svg('0 0 600 240', s);
-    controls(frame,
-      '<span class="fig-label">Ручка</span>' +
-      '<input class="fig-range" id="b-in" type="range" min="-100" max="100" value="0" ' +
-      'aria-label="Положение ручки">' +
-      '<button class="fig-btn" id="b-step" type="button">Резко отклонить</button>' +
-      '<span class="fig-readout" id="b-read">рассогласование 0 %</span>');
-
-    var q = function (id) { return frame.querySelector('#' + id); };
-    var input = q('b-in');
-    var target = 0, pos = 0;
-
-    function paint() {
-      var err = clamp(target - pos, -1, 1), open = Math.abs(err) > 0.01, dir = err > 0;
-      var sp = err * 15, d = pos * 30;
-      var top = 120 + target * 30, bot = 120 - pos * 30, mid = (top + bot) / 2;
-
-      q('b-spool').setAttribute('transform', 'translate(' + r1(sp) + ' 0)');
-      q('b-splink').setAttribute('d', 'M' + r1(mid) + ' 55H' + r1(186 + sp));
-      q('b-inl').setAttribute('d', 'M16 30H' + r1(top));
-      q('b-lever').setAttribute('d', 'M' + r1(top) + ' 30L' + r1(bot) + ' 80');
-      q('b-pin-in').setAttribute('cx', r1(top));
-      q('b-pin-sp').setAttribute('cx', r1(mid));
-      q('b-pin-fb').setAttribute('cx', r1(bot));
-      q('b-rock').setAttribute('d', 'M' + r1(160 - d) + ' 80L' + r1(160 + d) + ' 214');
-      q('b-fb1').setAttribute('d', 'M' + r1(bot) + ' 80H' + r1(160 - d));
-      q('b-fb2').setAttribute('d', 'M' + r1(160 + d) + ' 214H' + r1(420 + d) + 'V148');
-
-      q('b-piston').setAttribute('transform', 'translate(' + r1(d) + ' 0)');
-      var del = Math.asin(clamp(d / 68, -1, 1)) / DEG;
-      q('b-surf').setAttribute('transform', 'rotate(' + r1(-del) + ' 470 78)');
-      var tip = rot(470, 146, 470, 78, -del);
-      q('b-link').setAttribute('d', 'M' + r1(470 + d) + ' 148L' + r1(tip[0]) + ' ' + r1(tip[1]));
-
-      q('b-cL').setAttribute('width', r1(67 + d));
-      q('b-cR').setAttribute('x', r1(310 + d));
-      q('b-cR').setAttribute('width', r1(67 - d));
-      q('b-cL').setAttribute('fill', open ? (dir ? PRESS : RET) : LOCK);
-      q('b-cR').setAttribute('fill', open ? (dir ? RET : PRESS) : LOCK);
-
-      q('b-P').setAttribute('class', open ? 'f-blue f-flow' : 'f-blue');
-      q('b-A').setAttribute('class', !open ? 'f-dim' : dir ? 'f-blue f-flow' : 'f-ret f-flow rev');
-      q('b-B').setAttribute('class', !open ? 'f-dim' : dir ? 'f-ret f-flow rev' : 'f-blue f-flow');
-      q('b-T1').setAttribute('class', open && !dir ? 'f-ret f-flow' : 'f-ret');
-      q('b-T2').setAttribute('class', open && dir ? 'f-ret f-flow' : 'f-ret');
-      q('b-portL').setAttribute('fill', !open ? '#c9ced4' : dir ? '#1d5fb8' : '#9aabbd');
-      q('b-portR').setAttribute('fill', !open ? '#c9ced4' : dir ? '#9aabbd' : '#1d5fb8');
-
-      q('b-read').textContent = 'рассогласование ' + Math.round(err * 100) + ' %' +
-        (open ? ' — жидкость идёт в полость' : ' — золотник закрыт, шток заперт жидкостью');
-    }
-
-    var raf = null;
-    function tick() {
-      var err = target - pos;
-      if (Math.abs(err) < 0.004) { pos = target; paint(); raf = null; return; }
-      pos += clamp(err * 0.06, -0.025, 0.025);   /* расход ограничен открытием окна */
-      paint();
-      raf = requestAnimationFrame(tick);
-    }
-    function run() {
-      if (reduced) { pos = target; paint(); return; }
-      if (!raf) raf = requestAnimationFrame(tick);
-    }
-    input.addEventListener('input', function () { target = +input.value / 100; run(); });
-    q('b-step').addEventListener('click', function () {
-      target = target > 0 ? -1 : 1;
-      input.value = target * 100;
-      run();
-    });
-    paint();
-  };
-
-  /* ═══════════════════════════════════════════════════════
-     4. Загрузочное устройство, МЭТ и механизм Kш
-     ═══════════════════════════════════════════════════════ */
-  reg.feel = function (frame) {
-    var GX = 530, GY = 120;
-    function phiOf(v, r) { return Math.asin(clamp(40 * Math.sin(v * 16 * DEG) / r, -1, 1)); }
-    var FMAX = 30 * Math.sin(phiOf(1, 20)) * 30 / 20;
-
-    var s =
-      '<path class="f-dim" d="M20 214H410"/>' +
-      '<path id="fe-out" class="f-blue" stroke-width="3"/>' +
-      '<text class="t-sm" x="200" y="114">к бустеру</text>' +
-      '<g id="fe-stick"><path class="f-ink" stroke-width="5" d="M60 214V100"/>' +
-      '<circle class="f-ink" cx="60" cy="94" r="9"/></g>' +
-      '<circle class="f-metal" cx="60" cy="214" r="5"/>' +
-      '<text class="t-sm" x="60" y="232" text-anchor="middle">рычаг пилота</text>' +
-      '<g id="fe-hf"></g>' +
-      '<path id="fe-rod" class="f-blue" stroke-width="4"/>' +
-      '<g id="fe-rk"><path class="f-ink" stroke-width="6" d="M220 126V204"/></g>' +
-      '<rect id="fe-blk" class="f-metal" width="14" height="10" rx="2"/>' +
-      '<circle class="f-metal" cx="220" cy="174" r="5"/>' +
-      '<text class="t-sm" x="232" y="160">качалка</text>' +
-      '<path id="fe-kl" class="f-sig" stroke-width="2" stroke-dasharray="4 3"/>' +
-      '<rect class="f-body" x="262" y="96" width="92" height="24" rx="5"/>' +
-      '<text class="t-sm" x="308" y="112" text-anchor="middle">механизм Kш</text>' +
-      '<path id="fe-spr" class="f-red" stroke-width="2.6"/>' +
-      '<path id="fe-met" class="f-ink" stroke-width="4"/>' +
-      '<rect id="fe-anc" class="f-metal" y="196" width="8" height="16" rx="2"/>' +
-      '<rect class="f-body" x="356" y="194" width="46" height="20" rx="4"/>' +
-      '<text class="t-sm" x="379" y="208" text-anchor="middle">МЭТ</text>' +
-      '<text class="t-sm" x="290" y="232" text-anchor="middle">пружина загружателя</text>' +
-      /* график усилия */
-      '<rect class="f-body" x="440" y="26" width="180" height="188" rx="6"/>' +
-      '<path class="f-dim" d="M440 120H620M530 26V214"/>' +
-      '<text class="t-sm" x="440" y="18">усилие на рычаге</text>' +
-      '<text class="t-sm" x="616" y="134" text-anchor="end">ход рычага</text>' +
-      '<path id="fe-g0" class="f-dim" stroke-width="2" stroke-dasharray="5 4"/>' +
-      '<path id="fe-g1" class="f-blue" stroke-width="2.6"/>' +
-      '<circle id="fe-pt" class="f-red-fill" r="5"/>' +
-      '<text class="t-sm" x="630" y="232" text-anchor="end">пунктир: малая скорость, МЭТ в нейтрали</text>';
-
-    frame.innerHTML = svg('0 0 640 240', s);
-    controls(frame,
-      '<div class="fig-row"><span class="fig-label">Рычаг</span>' +
-      '<input class="fig-range" id="fe-in" type="range" min="-100" max="100" value="0" ' +
-      'aria-label="Отклонение рычага">' + AUTO + '</div>' +
-      '<div class="fig-row"><span class="fig-label">Скорость полёта</span>' +
-      '<input class="fig-range" id="fe-v" type="range" min="0" max="100" value="30" ' +
-      'aria-label="Скорость полёта"></div>' +
-      '<button class="fig-btn" id="fe-trim" type="button">МЭТ: снять усилие</button>' +
-      '<button class="fig-btn" id="fe-zero" type="button">МЭТ в нейтраль</button>' +
-      '<button class="fig-btn" id="fe-off" type="button">Без загружателя</button>' +
-      '<span class="fig-readout" id="fe-read"></span>');
-
-    var q = function (id) { return frame.querySelector('#' + id); };
-    var v = 0, sp = 0.3, tr = 0, trT = 0, loader = true;
-
-    function arm() { return 44 - 24 * sp; }
-    function force(x, r, t) {
-      return loader ? (t + 30 * Math.sin(phiOf(x, r))) * 30 / r : 0;
-    }
-    function graph(r, t, on) {
-      var pts = [];
-      for (var i = 0; i <= 24; i++) {
-        var x = -1 + i / 12;
-        var f = on ? force(x, r, t) : 0;
-        pts.push([GX + x * 84, clamp(GY - f / FMAX * 88, 28, 212)]);
-      }
-      return 'M' + poly(pts);
-    }
-
-    function paint() {
-      var r = arm(), th = v * 16, phi = phiOf(v, r) / DEG;
-      var S = rot(60, 174, 60, 214, th), O = rot(60, 110, 60, 214, th);
-      var A = rot(220, 174 - r, 220, 174, phi), B = rot(220, 204, 220, 174, phi);
-      q('fe-stick').setAttribute('transform', 'rotate(' + r1(th) + ' 60 214)');
-      q('fe-out').setAttribute('d', 'M' + poly([O, [O[0] + 116, O[1]]]));
-      q('fe-rod').setAttribute('d', 'M' + poly([S, A]));
-      q('fe-rk').setAttribute('transform', 'rotate(' + r1(phi) + ' 220 174)');
-      q('fe-blk').setAttribute('x', r1(A[0] - 7));
-      q('fe-blk').setAttribute('y', r1(A[1] - 5));
-      q('fe-kl').setAttribute('d', 'M262 108L' + r1(A[0] + 7) + ' ' + r1(A[1]));
-
-      var anc = 330 + tr;
-      q('fe-spr').setAttribute('d', zig(B[0], 204, anc, 204, 12, 6));
-      q('fe-spr').style.opacity = loader ? 1 : 0.2;
-      q('fe-anc').setAttribute('x', r1(anc));
-      q('fe-met').setAttribute('d', 'M' + r1(anc + 8) + ' 204H356');
-
-      var F = force(v, r, tr), pct = Math.round(F / FMAX * 100);
-      var Kn = rot(60, 94, 60, 214, th), sg = F >= 0 ? 1 : -1;
-      q('fe-hf').innerHTML = Math.abs(pct) > 3
-        ? arrow(Kn[0] + sg * 12, Kn[1], Kn[0] + sg * (12 + Math.abs(pct) * 0.5), Kn[1], 'f-red', 3) : '';
-      q('fe-g0').setAttribute('d', graph(44, 0, true));
-      q('fe-g1').setAttribute('d', graph(r, tr, loader));
-      q('fe-pt').setAttribute('cx', r1(GX + v * 84));
-      q('fe-pt').setAttribute('cy', r1(clamp(GY - F / FMAX * 88, 28, 212)));
-      q('fe-read').textContent = !loader ? 'без загружателя рычаг не сопротивляется: усилие 0 %'
-        : 'усилие ' + Math.abs(pct) + ' % · плечо качалки ' +
-        (r > 36 ? 'большое' : r > 28 ? 'среднее' : 'малое');
-    }
-
-    q('fe-v').addEventListener('input', function () { sp = +q('fe-v').value / 100; paint(); });
-    q('fe-trim').addEventListener('click', function () {
-      drv.stop();
-      trT = -30 * Math.sin(phiOf(v, arm()));
-      if (reduced) { tr = trT; paint(); }
-    });
-    q('fe-zero').addEventListener('click', function () { trT = 0; if (reduced) { tr = 0; paint(); } });
-    q('fe-off').addEventListener('click', function () {
-      loader = !loader;
-      q('fe-off').classList.toggle('is-on', !loader);
-      paint();
-    });
-    var drv = driver(q('fe-in'), function (x) { v = x / 100; paint(); }, 360,
-      frame.querySelector('.fig-auto'));
-    loop(frame, function () {
-      drv.tick();
-      if (Math.abs(trT - tr) > 0.05) { tr += (trT - tr) * 0.08; paint(); }
-    });
-  };
-
-  /* ═══════════════════════════════════════════════════════
-     5. ЭДСУ: путь сигнала и защиты в трёх законах
-     ═══════════════════════════════════════════════════════ */
-  reg.fbw = function (frame) {
-    var s =
-      '<rect class="f-body" x="10" y="92" width="110" height="70" rx="8"/>' +
-      '<text x="65" y="108" text-anchor="middle">Side Stick</text>' +
-      '<path class="f-dim" d="M44 150h42"/>' +
-      '<g id="w-stick"><path class="f-ink" stroke-width="4" d="M65 150V126"/>' +
-      '<circle class="f-ink" cx="65" cy="121" r="5"/></g>' +
-      '<circle class="f-metal" cx="65" cy="150" r="3"/>' +
-      '<text class="t-sm" x="65" y="178" text-anchor="middle">датчики положения</text>' +
-
-      '<g id="w-laws"><rect class="f-body" x="160" y="16" width="140" height="56" rx="8"/>' +
-      '<text x="230" y="38" text-anchor="middle">Законы и защиты</text>' +
-      '<text class="t-sm" id="w-prot" x="230" y="56" text-anchor="middle"></text></g>' +
-      '<rect class="f-body" x="160" y="110" width="140" height="50" rx="8"/>' +
-      '<text x="230" y="132" text-anchor="middle">Вычислители</text>' +
-      '<text class="t-sm" x="230" y="148" text-anchor="middle">ELAC · SEC</text>' +
-      '<g id="w-sens"><rect class="f-body" x="340" y="16" width="130" height="56" rx="8"/>' +
-      '<text x="405" y="38" text-anchor="middle">Датчики</text>' +
-      '<text class="t-sm" x="405" y="56" text-anchor="middle">скорость, α, перегрузка</text></g>' +
-      '<rect class="f-body" x="340" y="110" width="120" height="50" rx="8"/>' +
-      '<text x="400" y="132" text-anchor="middle">Привод</text>' +
-      '<text class="t-sm" x="400" y="148" text-anchor="middle">золотник и шток</text>' +
-      '<rect class="f-body" x="500" y="110" width="130" height="50" rx="8"/>' +
-      '<path class="f-fix" d="M514 135q0-6 10-6h40v12h-40q-10 0-10-6z"/>' +
-      '<g id="w-surf"><path class="f-mov" d="M564 129l52 6-52 6z"/></g>' +
-      '<circle class="f-metal" cx="564" cy="135" r="3"/>' +
-      '<text class="t-sm" x="565" y="178" text-anchor="middle">руль высоты</text>' +
-
-      '<path id="w-p1" stroke-width="3" d="M120 112H140V44H160"/>' +
-      '<path id="w-p2" stroke-width="3" d="M230 72V110"/>' +
-      '<path id="w-p3" stroke-width="3" d="M120 140H160"/>' +
-      '<path class="f-sig f-flow" stroke-width="3" d="M300 135H340"/>' +
-      '<path id="w-p6" stroke-width="3" d="M340 44H300"/>' +
-      '<path class="f-blue f-flow" stroke-width="3" d="M460 135H500"/>' +
-      '<path class="f-green f-flow" stroke-width="2.5" d="M565 160V196H400V160"/>' +
-      '<text class="t-sm" x="482" y="212" text-anchor="middle">обратная связь по положению штока</text>' +
-
-      '<text class="t-sm" x="500" y="30">угол атаки (условно)</text>' +
-      '<rect class="f-body" x="500" y="40" width="130" height="14" rx="7"/>' +
-      '<rect id="w-aoa" x="500" y="40" width="0" height="14" rx="7"/>' +
-      '<path class="f-red" stroke-width="2" d="M607 34v26"/>' +
-      '<text class="t-sm t-red" x="607" y="74" text-anchor="middle">предел</text>' +
-      '<text id="w-mode" x="320" y="236" text-anchor="middle"></text>';
-
-    frame.innerHTML = svg('0 0 640 244', s);
-    controls(frame,
-      '<div class="fig-row"><span class="fig-label">Закон</span>' +
-      '<button class="fig-btn is-on" data-m="0" type="button">Normal</button>' +
-      '<button class="fig-btn" data-m="1" type="button">Alternate</button>' +
-      '<button class="fig-btn" data-m="2" type="button">Direct</button></div>' +
-      '<span class="fig-label">Ручка на себя</span>' +
-      '<input class="fig-range" id="w-in" type="range" min="-100" max="100" value="0" ' +
-      'aria-label="Отклонение ручки">' + AUTO +
-      '<span class="fig-readout" id="w-out"></span>');
-
-    var q = function (id) { return frame.querySelector('#' + id); };
-    var MODES = [
-      { via: true, lim: 0.72, prot: 'α, перегрузка, крен, скорость',
-        text: 'Normal Law — работают все защиты' },
-      { via: true, lim: 0.9, prot: 'часть защит отключена',
-        text: 'Alternate Law — часть защит отключена, управление ближе к классическому' },
-      { via: false, lim: 9, prot: 'не используются',
-        text: 'Direct Law — ручка прямо задаёт отклонение руля, защит нет' }
-    ];
-    var mode = 0, v = 0, surf = 0;
-
-    function setMode(i) {
-      var m = MODES[mode = i];
-      ['w-p1', 'w-p2', 'w-p6'].forEach(function (id) {
-        q(id).setAttribute('class', m.via ? 'f-sig f-flow' : 'f-dim');
-      });
-      q('w-p3').setAttribute('class', m.via ? 'f-dim' : 'f-sig f-flow');
-      q('w-laws').style.opacity = m.via ? 1 : 0.35;
-      q('w-sens').style.opacity = m.via ? 1 : 0.35;
-      q('w-mode').textContent = m.text;
-    }
-
-    function paint() {
-      var m = MODES[mode];
-      var cmd = m.via ? clamp(v, -m.lim, m.lim) : v;
-      surf += (cmd - surf) * (reduced ? 1 : 0.12);
-      q('w-stick').setAttribute('transform', 'rotate(' + r1(-v * 20) + ' 65 150)');
-      q('w-surf').setAttribute('transform', 'rotate(' + r1(-surf * 22) + ' 564 135)');
-      var aoa = clamp(0.3 + 0.7 * surf, 0, 1), over = aoa > 0.82;
-      var bar = q('w-aoa');
-      bar.setAttribute('width', r1(130 * aoa));
-      bar.setAttribute('class', over ? 'f-red-fill' : 'f-blue-fill');
-      var lim = m.via && Math.abs(v) > m.lim;
-      q('w-prot').textContent = lim ? 'команда ограничена' : m.prot;
-      q('w-prot').setAttribute('class', lim ? 't-sm t-red' : 't-sm');
-      q('w-out').textContent = 'ручка ' + Math.round(v * 100) + ' % · руль ' +
-        Math.round(surf * 100) + ' %' + (over ? ' · угол атаки за пределом' : '');
-    }
-
-    pick(frame, 'data-m', function (i) { setMode(+i); paint(); });
-    setMode(0);
-    var drv = driver(q('w-in'), function (x) { v = x / 100; if (reduced) paint(); }, 300,
-      frame.querySelector('.fig-auto'));
-    loop(frame, function () { drv.tick(); paint(); });
-  };
-
-  /* ═══════════════════════════════════════════════════════
-     5б. Сервопривод элерона A320: активный режим и демпфирование
-     ═══════════════════════════════════════════════════════ */
-  reg.servo320 = function (frame) {
-    var PRESS = '#c3d8f2', RET = '#eef1f4', LOCK = '#dbe5f0';
-    var s =
-      '<rect class="f-body" x="14" y="20" width="90" height="40" rx="7"/>' +
-      '<text x="59" y="38" text-anchor="middle">ELAC</text>' +
-      '<text class="t-sm" x="59" y="52" text-anchor="middle">компьютер</text>' +
-      '<path id="v-e1" class="f-sig" stroke-width="2.5" d="M104 40H130"/>' +
-      '<path id="v-e2" class="f-sig" stroke-width="2.5" d="M59 20V8H300V20"/>' +
-      '<rect id="v-sol" x="130" y="20" width="84" height="40" rx="7"/>' +
-      '<text class="t-sm" x="172" y="36" text-anchor="middle">электромагн.</text>' +
-      '<text class="t-sm" x="172" y="50" text-anchor="middle">клапан</text>' +
-      '<path id="v-solP" stroke-width="3" d="M150 76V60"/>' +
-      '<text class="t-mono" x="150" y="88" text-anchor="middle">P</text>' +
-      '<path id="v-pil" stroke-width="3" d="M190 60V110H226"/>' +
-
-      '<rect class="f-body" x="250" y="20" width="100" height="40" rx="7"/>' +
-      '<text x="300" y="44" text-anchor="middle">сервоклапан</text>' +
-      '<path id="v-P" stroke-width="3" d="M392 32H350"/>' +
-      '<path id="v-R" stroke-width="3" d="M350 48H392"/>' +
-      '<text class="t-mono" x="398" y="36">P</text><text class="t-mono" x="398" y="52">R</text>' +
-      '<g id="v-shut"><path class="f-red" stroke-width="2.5" d="M372 26l8 12M380 26l-8 12M372 42l8 12M380 42l-8 12"/>' +
-      '<text class="t-sm t-red" x="412" y="44">запорные клапаны</text></g>' +
-      '<path id="v-s1" stroke-width="3" d="M270 60V96"/>' +
-      '<path id="v-s2" stroke-width="3" d="M330 60V96"/>' +
-
-      '<rect class="f-body" x="226" y="96" width="204" height="28" rx="5"/>' +
-      '<text class="t-sm" x="236" y="92">селектор режимов</text>' +
-      '<g id="v-act"><path class="f-blue" stroke-width="3" d="M270 96V124M330 96V124"/></g>' +
-      '<g id="v-dmp"><path class="f-ink" stroke-width="3" d="M270 118H292M308 118H330M270 124V118M330 124V118"/>' +
-      '<path class="f-ink" stroke-width="2" d="M292 112q8 6 0 12M308 112q-8 6 0 12"/>' +
-      '<path class="f-dim" stroke-width="2" d="M264 100l12 10M276 100l-12 10M324 100l12 10M336 100l-12 10"/></g>' +
-      '<path id="v-byp" stroke-width="2.4" d="M272 116H328"/>' +
-      '<path id="v-spr" class="f-ink" stroke-width="2"/>' +
-      '<path class="f-dim" stroke-width="2" d="M466 92V128"/>' +
-      '<text class="t-sm" x="444" y="146" text-anchor="middle">пружина</text>' +
-
-      '<path id="v-c1" stroke-width="3" d="M270 124V138H252V151"/>' +
-      '<path id="v-c2" stroke-width="3" d="M330 124V138H408V151"/>' +
-      '<rect class="f-body" x="240" y="150" width="180" height="46" rx="6"/>' +
-      '<rect id="v-cL" x="243" y="153" height="40"/>' +
-      '<rect id="v-cR" y="153" height="40"/>' +
-      '<g id="v-pis"><rect class="f-metal" x="322" y="152" width="16" height="42" rx="2"/>' +
-      '<path class="f-ink" stroke-width="5" d="M338 173H540"/></g>' +
-      '<rect class="f-body" x="440" y="164" width="40" height="18" rx="3"/>' +
-      '<text class="t-sm" x="460" y="200" text-anchor="middle">LVDT</text>' +
-      '<path id="v-fb" class="f-sig" stroke-width="2.5" d="M460 182V222H59V60"/>' +
-      '<text class="t-sm" x="260" y="236" text-anchor="middle">сигнал положения штока возвращается в ELAC</text>' +
-
-      '<g id="v-res"><rect class="f-body" x="120" y="150" width="70" height="36" rx="5"/>' +
-      '<text class="t-sm" x="155" y="166" text-anchor="middle">резервный</text>' +
-      '<text class="t-sm" x="155" y="179" text-anchor="middle">резервуар</text>' +
-      '<path id="v-rl" stroke-width="2.4" d="M190 168H240"/>' +
-      '<circle class="f-body" cx="215" cy="168" r="7"/><path class="f-ink" stroke-width="1.6" d="M211 163v10l8-5z"/></g>' +
-
-      '<path class="f-fix" d="M500 126h54q8 0 8 7t-8 7h-54z"/>' +
-      '<g id="v-ail"><path class="f-mov" d="M562 126l66 7-66 7z"/>' +
-      '<path class="f-ink" stroke-width="4" d="M562 133V172"/></g>' +
-      '<circle class="f-metal" cx="562" cy="133" r="4"/>' +
-      '<path id="v-link" class="f-ink" stroke-width="3"/>' +
-      '<text class="t-sm" x="596" y="160" text-anchor="middle">элерон</text>';
-
-    frame.innerHTML = svg('0 0 640 244', s);
-    controls(frame,
-      '<button class="fig-btn is-on" data-v="act" type="button">Активный</button>' +
-      '<button class="fig-btn" data-v="dmp" type="button">Демпфирование</button>' +
-      '<button class="fig-btn" data-v="fail" type="button">Отказ гидравлики</button>' +
-      '<span class="fig-readout" id="v-out"></span>');
-
-    var q = function (id) { return frame.querySelector('#' + id); };
-    var NOTE = {
-      act: 'клапан под питанием · селектор в активном положении · камеры подключены к сервоклапану',
-      dmp: 'клапан обесточен · пружина сдвинула селектор · камеры соединены через жиклёр',
-      fail: 'запорные клапаны отсекли привод · резерв удерживает жидкость в камерах'
-    };
-    var mode = 'act', pos = 0, prev = 0;
-
-    function setMode(id) {
-      mode = id;
-      var act = id === 'act', fail = id === 'fail';
-      q('v-sol').setAttribute('fill', act ? '#fdf2e0' : '#f3f3ee');
-      q('v-sol').setAttribute('stroke', act ? '#a8660a' : '#d2d2c9');
-      q('v-e1').setAttribute('class', act ? 'f-sig f-flow' : 'f-dim');
-      q('v-e2').setAttribute('class', act ? 'f-sig f-flow' : 'f-dim');
-      q('v-solP').setAttribute('class', fail ? 'f-dim' : 'f-blue');
-      q('v-pil').setAttribute('class', act ? 'f-blue' : 'f-dim');
-      q('v-P').setAttribute('class', fail ? 'f-dim' : 'f-blue');
-      q('v-R').setAttribute('class', fail ? 'f-dim' : 'f-ret');
-      q('v-shut').style.display = fail ? '' : 'none';
-      q('v-act').style.display = act ? '' : 'none';
-      q('v-dmp').style.display = act ? 'none' : '';
-      q('v-spr').setAttribute('d', zig(430, 110, 466, 110, 8, act ? 4 : 7));
-      q('v-res').style.opacity = fail ? 1 : 0.45;
-      q('v-out').textContent = NOTE[id];
-    }
-
-    function paint(t) {
-      var act = mode === 'act';
-      var goal = act ? 0.8 * Math.sin(t * 0.02)
-        : 0.6 * Math.sin(t * 0.011) * Math.sin(t * 0.037 + 1);
-      pos += (goal - pos) * (act ? 0.12 : 0.02);
-      var vel = pos - prev, moving = Math.abs(vel) > 0.0008, right = vel > 0;
-      prev = pos;
-      var d = pos * 20;
-      q('v-pis').setAttribute('transform', 'translate(' + r1(d) + ' 0)');
-      q('v-cL').setAttribute('width', r1(79 + d));
-      q('v-cR').setAttribute('x', r1(338 + d));
-      q('v-cR').setAttribute('width', r1(79 - d));
-      var del = Math.asin(clamp(d / 39, -1, 1)) / DEG;
-      q('v-ail').setAttribute('transform', 'rotate(' + r1(-del) + ' 562 133)');
-      var tip = rot(562, 172, 562, 133, -del);
-      q('v-link').setAttribute('d', 'M' + r1(540 + d) + ' 173L' + r1(tip[0]) + ' ' + r1(tip[1]));
-
-      if (act) {
-        q('v-cL').setAttribute('fill', moving ? (right ? PRESS : RET) : LOCK);
-        q('v-cR').setAttribute('fill', moving ? (right ? RET : PRESS) : LOCK);
-        q('v-s1').setAttribute('class', !moving ? 'f-dim' : right ? 'f-blue f-flow' : 'f-ret f-flow rev');
-        q('v-s2').setAttribute('class', !moving ? 'f-dim' : right ? 'f-ret f-flow rev' : 'f-blue f-flow');
-        q('v-c1').setAttribute('class', !moving ? 'f-dim' : right ? 'f-blue f-flow' : 'f-ret f-flow rev');
-        q('v-c2').setAttribute('class', !moving ? 'f-dim' : right ? 'f-ret f-flow rev' : 'f-blue f-flow');
-        q('v-byp').setAttribute('class', 'f-dim');
-        q('v-byp').style.opacity = 0;
-        q('v-rl').setAttribute('class', 'f-dim');
-      } else {
-        q('v-cL').setAttribute('fill', LOCK);
-        q('v-cR').setAttribute('fill', LOCK);
-        q('v-s1').setAttribute('class', 'f-dim');
-        q('v-s2').setAttribute('class', 'f-dim');
-        /* шток толкает поток: из сжимаемой камеры через жиклёр в другую */
-        q('v-c1').setAttribute('class', !moving ? 'f-dim' : right ? 'f-ret f-flow rev' : 'f-ret f-flow');
-        q('v-c2').setAttribute('class', !moving ? 'f-dim' : right ? 'f-ret f-flow' : 'f-ret f-flow rev');
-        q('v-byp').setAttribute('class', moving ? 'f-blue f-flow' + (right ? ' rev' : '') : 'f-dim');
-        q('v-byp').style.opacity = 1;
-        q('v-rl').setAttribute('class', mode === 'fail' ? 'f-blue' : 'f-dim');
-      }
-      q('v-fb').setAttribute('class', act ? 'f-sig f-flow' : 'f-dim');
-    }
-
-    pick(frame, 'data-v', setMode);
-    setMode('act');
-    loop(frame, paint);
-  };
-
-  /* ═══════════════════════════════════════════════════════
-     5в. Боковые ручки: раздельный и связанный режим
-     ═══════════════════════════════════════════════════════ */
-  reg.sidestick = function (frame) {
-    function stickSvg(id, x, who) {
-      return '<rect class="f-body" x="' + (x - 70) + '" y="150" width="140" height="40" rx="8"/>' +
-        '<g id="' + id + '"><path class="f-ink" stroke-width="7" d="M' + x + ' 160V88"/>' +
-        '<rect class="f-ink" x="' + (x - 10) + '" y="70" width="20" height="26" rx="8" fill="#e3e7ec"/>' +
-        '<circle id="' + id + 'b" cx="' + (x + 5) + '" cy="76" r="3.5" fill="#c9ced4"/></g>' +
-        '<circle class="f-metal" cx="' + x + '" cy="160" r="6"/>' +
-        '<text class="t-sm" x="' + x + '" y="206" text-anchor="middle">' + who + '</text>' +
-        '<text class="t-mono" id="' + id + 'v" x="' + x + '" y="182" text-anchor="middle"></text>';
-    }
-    var s =
-      stickSvg('ss-l', 110, 'командир (левая консоль)') +
-      stickSvg('ss-r', 330, 'второй пилот (правая)') +
-      '<path id="ss-link" stroke-width="2.5" d="M180 170H260"/>' +
-      '<text class="t-sm" id="ss-lt" x="220" y="142" text-anchor="middle"></text>' +
-      '<path class="f-sig f-flow" stroke-width="2.5" d="M110 190V222H460V150"/>' +
-      '<path class="f-sig f-flow" stroke-width="2.5" d="M330 190V222"/>' +
-      '<rect class="f-body" x="420" y="30" width="206" height="120" rx="10"/>' +
-      '<text x="523" y="50" text-anchor="middle">Команда в систему</text>' +
-      '<rect class="f-body" x="440" y="62" width="166" height="12" rx="6"/>' +
-      '<path class="f-dim" d="M523 58v20"/>' +
-      '<rect id="ss-bar" class="f-blue-fill" y="62" height="12" rx="3"/>' +
-      '<path class="f-fix" d="M466 104q0-6 10-6h40v12h-40q-10 0-10-6z"/>' +
-      '<g id="ss-surf"><path class="f-mov" d="M516 98l56 6-56 6z"/></g>' +
-      '<text class="t-sm" id="ss-why" x="523" y="138" text-anchor="middle"></text>' +
-      '<text class="t-sm t-red" id="ss-shk" x="220" y="30" text-anchor="middle"></text>';
-
-    frame.innerHTML = svg('0 0 640 232', s);
-    controls(frame,
-      '<div class="fig-row">' +
-      '<button class="fig-btn is-on" data-s="sep" type="button">Раздельный</button>' +
-      '<button class="fig-btn" data-s="cpl" type="button">Связанный</button>' +
-      '<button class="fig-btn" id="ss-tl" type="button">TAKE OVER слева</button>' +
-      '<button class="fig-btn" id="ss-tr" type="button">TAKE OVER справа</button>' +
-      '<button class="fig-btn" id="ss-sh" type="button">Угроза сваливания</button></div>' +
-      '<div class="fig-row"><span class="fig-label">Левая</span>' +
-      '<input class="fig-range" id="ss-inl" type="range" min="-100" max="100" value="0" ' +
-      'aria-label="Левая ручка">' + AUTO + '</div>' +
-      '<span class="fig-label">Правая</span>' +
-      '<input class="fig-range" id="ss-inr" type="range" min="-100" max="100" value="0" ' +
-      'aria-label="Правая ручка">');
-
-    var q = function (id) { return frame.querySelector('#' + id); };
-    var L = 0, R = 0, coupled = false, prio = '', shake = 0;
-    var inl = q('ss-inl'), inr = q('ss-inr');
-
-    function logic() {
-      if (coupled) return { out: L, why: 'ручки движутся синхронно' };
-      if (prio === 'l') return { out: L, why: 'приоритет у левой ручки, правая отключена' };
-      if (prio === 'r') return { out: R, why: 'приоритет у правой ручки, левая отключена' };
-      var a = Math.abs(L) > 0.04, b = Math.abs(R) > 0.04;
-      if (a && b && L * R < 0) return { out: 0, why: 'в разные стороны — сигнал не проходит' };
-      if (a && b) return { out: Math.abs(L) > Math.abs(R) ? L : R, why: 'в одну сторону — берётся большее отклонение' };
-      return { out: a ? L : R, why: a || b ? 'работает одна ручка' : 'ручки в нейтрали' };
-    }
-
-    function paint(t) {
-      var j = shake > 0 ? Math.sin(t * 1.9) * 3 : 0;
-      q('ss-l').setAttribute('transform', 'rotate(' + r1(-L * 20 + j) + ' 110 160)');
-      q('ss-r').setAttribute('transform', 'rotate(' + r1(-R * 20 + j) + ' 330 160)');
-      q('ss-lv').textContent = Math.round(L * 100) + ' %';
-      q('ss-rv').textContent = Math.round(R * 100) + ' %';
-      q('ss-lb').setAttribute('fill', prio === 'l' ? '#a92920' : '#c9ced4');
-      q('ss-rb').setAttribute('fill', prio === 'r' ? '#a92920' : '#c9ced4');
-      q('ss-l').style.opacity = prio === 'r' ? 0.45 : 1;
-      q('ss-r').style.opacity = prio === 'l' ? 0.45 : 1;
-      q('ss-link').setAttribute('class', coupled ? 'f-sig f-flow' : 'f-dim');
-      q('ss-lt').textContent = coupled ? 'электрическая связь ручек' : 'механической связи нет';
-      var r = logic();
-      var w = r.out * 83;
-      q('ss-bar').setAttribute('x', r1(w >= 0 ? 523 : 523 + w));
-      q('ss-bar').setAttribute('width', r1(Math.abs(w)));
-      q('ss-surf').setAttribute('transform', 'rotate(' + r1(-r.out * 20) + ' 516 104)');
-      q('ss-why').textContent = r.why;
-      q('ss-shk').textContent = shake > 0 ? 'вибрация ручек: угроза сваливания' : '';
-    }
-
-    function setL(v) { L = v / 100; if (coupled) { R = L; inr.value = v; } }
-    var drv = driver(inl, setL, 300, frame.querySelector('.fig-auto'));
-    inr.addEventListener('input', function () {
-      R = +inr.value / 100;
-      if (coupled) { drv.stop(); L = R; inl.value = inr.value; }
-    });
-    pick(frame, 'data-s', function (id) {
-      coupled = id === 'cpl';
-      if (coupled) { prio = ''; R = L; inr.value = L * 100; }
-      q('ss-tl').classList.remove('is-on'); q('ss-tr').classList.remove('is-on');
-    });
-    function takeover(side, btn, other) {
-      if (coupled) return;
-      prio = prio === side ? '' : side;
-      btn.classList.toggle('is-on', prio === side);
-      other.classList.remove('is-on');
-    }
-    q('ss-tl').addEventListener('click', function () { takeover('l', q('ss-tl'), q('ss-tr')); });
-    q('ss-tr').addEventListener('click', function () { takeover('r', q('ss-tr'), q('ss-tl')); });
-    q('ss-sh').addEventListener('click', function () { shake = 150; });
-    loop(frame, function (t) {
-      drv.tick();
-      if (shake > 0) shake--;
-      paint(t);
-    });
-  };
-
-  /* ═══════════════════════════════════════════════════════
-     6. Трансмиссия механизации и защита от рассинхронизации
-     ═══════════════════════════════════════════════════════ */
-  reg.flapsync = function (frame) {
-    var STEPS = ['1. срабатывает сигнализация экипажу',
-      '2. привод закрылков останавливается',
-      '3. тормоза WTB фиксируют вал трансмиссии',
-      '4. крен от рассогласования парируется элеронами'];
-    var FL = [[60, 160], [170, 290]], FR = [[350, 470], [480, 580]];
-    var s =
-      '<path class="f-fix" d="M40 96H290V140H40z"/><path class="f-fix" d="M350 96H600V140H350z"/>' +
-      '<rect class="f-fix" x="290" y="14" width="60" height="226" rx="28"/>' +
-      '<text class="t-sm" x="166" y="90" text-anchor="middle">левое крыло</text>' +
-      '<text class="t-sm" x="474" y="90" text-anchor="middle">правое крыло</text>' +
-      '<rect class="f-body" x="298" y="30" width="44" height="22" rx="4"/>' +
-      '<text class="t-sm" x="320" y="45" text-anchor="middle">FLAPS</text>' +
-      '<rect class="f-body" x="298" y="58" width="44" height="22" rx="4"/>' +
-      '<text class="t-sm" x="320" y="73" text-anchor="middle">SFCC</text>' +
-      '<g id="fs-fl"></g><g id="fs-fr"></g>' +
-      '<path id="fs-shL" stroke-width="3" d="M300 132H52"/>' +
-      '<path id="fs-shR" stroke-width="3" d="M340 132H588"/>' +
-      [110, 230, 410, 530].map(function (x) {
-        return '<rect class="f-metal" x="' + (x - 6) + '" y="126" width="12" height="12" rx="2"/>';
-      }).join('') +
-      '<rect class="f-body" x="298" y="118" width="44" height="30" rx="4"/>' +
-      '<text class="t-sm" x="320" y="137" text-anchor="middle">PCU</text>' +
-      '<rect id="fs-wl" x="42" y="125" width="10" height="14" rx="2"/>' +
-      '<rect id="fs-wr" x="588" y="125" width="10" height="14" rx="2"/>' +
-      '<circle class="f-amber-fill" cx="36" cy="132" r="4"/><circle class="f-amber-fill" cx="604" cy="132" r="4"/>' +
-      '<text class="t-sm" x="16" y="116">WTB</text><text class="t-sm" x="624" y="116" text-anchor="end">WTB</text>' +
-      '<rect class="f-body" x="16" y="182" width="250" height="56" rx="6"/>' +
-      '<text class="t-mono" id="fs-l" x="28" y="200"></text>' +
-      '<text class="t-mono" id="fs-r" x="28" y="216"></text>' +
-      '<text class="t-mono" id="fs-d" x="28" y="232"></text>' +
-      STEPS.map(function (t, i) {
-        return '<text class="t-sm" id="fs-s' + i + '" x="370" y="' + (196 + i * 14) + '">' + t + '</text>';
-      }).join('');
-
-    frame.innerHTML = svg('0 0 640 246', s);
-    controls(frame,
-      '<div class="fig-row"><span class="fig-label">Рукоятка</span>' +
-      [0, 10, 15, 20, 35].map(function (a, i) {
-        return '<button class="fig-btn' + (i ? '' : ' is-on') + '" data-a="' + a + '" type="button">' + a + '°</button>';
-      }).join('') + '</div>' +
-      '<button class="fig-btn" id="fs-brk" type="button">Обрыв вала справа</button>' +
-      '<button class="fig-btn" id="fs-rst" type="button">Сброс</button>' +
-      '<span class="fig-readout" id="fs-out">выберите положение закрылков</span>');
-
-    var q = function (id) { return frame.querySelector('#' + id); };
-    var target = 0, L = 0, R = 0, broken = false, locked = false, stage = 0;
-
-    function flaps(list, a) {
-      var h = 10 + a * 0.85;
-      return list.map(function (f) {
-        return '<rect class="f-mov" x="' + f[0] + '" y="140" width="' + (f[1] - f[0]) + '" height="' + r1(h) + '" rx="2"/>';
-      }).join('');
-    }
-    function paint(moving) {
-      q('fs-fl').innerHTML = flaps(FL, L);
-      q('fs-fr').innerHTML = flaps(FR, R);
-      q('fs-shL').setAttribute('class', moving && !locked ? 'f-ink f-flow' : 'f-ink');
-      q('fs-shR').setAttribute('class', moving && !locked && !broken ? 'f-ink f-flow' : 'f-ink');
-      q('fs-shR').setAttribute('stroke-dasharray', broken ? '26 6' : '');
-      q('fs-wl').setAttribute('fill', locked ? '#a92920' : '#c9ced4');
-      q('fs-wr').setAttribute('fill', locked ? '#a92920' : '#c9ced4');
-      var diff = Math.abs(L - R);
-      q('fs-l').textContent = 'левые:   ' + L.toFixed(1).replace('.', ',') + '°';
-      q('fs-r').textContent = 'правые:  ' + R.toFixed(1).replace('.', ',') + '°';
-      q('fs-d').textContent = 'разница: ' + diff.toFixed(1).replace('.', ',') + '°' + (locked ? '  FLAPS LOCKED' : '');
-      q('fs-d').setAttribute('class', locked ? 't-mono t-red' : 't-mono');
-      STEPS.forEach(function (x, i) {
-        q('fs-s' + i).setAttribute('class', locked && stage > i ? 't-sm t-red' : 't-sm');
-      });
-    }
-
-    pick(frame, 'data-a', function (a) {
-      if (locked) return;
-      target = +a;
-      q('fs-out').textContent = 'команда: ' + a + '° — привод вращает вал трансмиссии';
-      if (reduced) { L = target; if (!broken) R = target; paint(false); }
-    });
-    q('fs-brk').addEventListener('click', function () {
-      broken = true;
-      q('fs-brk').classList.add('is-on');
-      q('fs-out').textContent = 'вал справа оборван — выберите другое положение закрылков';
-    });
-    q('fs-rst').addEventListener('click', function () {
-      broken = locked = false; stage = 0; target = L = R = 0;
-      q('fs-brk').classList.remove('is-on');
-      frame.querySelectorAll('[data-a]').forEach(function (b) { b.classList.toggle('is-on', b.dataset.a === '0'); });
-      q('fs-out').textContent = 'система исправна, закрылки убраны';
-      paint(false);
-    });
-
-    var tl = 0;
-    loop(frame, function () {
-      var moving = false;
-      if (!locked) {
-        var sp = 0.12;
-        if (Math.abs(target - L) > 0.01) { L += clamp(target - L, -sp, sp); moving = true; }
-        if (!broken && Math.abs(target - R) > 0.01) { R += clamp(target - R, -sp, sp); moving = true; }
-        if (Math.abs(L - R) >= 1.8) {
-          locked = true; stage = 0; tl = 0;
-          q('fs-out').textContent = 'рассогласование достигло порога — механизация заблокирована';
+    /* Узлы навески в сечении: шарнир, внешний кронштейн с тягой к кабанчику
+       (DA 40: тяга от качалки в крыле, AMM 27-50 рис. 2). */
+    function mech(tp, e) {
+      var m = '';
+      if (tp.piv) {
+        var P = [X0 + tp.piv[0] * C, Y0 + tp.piv[1] * C], lo = camY(Y0, C, M, 0.7) + 0.045 * C;
+        if (type !== 'plain') {
+          m += '<path class="a-ln" d="M' + r1(P[0] - 16) + ' ' + r1(lo - 4) + 'L' + r1(P[0] + 4) + ' ' + r1(lo - 4) + 'L' + r1(P[0] + 5) + ' ' + r1(P[1] + 2) +
+            'L' + r1(P[0] - 5) + ' ' + r1(P[1] + 5) + 'Z"/>';
         }
-      } else if (stage < 4 && ++tl % 40 === 0) {
-        stage++;
+        if (tp.da) {
+          var hn = rot(P[0] + 12, P[1] - 8, P[0], P[1], tp.parts[0].d * e);
+          var bc = [X0 + 0.56 * C, camY(Y0, C, M, 0.56) + 6];
+          m += '<path class="a-mv" d="M' + poly([P, hn]) + '" stroke-width="5" stroke-linecap="round"/>' + rod2(bc, hn) + pivot2(bc, 3.4);
+        }
+        m += pivot2(P, 3.2);
       }
-      paint(moving);
-    });
-  };
-
-  /* ═══════════════════════════════════════════════════════
-     6б. Винтовой подъёмник переставного стабилизатора
-     ═══════════════════════════════════════════════════════ */
-  reg.jack = function (frame) {
-    var PV = [470, 124], AT = [350, 124], SX = 350;
-    var clipId = 'jk-clip-' + Math.random().toString(36).slice(2, 8);
-    var STAB = foilPts(318, 124, 230, 0.1, 0, 0, 1);
-    var stripes = '';
-    for (var y = -20; y < 220; y += 8) {
-      stripes += '<path d="M340 ' + y + 'l20 -6" stroke="#8d97a3" stroke-width="2"/>';
+      return m;
     }
-    var s =
-      '<defs><clipPath id="' + clipId + '"><rect x="342" y="40" width="16" height="170"/></clipPath></defs>' +
-      '<path class="f-dim" stroke-width="2" d="M20 64Q320 52 620 96M20 214Q320 212 620 150"/>' +
-      '<text class="t-sm" x="30" y="232">хвостовая часть фюзеляжа (вид сбоку)</text>' +
-      '<rect class="f-body" x="318" y="12" width="64" height="28" rx="5"/>' +
-      '<text class="t-sm" x="350" y="30" text-anchor="middle">редуктор</text>' +
-      '<rect class="f-body" x="272" y="14" width="40" height="24" rx="5"/>' +
-      '<rect class="f-body" x="388" y="14" width="40" height="24" rx="5"/>' +
-      '<g id="jk-m1"><circle class="f-metal" cx="292" cy="26" r="8"/><path class="f-ink" d="M292 18v16M284 26h16"/></g>' +
-      '<g id="jk-m2"><circle class="f-metal" cx="408" cy="26" r="8"/><path class="f-ink" d="M408 18v16M400 26h16"/></g>' +
-      '<text class="t-sm" x="292" y="52" text-anchor="middle">мотор</text>' +
-      '<text class="t-sm" x="408" y="52" text-anchor="middle">мотор</text>' +
-      '<rect x="342" y="40" width="16" height="170" fill="#dfe4ea" stroke="#98a3ae"/>' +
-      '<g clip-path="url(#' + clipId + ')"><g id="jk-str">' + stripes + '</g></g>' +
-      '<path id="jk-tie" stroke-width="2.4" d="M350 42V208"/>' +
-      '<path class="f-ink" stroke-width="3" d="M336 60h28M336 192h28"/>' +
-      '<text class="t-sm" x="370" y="64">упор</text><text class="t-sm" x="370" y="196">упор</text>' +
-      '<path id="jk-crack" class="f-red" stroke-width="3" d="M340 176l6 -5 4 7 5 -6 5 5"/>' +
-      '<g id="jk-stab"><path class="f-mov" d="' + closed(STAB) + '"/>' +
-      '<path class="f-ink" stroke-width="3" d="M350 124v14"/></g>' +
-      '<circle class="f-metal" cx="470" cy="124" r="5"/>' +
-      '<text class="t-sm" x="486" y="112">шарнир</text>' +
-      '<g id="jk-nut"><rect class="f-metal" x="334" y="130" width="32" height="16" rx="3"/></g>' +
-      '<text class="t-sm" id="jk-nt" x="300" y="150" text-anchor="end">гайка</text>' +
-      '<text class="t-sm" x="560" y="96" text-anchor="middle">стабилизатор</text>' +
-      '<text class="t-sm" id="jk-self" x="20" y="88"></text>' +
-      '<text class="t-sm t-red" id="jk-tt" x="20" y="102"></text>';
-
-    frame.innerHTML = svg('0 0 640 240', s);
-    controls(frame,
-      '<span class="fig-label">Перестановка</span>' +
-      '<input class="fig-range" id="jk-in" type="range" min="-100" max="100" value="0" ' +
-      'aria-label="Положение стабилизатора">' + AUTO +
-      '<button class="fig-btn" id="jk-brk" type="button">Поломка винта</button>' +
-      '<span class="fig-readout" id="jk-out"></span>');
-
-    var q = function (id) { return frame.querySelector('#' + id); };
-    var val = 0, prev = 0, broken = false, still = 0;
-
-    function paint() {
-      var th = -val * 12;   /* на кабрирование носок стабилизатора опускается */
-      var at = rot(AT[0], AT[1], PV[0], PV[1], th);
-      var ny = at[1];
-      q('jk-stab').setAttribute('transform', 'rotate(' + r1(th) + ' ' + PV[0] + ' ' + PV[1] + ')');
-      q('jk-nut').setAttribute('transform', 'translate(0 ' + r1(ny - 124) + ')');
-      q('jk-str').setAttribute('transform', 'translate(0 ' + r1(((ny - 124) * 3) % 8) + ')');
-      q('jk-nt').setAttribute('y', r1(ny + 20));
-      var turn = (ny - 124) * 12;
-      q('jk-m1').setAttribute('transform', 'rotate(' + r1(turn % 360) + ' 292 26)');
-      q('jk-m2').setAttribute('transform', 'rotate(' + r1(-turn % 360) + ' 408 26)');
-      q('jk-tie').setAttribute('class', broken ? 'f-red' : 'f-dim');
-      q('jk-tie').setAttribute('stroke-dasharray', broken ? '' : '5 4');
-      q('jk-crack').style.display = broken ? '' : 'none';
-      q('jk-tt').textContent = broken ? 'винт сломан: нагрузку несёт стяжной стержень внутри' : '';
-      var moving = Math.abs(val - prev) > 0.0005;
-      prev = val;
-      still = moving ? 0 : still + 1;
-      q('jk-self').textContent = still > 20 ? 'мотор стоит — винтовая пара держит стабилизатор' : '';
-      q('jk-out').textContent = (val > 0.02 ? 'на кабрирование ' : val < -0.02 ? 'на пикирование ' : 'нейтраль ') +
-        Math.round(Math.abs(val) * 100) + ' % хода';
-    }
-    q('jk-brk').addEventListener('click', function () {
-      broken = !broken;
-      q('jk-brk').classList.toggle('is-on', broken);
-      if (broken) drv.stop();
+    /* DA 40: электропривод ведёт закрылок к выбранному положению с постоянной
+       скоростью, а не прыжком; ползунок и перетаскивание задают положение сразу */
+    var aim = 0;
+    var sel = q('fl-sel');
+    pick(frame, 'data-f', function (id) {
+      type = id; sel.hidden = !TYPES[id].da;
+      if (TYPES[id].da) { drv.stop(); aim = val = Math.min(1, Math.round(val * 42 / 20) * 20 / 42); }
       paint();
     });
-    var drv = driver(q('jk-in'), function (x) { if (!broken) val = x / 100; }, 520,
+    frame.querySelectorAll('[data-p]').forEach(function (b) {
+      b.addEventListener('click', function () { drv.stop(); aim = +b.dataset.p / 42; });
+    });
+    var drv = driver(q('fl-in'), function (x) { val = aim = x / 100; paint(); }, 420,
       frame.querySelector('.fig-auto'));
-    loop(frame, function () { drv.tick(); paint(); });
-  };
-
-  /* ═══════════════════════════════════════════════════════
-     6. Поворот колёс носовой опоры
-     ═══════════════════════════════════════════════════════ */
-  reg.nws = function (frame) {
-    var inner =
-      '<rect class="f-body" x="196" y="12" width="208" height="44" rx="8"/>' +
-      '<text x="300" y="32" text-anchor="middle">Блок управления (LGSCU)</text>' +
-      '<text class="t-sm" x="300" y="48" text-anchor="middle">' +
-      'сравнивает заданный угол с фактическим</text>' +
-
-      '<path class="f-blue" stroke-width="3" d="M120 34H192"/>' +
-      '<text class="t-sm" x="112" y="30" text-anchor="end">педали / ручка N/W STRG</text>' +
-      '<path class="f-blue" stroke-width="3" d="M408 34H470V96"/>' +
-      '<text class="t-sm" x="484" y="30">команда на клапан</text>' +
-
-      /* стойка сверху */
-      '<circle class="f-metal" cx="300" cy="160" r="10"/>' +
-      '<g id="n-wheel">' +
-      '<rect class="f-metal" x="286" y="122" width="28" height="76" rx="13"/>' +
-      '<path class="f-ink" stroke-width="2" d="M300 122v76"/>' +
-      '</g>' +
-      '<text class="t-sm" x="300" y="216" text-anchor="middle">колёса передней опоры (вид сверху)</text>' +
-
-      /* гидроцилиндры */
-      '<g id="n-cylL">' +
-      '<rect class="f-body" x="150" y="146" width="76" height="28" rx="6"/>' +
-      '<path class="f-ink" stroke-width="5" d="M226 160h58"/>' +
-      '</g>' +
-      '<g id="n-cylR">' +
-      '<rect class="f-body" x="374" y="146" width="76" height="28" rx="6"/>' +
-      '<path class="f-ink" stroke-width="5" d="M374 160h-58"/>' +
-      '</g>' +
-      '<text class="t-sm" x="188" y="140" text-anchor="middle">гидроцилиндр</text>' +
-      '<text class="t-sm" x="412" y="140" text-anchor="middle">гидроцилиндр</text>' +
-
-      '<path class="f-green" stroke-width="3" stroke-dasharray="5 4" ' +
-      'd="M300 198V236H130V56"/>' +
-      '<text class="t-sm" x="216" y="250" text-anchor="middle">' +
-      'датчик фактического угла — обратная связь</text>';
-
-    frame.innerHTML = svg('0 0 600 262', inner);
-    controls(frame,
-      '<span class="fig-label">Заданный угол</span>' +
-      '<input class="fig-range" id="n-in" type="range" min="-65" max="65" value="0" ' +
-      'aria-label="Заданный угол поворота колёс">' +
-      '<span class="fig-readout" id="n-read">0°</span>');
-
-    var wheel = frame.querySelector('#n-wheel');
-    var cylL = frame.querySelector('#n-cylL');
-    var cylR = frame.querySelector('#n-cylR');
-    var read = frame.querySelector('#n-read');
-    var input = frame.querySelector('#n-in');
-
-    var target = 0, pos = 0, raf = null;
-
-    function paint() {
-      wheel.setAttribute('transform', 'rotate(' + pos + ' 300 160)');
-      var d = Math.sin(pos * Math.PI / 180) * 22;
-      cylL.setAttribute('transform', 'translate(' + d + ' 0)');
-      cylR.setAttribute('transform', 'translate(' + d + ' 0)');
-      read.textContent = Math.round(pos) + '° (задано ' + Math.round(target) + '°)';
-    }
-    function tick() {
-      var err = target - pos;
-      if (Math.abs(err) < 0.3) { pos = target; paint(); raf = null; return; }
-      pos += err * 0.12;
-      paint();
-      raf = requestAnimationFrame(tick);
-    }
-    input.addEventListener('input', function () {
-      target = +input.value;
-      if (reduced) { pos = target; paint(); return; }
-      if (!raf) raf = requestAnimationFrame(tick);
+    dragAlong(q('fl-hit'), frame.querySelector('#flA').ownerSVGElement, function () { drv.stop(); return val * 2 - 1; },
+      function (x) { val = aim = (x + 1) / 2; q('fl-in').value = Math.round(val * 100); paint(); },
+      function () { return [0, 2 * 0.3 * C * Math.sin(40 * DEG)]; });
+    loop(frame, function () {
+      drv.tick();
+      if (TYPES[type].da && Math.abs(val - aim) > 0.001) {
+        val += clamp(aim - val, -0.006, 0.006);
+        q('fl-in').value = Math.round(val * 100);
+        paint();
+      }
     });
-    paint();
   };
 
   /* ═══════════════════════════════════════════════════════
@@ -2208,6 +1748,449 @@ var Figures = (function () {
      tools/split-da40.js), поэтому просто складываются в одну группу.
      Клип с одним именем может быть разрезан по файлам — тяги в одном,
      поверхность в другом. Такие куски запускаются вместе и с нуля. */
+  /* ═══════════════════════════════════════════════════════
+     Лист: подлинный рисунок учебника, альбома или руководства
+     ═══════════════════════════════════════════════════════
+     Рисунок не перерисовывается, а берётся как есть (assets/plates):
+     растровые листы альбома A320 и методички, векторизованные контуры
+     (.json — контуры potrace, чёткие на любом экране). Поверх — номерные
+     метки на деталях; касание метки или строки перечня выделяет деталь
+     и показывает её назначение. На векторном листе деталь выделяется
+     цветом сама (её контуры собраны по рамке box). «Пошагово» ведёт по
+     пути от органа управления к поверхности.
+       opts.sheets — [{ t, src | vec, spots: [{ n, x, y, t, d, box }] }],
+         x, y и box — в процентах ширины и высоты листа;
+       opts.steps  — [{ sheet, on: [n…], t }]. */
+  reg.plate = function (frame, opts) {
+    opts = opts || {};
+    var sheets = opts.sheets || [], cur = 0, sel = [], vecCache = {};
+    frame.classList.add('is-plate');
+    frame.innerHTML =
+      '<div class="pl-stage"><div class="pl-art"></div><div class="pl-spots"></div>' +
+      '<button class="pl-full" type="button" aria-label="Во весь экран">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button></div>' +
+      '<div class="pl-info" aria-live="polite"></div><ul class="pl-list"></ul>';
+    var stage = frame.querySelector('.pl-stage'), art = frame.querySelector('.pl-art'),
+      spotsEl = frame.querySelector('.pl-spots'), info = frame.querySelector('.pl-info'), list = frame.querySelector('.pl-list');
+    var bar = controls(frame,
+      (sheets.length > 1 ? '<div class="fig-cams">' + sheets.map(function (s, i) {
+        return '<button class="fig-cam' + (i ? '' : ' is-on') + '" type="button" data-s="' + i + '">' + s.t + '</button>';
+      }).join('') + '</div>' : '') +
+      (opts.steps ? '<button class="fig-btn" id="pl-prev" type="button" aria-label="Предыдущий шаг">←</button>' +
+        '<button class="fig-btn" id="pl-step" type="button">Пошагово</button>' +
+        '<button class="fig-btn" id="pl-next" type="button" aria-label="Следующий шаг">→</button>' : '') +
+      '<span class="fig-readout pl-src">' + (opts.source || '') + '</span>');
+
+    function sheet() { return sheets[cur]; }
+    function show(i) {
+      cur = i;
+      var s = sheet();
+      [].forEach.call(bar.querySelectorAll('[data-s]'), function (b) { b.classList.toggle('is-on', +b.dataset.s === i); });
+      stage.style.setProperty('--ar', s.w && s.h ? s.w / s.h : 2);
+      if (s.vec) {
+        art.innerHTML = '';
+        (vecCache[s.vec] || (vecCache[s.vec] = fetch(withV(s.vec)).then(function (r) { return r.json(); }))).then(function (v) {
+          if (cur !== i) return;
+          stage.style.setProperty('--ar', v.w / v.h);
+          /* Весь рисунок — один контур с правилом чётности: контуры potrace
+             бывают внешними и «дырками», порознь дырки залились бы чёрным.
+             Деталь выделяется слоем поверх: её внешние контуры целиком внутри
+             рамки box и дырки, лежащие внутри них. */
+          var big = v.p.reduce(function (a, p) { var ar = (p.b[2] - p.b[0]) * (p.b[3] - p.b[1]); return ar > a[0] ? [ar, p.o] : a; }, [0, 1]);
+          var outerSign = big[1];
+          function pct(p) { return [p.b[0] / v.w * 100, p.b[1] / v.h * 100, p.b[2] / v.w * 100, p.b[3] / v.h * 100]; }
+          var html = '<path class="pl-ink" fill-rule="evenodd" d="' + v.p.map(function (p) { return p.d; }).join('') + '"/>';
+          (s.spots || []).forEach(function (sp) {
+            if (!sp.box) return;
+            var bx = sp.box, outs = v.p.filter(function (p) {
+              var b = pct(p);
+              return p.o === outerSign && b[0] >= bx[0] && b[2] <= bx[2] && b[1] >= bx[1] && b[3] <= bx[3];
+            });
+            if (!outs.length) return;
+            var holes = v.p.filter(function (p) {
+              return p.o !== outerSign && outs.some(function (o) { return p.b[0] >= o.b[0] && p.b[2] <= o.b[2] && p.b[1] >= o.b[1] && p.b[3] <= o.b[3]; });
+            });
+            html += '<path class="pl-part" data-n="' + sp.n + '" fill-rule="evenodd" d="' + outs.concat(holes).map(function (p) { return p.d; }).join('') + '"/>';
+          });
+          art.innerHTML = '<svg viewBox="0 0 ' + v.w + ' ' + v.h + '" role="img" aria-label="' + s.t + '">' + html + '</svg>';
+          paint();
+        });
+      } else {
+        art.innerHTML = '<img src="' + withV(s.src) + '" alt="' + s.t + '" loading="lazy" decoding="async">';
+        var img = art.querySelector('img');
+        img.addEventListener('load', function () { stage.style.setProperty('--ar', img.naturalWidth / img.naturalHeight); });
+      }
+      spotsEl.innerHTML = (s.spots || []).map(function (sp) {
+        return '<button class="pl-spot" type="button" data-n="' + sp.n + '" style="left:' + sp.x + '%;top:' + sp.y + '%" aria-label="' + sp.n + '. ' + sp.t + '">' + sp.n + '</button>';
+      }).join('');
+      list.innerHTML = (s.spots || []).map(function (sp) {
+        return '<li><button type="button" data-n="' + sp.n + '"><b>' + sp.n + '</b>' + sp.t + '</button></li>';
+      }).join('');
+      sel = [];
+      paint();
+    }
+    function spot(n) { return (sheet().spots || []).filter(function (sp) { return String(sp.n) === String(n); })[0]; }
+    function paint(text) {
+      [].forEach.call(frame.querySelectorAll('[data-n]'), function (el) {
+        el.classList.toggle('is-on', sel.indexOf(String(el.getAttribute('data-n'))) >= 0);
+      });
+      stage.classList.toggle('has-sel', sel.length > 0);
+      if (text) { info.innerHTML = text; return; }
+      var sp = sel.length === 1 ? spot(sel[0]) : null;
+      info.innerHTML = sp ? '<b>' + sp.n + '. ' + sp.t + '</b>' + (sp.d ? ' — ' + sp.d : '')
+        : '<span class="pl-hint">' + (TOUCH ? 'Коснитесь номера на рисунке или строки перечня' : 'Нажмите на номер на рисунке или строку перечня') + '</span>';
+    }
+    frame.addEventListener('click', function (e) {
+      var t = e.target.closest('[data-n]');
+      if (!t || !frame.contains(t)) return;
+      var n = String(t.getAttribute('data-n'));
+      sel = sel.length === 1 && sel[0] === n ? [] : [n];
+      step = -1;
+      paint();
+    });
+    [].forEach.call(bar.querySelectorAll('[data-s]'), function (b) {
+      b.addEventListener('click', function () { step = -1; show(+b.dataset.s); });
+    });
+    /* пошагово: шаг выбирает лист, выделяет детали и пишет, что происходит */
+    var step = -1, steps = opts.steps || [];
+    function goStep(k) {
+      if (!steps.length) return;
+      step = (k + steps.length) % steps.length;
+      var st = steps[step];
+      if ((st.sheet || 0) !== cur) show(st.sheet || 0);
+      sel = (st.on || []).map(String);
+      paint('<span class="pl-stepn">' + (step + 1) + ' / ' + steps.length + '</span> ' + st.t);
+    }
+    if (steps.length) {
+      frame.querySelector('#pl-step').addEventListener('click', function () { goStep(step + 1); });
+      frame.querySelector('#pl-next').addEventListener('click', function () { goStep(step + 1); });
+      frame.querySelector('#pl-prev').addEventListener('click', function () { goStep(step - 1); });
+    }
+    /* во весь экран: на телефоне мелкий лист рассматривают крупно и щипком */
+    frame.querySelector('.pl-full').addEventListener('click', function () {
+      if (document.fullscreenElement) { document.exitFullscreen(); return; }
+      if (stage.requestFullscreen) stage.requestFullscreen().catch(function () {});
+    });
+    show(0);
+  };
+
+  /* ═══════════════════════════════════════════════════════
+     Рисунок «как в AMM» из настоящей геометрии DA 40 NG
+     ═══════════════════════════════════════════════════════
+     Детали берутся из модели системы (models/da40/da40-controls.glb):
+     те же тяги, качалки и кронштейны, что в 3D практикума, с их именами
+     и анимациями. Рисуются как в руководстве по ТО: белые детали, чёрный
+     контур по рёбрам, параллельная проекция, выноски с названиями. Ход
+     системы — ползунком или пальцем прямо по рисунку (прокрутка клипа).
+       opts.src    — файл модели;
+       opts.match  — какие детали показать (регулярное выражение по имени);
+       opts.clip   — анимация хода; opts.from/opts.to — доли клипа для краёв хода;
+       opts.views  — ракурсы [{ t, view:[x,y,z], focus:'regex' }];
+       opts.labels — выноски [{ m:'regex', t:'текст' }];
+       opts.input  — подпись ползунка; opts.ends — подписи краёв хода;
+       opts.half   — ход в одну сторону (закрылки: 0…1), opts.scale — значение
+                     в конце хода и единица, например [42, '°']. */
+  /* Одна загрузка модели на все чертежи страницы: каждому — своя копия
+     сцены (геометрия общая), рёбра одной геометрии считаются один раз. */
+  var ammGltf = {}, ammEdges = {};
+  function ammLoad(THREE, loader, url) {
+    if (!ammGltf[url]) {
+      ammGltf[url] = new Promise(function (res, rej) { loader.load(withV(url), res, null, rej); });
+      ammGltf[url].catch(function () { delete ammGltf[url]; });
+    }
+    return ammGltf[url].then(function (g) { return { scene: g.scene.clone(true), animations: g.animations }; });
+  }
+  reg.amm3d = function (frame, opts) {
+    opts = opts || {};
+    var box = document.createElement('div');
+    box.className = 'amm3d';
+    box.innerHTML = '<div class="model3d-note">Загрузка чертежа…</div>';
+    frame.appendChild(box);
+    var views = opts.views || [{ t: 'Общий вид', view: [-0.6, 0.55, -0.8] }];
+    var bar = controls(frame,
+      '<div class="fig-cams">' + views.map(function (v, i) {
+        return '<button class="fig-cam' + (i ? '' : ' is-on') + '" type="button" data-v="' + i + '">' + v.t + '</button>';
+      }).join('') + '</div>' +
+      '<span class="fig-label">' + (opts.input || 'Ход') + '</span>' +
+      '<input class="fig-range" type="range" min="-100" max="100" value="0" aria-label="' + (opts.input || 'Ход') + '">' + AUTO +
+      '<span class="fig-readout amm3d-out"></span>');
+    var rng = bar.querySelector('.fig-range'), outEl = bar.querySelector('.amm3d-out');
+    var legend = document.createElement('div');
+    legend.className = 'amm3d-legend';
+    frame.appendChild(legend);
+
+    ensureThree().then(function () {
+      if (!frame.isConnected) return;
+      var THREE = window.THREE;
+      var W = box.clientWidth || 640, H = Math.round(W * (opts.ratio || 0.62));
+      var renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+      renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+      renderer.setSize(W, H);
+      renderer.setClearColor(0xffffff, 1);
+      var scene = new THREE.Scene();
+      var cam = new THREE.OrthographicCamera(-1, 1, 1, -1, -100, 100);
+      var loader = new THREE.GLTFLoader();
+      if (window.MeshoptDecoder) loader.setMeshoptDecoder(window.MeshoptDecoder);
+      var re = opts.match ? new RegExp(opts.match, 'i') : null;
+      var dead = false;
+      onUnmount(frame, function () {
+        dead = true;
+        /* геометрия и рёбра общие для всех чертежей — их не освобождаем */
+        scene.traverse(function (o) {
+          if (o.material) [].concat(o.material).forEach(function (m) { m.dispose(); });
+        });
+        renderer.dispose();
+        if (renderer.forceContextLoss) renderer.forceContextLoss();
+      });
+
+      ammLoad(THREE, loader, opts.src).then(function (gltf) {
+        if (dead) return;
+        box.innerHTML = '';
+        box.appendChild(renderer.domElement);
+        var over = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        over.setAttribute('class', 'amm3d-over');
+        box.appendChild(over);
+
+        var root = gltf.scene;
+        scene.add(root);
+        var clip = (gltf.animations || []).filter(function (c) { return c.name === opts.clip; })[0];
+        var moving = {};
+        if (clip) clip.tracks.forEach(function (t) { moving[t.name.split('.')[0]] = 1; });
+        function movingNode(o) {
+          for (var p = o; p; p = p.parent) if (moving[p.name]) return true;
+          return false;
+        }
+        /* имя детали — ближайшее осмысленное имя вверх по дереву */
+        function nameOf(o) {
+          for (var p = o; p; p = p.parent) if (p.name && !/^(mesh|node|object|cube|cylinder)?_?\d*$/i.test(p.name)) return p.name.replace(/_/g, ' ');
+          return '';
+        }
+        var FILL = new THREE.MeshBasicMaterial({ color: 0xffffff, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+        var accent = (getComputedStyle(frame).getPropertyValue('--c3d') || '#3d6bd8').trim();
+        var MOVE = new THREE.MeshBasicMaterial({ color: new THREE.Color(accent).lerp(new THREE.Color(0xffffff), 0.62),
+          polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+        var LINE = new THREE.LineBasicMaterial({ color: 0x141a26 });
+        /* Силуэт: обратные грани, раздвинутые по нормали на 1,2 px экрана.
+           Рёбра по излому не дают контура у гладкой трубы — тяга без силуэта
+           превращалась в бледную полосу. Ширина пересчитывается при каждом виде. */
+        var SIL = new THREE.ShaderMaterial({
+          uniforms: { w: { value: 0.001 } },
+          side: THREE.BackSide,
+          vertexShader: 'uniform float w; void main(){ vec4 p = modelMatrix * vec4(position, 1.0);' +
+            ' vec3 n = normalize(mat3(modelMatrix) * normal); p.xyz += n * w; gl_Position = projectionMatrix * viewMatrix * p; }',
+          fragmentShader: 'void main(){ gl_FragColor = vec4(0.078, 0.102, 0.149, 1.0); }'
+        });
+        /* Файлы сжаты (KHR_mesh_quantization): координаты — целые со
+           знаком нормализации, а r128 считает габарит и рёбра по сырым числам.
+           Раскодируем позиции в float, тогда и рёбра, и габарит верные. */
+        function edges(g, ang) {
+          var key = g.uuid + ':' + ang;
+          if (!ammEdges[key]) {
+            var gq = deq(g);
+            ammEdges[key] = new THREE.EdgesGeometry(gq, ang);
+            if (gq !== g) gq.dispose();
+          }
+          return ammEdges[key];
+        }
+        function deq(g) {
+          var a = g.attributes.position;
+          if (!a.normalized) return g;
+          var arr = a.array || (a.data && a.data.array);
+          var k = arr instanceof Int16Array ? 1 / 32767 : arr instanceof Uint16Array ? 1 / 65535
+            : arr instanceof Int8Array ? 1 / 127 : arr instanceof Uint8Array ? 1 / 255 : 1;
+          var out = new Float32Array(a.count * 3);
+          for (var i = 0; i < a.count; i++) {
+            out[i * 3] = Math.max(-1, a.getX(i) * k); out[i * 3 + 1] = Math.max(-1, a.getY(i) * k); out[i * 3 + 2] = Math.max(-1, a.getZ(i) * k);
+          }
+          var g2 = new THREE.BufferGeometry();
+          g2.setAttribute('position', new THREE.BufferAttribute(out, 3));
+          if (g.index) g2.setIndex(g.index);
+          g2.computeBoundingBox(); g2.computeBoundingSphere();
+          g.boundingBox = g2.boundingBox.clone(); g.boundingSphere = g2.boundingSphere.clone();
+          return g2;
+        }
+        var shown = [];
+        root.traverse(function (o) {
+          if (!o.isMesh || o.__sil) return;
+          var nm = nameOf(o);
+          if (re && !re.test(nm)) { o.visible = false; return; }
+          o.material = movingNode(o) ? MOVE : FILL;
+          o.add(new THREE.LineSegments(edges(o.geometry, 28), LINE));
+          if (o.geometry.attributes.normal) {
+            var sil = new THREE.Mesh(o.geometry, SIL);
+            sil.__sil = true;
+            sil.renderOrder = -1;
+            o.add(sil);
+          }
+          o.__nm = nm;
+          shown.push(o);
+        });
+
+        /* Контекст — точный контур нашего DA 40 из модели планера: только
+           рёбра, светло-серым, без заливки: видно, где проходит система */
+        if (opts.context) {
+          ammLoad(THREE, loader, opts.context).then(function (g2) {
+            if (dead) return;
+            var CL = new THREE.LineBasicMaterial({ color: 0xc9cfd8 });
+            g2.scene.traverse(function (o) {
+              if (!o.isMesh) return;
+              var l = new THREE.LineSegments(edges(o.geometry, opts.contextAngle || 55), CL);
+              o.parent.add(l);
+              l.position.copy(o.position); l.quaternion.copy(o.quaternion); l.scale.copy(o.scale);
+              o.visible = false;
+            });
+            scene.add(g2.scene);
+            draw();
+          }).catch(function (e) { console.warn('amm3d контекст:', e); });
+        }
+        var mixer = clip ? new THREE.AnimationMixer(root) : null, act = null;
+        if (mixer) { act = mixer.clipAction(clip); act.play(); act.paused = true; }
+        var f0 = opts.from != null ? opts.from : 0, f1 = opts.to != null ? opts.to : 1, half = !!opts.half;
+        var live = !!clip;
+        if (!live) {
+          /* без анимации — только виды: ползунок не нужен */
+          [].forEach.call(bar.querySelectorAll('.fig-label, .fig-range, .fig-auto, .amm3d-out'), function (el) { el.hidden = true; el.style.display = 'none'; });
+        }
+        if (half) rng.min = 0;
+        function pose(v) {
+          if (!mixer) return;
+          act.time = clip.duration * (f0 + (f1 - f0) * (half ? v : (v + 1) / 2));
+          mixer.update(0);
+          root.updateMatrixWorld(true);
+        }
+
+        /* выноски: якорь — центр габарита детали */
+        var labels = (opts.labels || []).map(function (l, i) {
+          var r = new RegExp(l.m, 'i'), objs = shown.filter(function (o) { return r.test(o.__nm); });
+          return { t: l.t, objs: objs, n: i + 1 };
+        }).filter(function (l) { return l.objs.length; });
+        var tmpBox = new THREE.Box3(), tmpV = new THREE.Vector3();
+        function anchor(l) {
+          tmpBox.makeEmpty();
+          l.objs.forEach(function (o) { tmpBox.expandByObject(o); });
+          return tmpBox.getCenter(tmpV).clone();
+        }
+
+        var curView = 0;
+        function setView(i) {
+          curView = i;
+          var v = views[i], dir = new THREE.Vector3(v.view[0], v.view[1], v.view[2]).normalize();
+          pose(0);
+          var fr = v.focus ? new RegExp(v.focus, 'i') : null, bb = new THREE.Box3();
+          shown.forEach(function (o) { if (!fr || fr.test(o.__nm)) bb.expandByObject(o); });
+          var c = bb.getCenter(new THREE.Vector3()), dg = bb.getSize(new THREE.Vector3()).length() || 1;
+          /* единицы модели бывают любыми — камера и отсечение по габариту */
+          var all = new THREE.Box3();
+          shown.forEach(function (o) { all.expandByObject(o); });
+          var D = (all.getSize(new THREE.Vector3()).length() || dg) * 2;
+          cam.near = -D * 2; cam.far = D * 4;
+          cam.position.copy(c).add(dir.multiplyScalar(D));
+          cam.up.set(0, 1, 0);
+          cam.lookAt(c);
+          cam.updateMatrixWorld(true);
+          /* вписываем габарит в середину кадра: по краям — колонки выносок */
+          var pts = [], mn = [1e9, 1e9], mx = [-1e9, -1e9];
+          [bb.min.x, bb.max.x].forEach(function (x) { [bb.min.y, bb.max.y].forEach(function (y) { [bb.min.z, bb.max.z].forEach(function (z) {
+            var p = new THREE.Vector3(x, y, z).applyMatrix4(cam.matrixWorldInverse);
+            mn[0] = Math.min(mn[0], p.x); mn[1] = Math.min(mn[1], p.y); mx[0] = Math.max(mx[0], p.x); mx[1] = Math.max(mx[1], p.y);
+          }); }); });
+          var narrow = W < 560, side = narrow ? 0.12 : 0.21;
+          var aw = W * (1 - 2 * side), ah = H * 0.86, k = Math.min(aw / (mx[0] - mn[0]), ah / (mx[1] - mn[1]));
+          var cx = (mn[0] + mx[0]) / 2, cy = (mn[1] + mx[1]) / 2;
+          cam.left = cx - W / 2 / k; cam.right = cx + W / 2 / k; cam.top = cy + H / 2 / k; cam.bottom = cy - H / 2 / k;
+          cam.updateProjectionMatrix();
+          SIL.uniforms.w.value = 1.2 / k;
+          pose(val);
+          draw();
+          [].forEach.call(bar.querySelectorAll('.fig-cam'), function (b, j) { b.classList.toggle('is-on', j === i); });
+        }
+
+        /* колонки выносок слева и справа, по высоте якорей — без наложений */
+        function place() {
+          var narrow = W < 560, items = labels.map(function (l) {
+            var p = anchor(l).project(cam);
+            return { l: l, x: (p.x + 1) / 2 * W, y: (1 - p.y) / 2 * H };
+          }).filter(function (it) { return it.x > 4 && it.x < W - 4 && it.y > 4 && it.y < H - 4; });  /* деталь вне кадра — без выноски */
+          items.sort(function (a, b) { return a.l.n - b.l.n; });
+          legend.innerHTML = items.map(function (it) { return '<p><b>' + it.l.n + '</b>' + it.l.t + '</p>'; }).join('');
+          var cols = [items.filter(function (it) { return it.x < W / 2; }), items.filter(function (it) { return it.x >= W / 2; })];
+          var s = '', GAP = narrow ? 22 : 21;
+          cols.forEach(function (col, ci) {
+            col.sort(function (a, b) { return a.y - b.y; });
+            var ys = col.map(function (it) { return it.y; });
+            for (var i = 1; i < ys.length; i++) ys[i] = Math.max(ys[i], ys[i - 1] + GAP);
+            var over = ys.length ? ys[ys.length - 1] - (H - 10) : 0;
+            if (over > 0) for (var j = ys.length - 1; j >= 0; j--) { ys[j] -= over; if (j && ys[j] - ys[j - 1] >= GAP) break; over = Math.max(0, ys[j - 1] + GAP - ys[j]); }
+            col.forEach(function (it, i) {
+              var y = Math.max(12, ys[i]), left = ci === 0;
+              var tx = left ? 10 : W - 10, ex = left ? (narrow ? 30 : W * 0.25) : (narrow ? W - 30 : W * 0.75);
+              s += '<path class="a-ld" d="M' + r1(ex) + ' ' + r1(y) + 'L' + r1(it.x) + ' ' + r1(it.y) + '"/>' +
+                '<circle class="a-dot" cx="' + r1(it.x) + '" cy="' + r1(it.y) + '" r="2"/>';
+              if (narrow) {
+                s += '<circle class="a-num" cx="' + r1(left ? 20 : W - 20) + '" cy="' + r1(y) + '" r="9"/>' +
+                  '<text class="a-numt" x="' + r1(left ? 20 : W - 20) + '" y="' + r1(y + 4) + '" text-anchor="middle">' + it.l.n + '</text>';
+              } else {
+                s += '<path class="a-ld" d="M' + r1(left ? tx + it.l.t.length * 6.6 + 4 : tx - it.l.t.length * 6.6 - 4) + ' ' + r1(y) + 'H' + r1(ex) + '"/>' +
+                  '<text class="a-tx" x="' + r1(tx) + '" y="' + r1(y + 4) + '" text-anchor="' + (left ? 'start' : 'end') + '">' + it.l.t + '</text>';
+              }
+            });
+          });
+          over.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+          over.innerHTML = s;
+          legend.classList.toggle('is-on', narrow);
+        }
+        function draw() { renderer.render(scene, cam); place(); }
+
+        var val = 0;
+        function setVal(x) {
+          val = clamp(x, half ? 0 : -1, 1);
+          pose(val);
+          draw();
+          var e = opts.ends || ['', ''];
+          outEl.textContent = opts.scale ? (opts.mid || '') + Math.round(val * opts.scale[0]) + opts.scale[1]
+            : Math.abs(val) < 0.04 ? (opts.mid || 'нейтраль') : (val < 0 ? e[0] : e[1]) + ' · ' + Math.round(Math.abs(val) * 100) + ' %';
+        }
+        var drv = driver(rng, function (x) { setVal(x / 100); }, 360, bar.querySelector('.fig-auto'));
+        [].forEach.call(bar.querySelectorAll('.fig-cam'), function (b) {
+          b.addEventListener('click', function () { setView(+b.dataset.v); });
+        });
+        /* тянем по рисунку: горизонтальный ход пальца — ход системы */
+        var x0 = null, v0 = 0;
+        renderer.domElement.style.touchAction = 'pan-y';
+        renderer.domElement.addEventListener('pointerdown', function (e) { if (!live) return; x0 = e.clientX; v0 = val; drv.stop(); });
+        renderer.domElement.addEventListener('pointermove', function (e) {
+          if (x0 === null) return;
+          var x = clamp(v0 + (e.clientX - x0) / (W * (half ? 0.8 : 0.4)), half ? 0 : -1, 1);
+          rng.value = Math.round(x * 100);
+          setVal(x);
+        });
+        ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (n) {
+          renderer.domElement.addEventListener(n, function () { x0 = null; });
+        });
+        /* размер: перестраиваем кадр под ширину колонки */
+        if (window.ResizeObserver) {
+          var ro = new ResizeObserver(function () {
+            var w = box.clientWidth;
+            if (!w || Math.abs(w - W) < 2) return;
+            W = w; H = Math.round(W * (W < 560 ? (opts.ratioPhone || 0.9) : (opts.ratio || 0.62)));
+            renderer.setSize(W, H);
+            setView(curView);
+          });
+          ro.observe(box);
+          onUnmount(frame, function () { ro.disconnect(); });
+        }
+        if (W < 560) { H = Math.round(W * (opts.ratioPhone || 0.9)); renderer.setSize(W, H); }
+        if (!live) { drv.stop(); renderer.domElement.style.cursor = 'default'; }
+        setView(0);
+        setVal(0);
+        loop(frame, function () { if (live) drv.tick(); });
+      }).catch(function (e) {
+        box.innerHTML = '<div class="model3d-note">Чертёж не загрузился</div>';
+        console.warn('amm3d:', e);
+      });
+    });
+  };
+
   reg.model3d = function (frame, opts) {
     opts = opts || {};
     /* Сцена раздела закреплена за разделом: читатель меняет только вид
@@ -2311,12 +2294,42 @@ var Figures = (function () {
         key.shadow.normalBias = 0.02;
       }
 
+      /* Цвета подсветки — из палитры раздела (style.css, --c3d: вариант
+         цвета для тёмного окна). Элемент системы светится цветом системы,
+         выбранная деталь — противоположным по кругу оттенков, чтобы не
+         сливаться с ним. У бесцветного тона (обзор самолёта) — прежние
+         синий и оранжевый. */
+      var LIT = new THREE.Color(0x1f4ea8), PICK = new THREE.Color(0xff8f2e), PICK_EM = new THREE.Color(0xff6a00);
+      var toneHex = (getComputedStyle(frame).getPropertyValue('--c3d') || '').trim();
+      if (/^#[0-9a-f]{6}$/i.test(toneHex)) {
+        var tone = new THREE.Color(toneHex), hsl = {};
+        tone.getHSL(hsl);
+        if (hsl.s > 0.25) {
+          /* палитра записана в sRGB, а сцена считает свет в линейных
+             величинах (outputEncoding = sRGB): без перевода шафран
+             на выходе выцветает до кремового */
+          PICK = tone.clone().offsetHSL(0.5, 0, 0).convertSRGBToLinear();
+          LIT = tone.convertSRGBToLinear();
+          PICK_EM = PICK.clone();
+        }
+      }
+
       /* Общая группа всех файлов. Её сдвигаем при кадрировании, поэтому
          слои, подгруженные позже, встают туда же, куда и основа. */
       var root = new THREE.Group();
       scene.add(root);
 
       var ctrl = null, floorY = null;
+      /* смена темы перекрашивает студию: тёмная тема — графитовый фон */
+      var themeObs = new MutationObserver(function () { Scenery.retheme(THREE, scene); render(); });
+      themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+      var mqDark = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+      function onScheme() { Scenery.retheme(THREE, scene); render(); }
+      if (mqDark && mqDark.addEventListener) mqDark.addEventListener('change', onScheme);
+      onUnmount(frame, function () {
+        themeObs.disconnect();
+        if (mqDark && mqDark.removeEventListener) mqDark.removeEventListener('change', onScheme);
+      });
       function render() {
         /* Под пол камеру не пускаем: снизу пол прозрачен, и вид
            получается не с земли, а из-под земли. */
@@ -2566,6 +2579,7 @@ var Figures = (function () {
           o.__op = o.material && o.material.opacity != null ? o.material.opacity : 1;
           o.__tr = !!(o.material && o.material.transparent);
           o.__em = o.material && o.material.emissive ? o.material.emissive.getHex() : null;
+          o.__col = o.material && o.material.color ? o.material.color.getHex() : null;
           o.__ei = o.material && o.material.emissiveIntensity != null
             ? o.material.emissiveIntensity : 1;
           o.__env = o.material && o.material.envMapIntensity != null
@@ -2667,10 +2681,15 @@ var Figures = (function () {
         }
         reshadow();
       }
+      /* «Обшивка» и её прозрачность отдельной цифрой: кнопка-переключатель по кругу */
+      function shellLabel() {
+        var o = LEVELS[level].o;
+        return '<span>Обшивка</span><i>' + (o >= 1 ? '100 %' : o <= 0 ? 'нет' : Math.round(o * 100) + ' %') + '</i>';
+      }
       function setLevel(n) {
         level = n;
         if (sb) {
-          sb.textContent = LEVELS[level].t;
+          sb.innerHTML = shellLabel();
           sb.classList.toggle('is-on', level === 0);
         }
         applyShell();
@@ -2713,12 +2732,19 @@ var Figures = (function () {
           }
           if (o.material.emissive && !o.__sel) {
             if (lit) {
-              o.material.emissive.setHex(0x1f4ea8);
-              o.material.emissiveIntensity = 0.85;
+              /* слабое свечение: сильное выбеливает цвет до пастели */
+              o.material.emissive.copy(LIT);
+              o.material.emissiveIntensity = 0.16;
             } else if (o.__em !== null) {
               o.material.emissive.setHex(o.__em);
               o.material.emissiveIntensity = o.__ei;
             }
+          }
+          /* Свечение поверх белой детали выбеливает светлые цвета (шафран
+             топлива, небо вентиляции) — на время подсветки красим и саму деталь. */
+          if (o.material.color && o.__col != null) {
+            if (lit) o.material.color.copy(LIT);
+            else o.material.color.setHex(o.__col);
           }
           /* Полированный алюминий (баки, трубки) отражает небо
              и сливается с белой обшивкой — на время подсветки гасим блики. */
@@ -2918,14 +2944,31 @@ var Figures = (function () {
           bar.insertAdjacentHTML('afterbegin', '<div class="fig-row fig-row-sec">' + sh2 + '</div>');
         }
 
+        /* Панель: слева — что показано (слои), справа — как смотреть (иконки вида). */
+        var layers = document.createElement('div');
+        layers.className = 'fig-layers';
+        bar.appendChild(layers);
+        var tools = document.createElement('div');
+        tools.className = 'fig-tools';
+        bar.appendChild(tools);
+        function iconBtn(path, label) {
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'fig-btn fig-icon';
+          b.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + path + '"/></svg>';
+          b.setAttribute('aria-label', label);
+          b.title = label;
+          return b;
+        }
+
         if (shells.length) {
           sb = document.createElement('button');
           sb.type = 'button';
-          sb.className = 'fig-btn' + (level === 0 ? ' is-on' : '');
-          sb.textContent = LEVELS[level].t;
+          sb.className = 'fig-btn fig-shell' + (level === 0 ? ' is-on' : '');
+          sb.innerHTML = shellLabel();
           sb.title = 'Прозрачность планера по кругу';
           sb.addEventListener('click', function () { setLevel((level + 1) % LEVELS.length); });
-          bar.appendChild(sb);
+          layers.appendChild(sb);
         }
 
         /* Дополнительно для наглядности (салон с педалями и т. п.) — вид,
@@ -2939,7 +2982,7 @@ var Figures = (function () {
           if (f.hint) xb.title = f.hint;
           xb.setAttribute('aria-pressed', f.on ? 'true' : 'false');
           xb.addEventListener('click', function () { toggleLayer(f, xb); });
-          bar.appendChild(xb);
+          layers.appendChild(xb);
         });
 
         if (sysDefs.length && opts.glow !== false) {
@@ -2956,17 +2999,14 @@ var Figures = (function () {
             applyParts();
             render();
           });
-          bar.appendChild(gb);
+          layers.appendChild(gb);
         }
 
         /* Правая кнопка и Shift+ЛКМ двигают сцену и без этого, но про них
            никто не догадается — тем более на телефоне. Явный режим «Сдвиг»
            переводит обычное перетаскивание и одно касание в перемещение. */
-        var pb = document.createElement('button');
-        pb.type = 'button';
-        pb.className = 'fig-btn';
-        pb.textContent = 'Сдвиг';
-        pb.title = 'Перетаскивание двигает сцену вместо поворота';
+        var pb = iconBtn('M12 3v18M3 12h18M12 3 9.5 5.5M12 3l2.5 2.5M12 21l-2.5-2.5M12 21l2.5-2.5M3 12l2.5-2.5M3 12l2.5 2.5M21 12l-2.5-2.5M21 12l-2.5 2.5',
+          'Сдвиг: перетаскивание двигает сцену вместо поворота');
         pb.addEventListener('click', function () {
           var on = !pb.classList.contains('is-on');
           pb.classList.toggle('is-on', on);
@@ -2976,7 +3016,7 @@ var Figures = (function () {
             ? 'режим сдвига: перетащите, чтобы подвинуть сцену'
             : M3_HINT;
         });
-        bar.appendChild(pb);
+        tools.appendChild(pb);
 
         /* Приближение кнопками: на телефоне колеса нет, а щипок двумя
            пальцами попадает не всем. Кнопка работает одним касанием. */
@@ -2987,30 +3027,78 @@ var Figures = (function () {
           ctrl.update();
           render();
         }
-        ['+', '–'].forEach(function (sign, i) {
-          var zb = document.createElement('button');
-          zb.type = 'button';
-          zb.className = 'fig-btn fig-zoom';
-          zb.textContent = sign;
-          zb.setAttribute('aria-label', i ? 'Отдалить' : 'Приблизить');
-          var step = i ? 1.35 : 0.74;
-          zb.addEventListener('click', function () { dolly(step); });
-          bar.appendChild(zb);
+        [['M12 5v14M5 12h14', 'Приблизить', 0.74], ['M5 12h14', 'Отдалить', 1.35]].forEach(function (z) {
+          var zb = iconBtn(z[0], z[1]);
+          zb.addEventListener('click', function () { dolly(z[2]); });
+          tools.appendChild(zb);
         });
 
         /* Запоминаем исходный вид, чтобы из любого положения вернуться */
         var home = { pos: camera.position.clone(), tgt: ctrl.target.clone() };
-        var rb = document.createElement('button');
-        rb.type = 'button';
-        rb.className = 'fig-btn';
-        rb.textContent = 'Сброс вида';
+        var rb = iconBtn('M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4.5v4h4', 'Сброс вида');
         rb.addEventListener('click', function () {
           camera.position.copy(home.pos);
           ctrl.target.copy(home.tgt);
           ctrl.update();
           render();
         });
-        bar.appendChild(rb);
+        tools.appendChild(rb);
+
+        /* Готовые ракурсы по основным узлам: курсант одним нажатием переносит
+           камеру к двигателю, шасси, кабине, оперению. Точка обзора — в долях
+           габарита (как opts.focus), направление и удаление — как opts.view и
+           opts.zoom; +z — нос, +x — правое крыло, +y — вверх. Полёт камеры
+           плавный, чтобы было видно, откуда и куда она переместилась. */
+        if (apron && opts.cams !== false) {
+          var paneK = zm / (opts.zoom || 1);
+          var CAMS = [
+            ['Общий вид', null],
+            ['Двигатель', [0, 0.02, 0.45], [0.65, 0.35, 0.6], 0.3],
+            ['Кабина', [0, 0.08, 0.16], [0.55, 0.75, -0.35], 0.34],
+            ['Носовая стойка', [0, -0.22, 0.3], [0.8, 0.12, 0.6], 0.3],
+            ['Основная стойка', [0.14, -0.22, 0.02], [0.85, 0.12, 0.4], 0.3],
+            ['Крыло', [0.24, 0.02, 0.02], [0.35, 0.75, 0.45], 0.5],
+            ['Оперение', [0, 0.22, -0.4], [0.8, 0.35, -0.75], 0.5],
+            ['Сверху', [0, 0, 0], [0.001, 1.25, 0.02], 0.85]
+          ];
+          var camRow = document.createElement('div');
+          camRow.className = 'fig-cams';
+          camRow.setAttribute('role', 'group');
+          camRow.setAttribute('aria-label', 'Ракурсы камеры');
+          var flight = null;
+          function flyTo(pos, tgt) {
+            var p0 = camera.position.clone(), t0 = ctrl.target.clone(), st = performance.now(), D = reduced ? 0 : 650;
+            if (flight) cancelAnimationFrame(flight);
+            (function step() {
+              var k = D ? Math.min(1, (performance.now() - st) / D) : 1, e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+              camera.position.lerpVectors(p0, pos, e);
+              ctrl.target.lerpVectors(t0, tgt, e);
+              ctrl.update();
+              render();
+              flight = k < 1 ? requestAnimationFrame(step) : null;
+            })();
+          }
+          CAMS.forEach(function (c, i) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'fig-cam' + (i === 0 ? ' is-on' : '');
+            b.textContent = c[0];
+            b.addEventListener('click', function () {
+              [].forEach.call(camRow.children, function (x) { x.classList.toggle('is-on', x === b); });
+              if (!c[1]) { flyTo(home.pos.clone(), home.tgt.clone()); return; }
+              var t = new THREE.Vector3(size.x * c[1][0], size.y * c[1][1], size.z * c[1][2]);
+              var d = new THREE.Vector3(c[2][0], c[2][1], c[2][2]).multiplyScalar(r * c[3] * paneK);
+              flyTo(t.clone().add(d), t);
+            });
+            camRow.appendChild(b);
+          });
+          /* ручное вращение снимает отметку с ракурса */
+          ctrl.addEventListener('start', function () {
+            if (flight) return;
+            [].forEach.call(camRow.children, function (x) { x.classList.remove('is-on'); });
+          });
+          bar.insertBefore(camRow, bar.firstChild);
+        }
 
         /* Другая система: список разделов практикума прямо у модели — не нужно
            листать к оглавлению, и работает во весь экран. */
@@ -3045,10 +3133,8 @@ var Figures = (function () {
            иначе в полноэкранном режиме нечем переключать сценарии. */
         var rfs = frame.requestFullscreen || frame.webkitRequestFullscreen;
         if (rfs) {
-          var fsb = document.createElement('button');
-          fsb.type = 'button';
-          fsb.className = 'fig-btn';
-          fsb.textContent = 'Во весь экран';
+          var FS_IN = 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5', FS_OUT = 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5';
+          var fsb = iconBtn(FS_IN, 'Во весь экран');
           fsb.addEventListener('click', function () {
             if (document.fullscreenElement === frame) {
               (document.exitFullscreen || document.webkitExitFullscreen).call(document);
@@ -3056,10 +3142,12 @@ var Figures = (function () {
               rfs.call(frame);
             }
           });
-          bar.appendChild(fsb);
+          tools.appendChild(fsb);
           listen(document, 'fullscreenchange', function () {
             var on = document.fullscreenElement === frame;
-            fsb.textContent = on ? 'Свернуть' : 'Во весь экран';
+            fsb.querySelector('path').setAttribute('d', on ? FS_OUT : FS_IN);
+            fsb.setAttribute('aria-label', on ? 'Свернуть' : 'Во весь экран');
+            fsb.title = on ? 'Свернуть' : 'Во весь экран';
             fsb.classList.toggle('is-on', on);
             /* Размеры приходят не сразу — даём браузеру разложить кадр. */
             setTimeout(fit, 60);
@@ -3124,9 +3212,10 @@ var Figures = (function () {
               p.children.every(function (c) { return c.isMesh; })) return p;
           return m;
         }
-        /* Выбранная деталь: оранжевая и видна насквозь — поверх обшивки и
-           соседних деталей, чтобы было понятно, где и через что она проходит. */
-        var xray = new THREE.MeshBasicMaterial({ color: 0xff8f2e, transparent: true, opacity: 0.42,
+        /* Выбранная деталь: цветом пары к системе (у обзора — оранжевая) и видна
+           насквозь — поверх обшивки и соседних деталей, чтобы было понятно,
+           где и через что она проходит. */
+        var xray = new THREE.MeshBasicMaterial({ color: PICK, transparent: true, opacity: 0.42,
           depthTest: false, depthWrite: false });
         xray.toneMapped = false;
         var selEl = null, selMeshes = [], overlays = [];
@@ -3142,7 +3231,7 @@ var Figures = (function () {
               o.__sel = true;
               selMeshes.push(o);
               if (o.material.emissive) {
-                o.material.emissive.setHex(0xff6a00);
+                o.material.emissive.copy(PICK_EM);
                 o.material.emissiveIntensity = 0.9;
               }
               var x = new THREE.Mesh(o.geometry, xray);

@@ -4,16 +4,23 @@
    чтобы на него можно было сделать отдельный QR-код.
 
    Три вида страниц:
-     главная        — титул, план DA 40 NG с перечнем систем, глава 6, курс;
-     раздел главы   — колонка текста, слева указатель разделов и заголовков;
+     главная        — титул с палитрой систем, глава 6 спектром разделов,
+                      план DA 40 NG с перечнем систем, программа курса;
+     раздел главы   — полоса заголовка цвета раздела, колонка текста,
+                      справа указатель разделов и заголовков;
      раздел практикума — рабочее место: модель слева (не уходит при чтении),
                       текст и состав системы справа, мини-план — выбор системы.
+
+   Цвет: у каждого раздела своя палитра (style.css, [data-tone]). Тон
+   страницы ставится на body, поэтому цвет раздела доходит и до шапки
+   (полоса прочитанного), и до 3D-модели (figures.js читает --c3d).
    ═══════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
 
   var main = document.getElementById('main');
   var btnToc = document.getElementById('btn-toc');
+  var btnTheme = document.getElementById('btn-theme');
   var drawer = document.getElementById('toc-drawer');
   var tocBody = document.getElementById('toc-body');
   var nav = document.getElementById('nav');
@@ -40,7 +47,31 @@
     if (html != null) n.innerHTML = html;
     return n;
   }
-  var esc = function (s) { return Render.esc(s); };
+  /* «DA 40 NG» не разрываем между строками */
+  var esc = function (s) { return Render.esc(s).replace(/DA 40 NG/g, 'DA&nbsp;40&nbsp;NG'); };
+
+  /* Мягкие переносы по слогам для подписей в узких образцах палитры:
+     словаря русских переносов в браузере может не быть, и длинное слово
+     («Радиооборудование») ломалось посреди слога. Упрощённые правила:
+     после й/ь/ъ, между гласными, на стыке согласных перед гласной;
+     одну букву на строке не оставляем. */
+  var SHY = (function () {
+    var x = '[йьъ]', g = '[аеёиоуыэюя]', s = '[бвгджзклмнпрстфхцчшщ]', l = '[а-яё]';
+    return [
+      new RegExp('(' + x + ')(' + l + l + ')', 'gi'),
+      new RegExp('(' + g + ')(' + g + l + ')', 'gi'),
+      new RegExp('(' + g + s + ')(' + s + g + ')', 'gi'),
+      new RegExp('(' + s + g + ')(' + s + g + ')', 'gi'),
+      new RegExp('(' + g + s + ')(' + s + s + g + ')', 'gi'),
+      new RegExp('(' + g + s + s + ')(' + s + s + g + ')', 'gi')
+    ];
+  })();
+  function shy(t) {
+    return t.replace(/[а-яё]{7,}/gi, function (w) {
+      SHY.forEach(function (re) { w = w.replace(re, '$1­$2'); });
+      return w.replace(/^([а-яё])­/i, '$1').replace(/­([а-яё])$/i, '$1');
+    });
+  }
 
   function getJSON(url) {
     if (cache[url]) return cache[url];
@@ -151,6 +182,7 @@
           b.href = '#' + s.id;
           b.dataset.route = s.id;
           b.dataset.screen = s.id;
+          b.dataset.tone = s.id;
           var no = isLab(t) ? (s.ata ? '<i class="ata">' + esc(s.ata.split(',')[0]) + '</i>' : '') : '<i class="ata">' + esc(screenNo(s)) + '</i>';
           b.innerHTML = '<span>' + no + '</span><span>' + esc(isLab(t) ? s.title : (s.short || s.title).replace(/^[\d.]+\s*·\s*/, '')) + '</span><i class="dot"></i>';
           tocBody.appendChild(b);
@@ -191,6 +223,31 @@
   document.getElementById('toc-scrim').addEventListener('click', function () { openToc(false); });
   tocBody.addEventListener('click', function (e) { if (e.target.closest('a')) openToc(false); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') openToc(false); });
+
+  /* ── Тема: светлая или тёмная ──────────────────────────── */
+
+  /* Пока читатель не выбрал сам, тема следует системе. Выбор хранится
+     в браузере; index.html применяет его до первой отрисовки. */
+  var THEME_KEY = 'kioe-theme';
+  var darkMq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  function isDark() {
+    var t = document.documentElement.dataset.theme;
+    return t ? t === 'dark' : !!(darkMq && darkMq.matches);
+  }
+  function paintTheme() {
+    var meta = document.querySelector('meta[name="theme-color"]');
+    var bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+    if (meta && bg) meta.setAttribute('content', bg);
+    btnTheme.setAttribute('aria-pressed', isDark() ? 'true' : 'false');
+  }
+  btnTheme.addEventListener('click', function () {
+    var t = isDark() ? 'light' : 'dark';
+    document.documentElement.dataset.theme = t;
+    try { localStorage.setItem(THEME_KEY, t); } catch (e) { /* приватный режим — тема до перезагрузки */ }
+    paintTheme();
+  });
+  if (darkMq && darkMq.addEventListener) darkMq.addEventListener('change', paintTheme);
+  paintTheme();
 
   /* ── Прогресс чтения и «наверх» ────────────────────────── */
 
@@ -255,17 +312,24 @@
     return box;
   }
 
-  /* Хлебные крошки, заголовок, вводный абзац и таблица сведений */
-  function head(data, extra) {
+  /* Лист-разделитель раздела: крошки, где мы (глава и раздел или глава
+     ATA), заголовок, вводный абзац и сведения строкой. Цвет — у полосы
+     вокруг (style.css, .doc-band и .ws-text .doc-head). */
+  function head(data, extra, cap) {
     var t = topicOf(data.id);
     var h = el('header', 'doc-head');
     var crumbs = '<li><a href="#home">Главная</a></li>';
-    if (t) crumbs += '<li><a href="#' + t.screens[0].id + '">' + (isLab(t) ? 'Практикум DA 40 NG' : 'Глава ' + esc(t.num)) + '</a></li>';
+    if (t) crumbs += '<li><a href="#' + t.screens[0].id + '">' + (isLab(t) ? 'Практикум DA&nbsp;40&nbsp;NG' : 'Глава ' + esc(t.num)) + '</a></li>';
     var s = screenOf(data.id);
-    var cap = t ? (isLab(t) ? 'Практикум DA 40 NG' : 'Глава ' + esc(t.num) + (s && screenNo(s) !== '—' ? ', раздел ' + screenNo(s) : '')) : '';
+    if (!cap && t) {
+      var no = s ? screenNo(s) : '—';
+      cap = isLab(t)
+        ? (s && s.ata ? 'Глава ATA <b>' + esc(s.ata) + '</b>' : 'Практикум DA&nbsp;40&nbsp;NG')
+        : 'Глава ' + esc(t.num) + (no !== '—' ? ', раздел <b>' + no + '</b>' : '');
+    }
     h.innerHTML = '<ol class="crumbs">' + crumbs + '</ol>' +
-      (cap ? '<span class="caption">' + cap + '</span>' : '') +
-      '<h1>' + esc(data.title) + '</h1>' +
+      (cap ? '<p class="dh-cap">' + cap + '</p>' : '') +
+      '<h1>' + esc(shy(data.title)) + '</h1>' +
       (data.lead ? '<p class="lead">' + Render.inline(data.lead) + '</p>' : '');
     var rows = (extra || []).filter(function (c) { return c && c[1]; });
     if (data.source) rows.push(['Источник', Render.inline(data.source)]);
@@ -275,6 +339,15 @@
       h.appendChild(dl);
     }
     return h;
+  }
+
+  /* Спектр темы: разделы своими цветами подряд, длина — время чтения.
+     Текущий раздел выше остальных; щелчок — переход. */
+  function spectrum(topic, curId) {
+    return '<nav class="spectrum" aria-label="Разделы темы">' + topic.screens.map(function (s) {
+      return '<a href="#' + s.id + '" data-tone="' + s.id + '" style="--w:' + (s.min || 1) + '" title="' + esc(s.title) + '"' +
+        (s.id === curId ? ' class="is-cur" aria-current="page"' : '') + '></a>';
+    }).join('') + '</nav>';
   }
 
   function doneBar(data) {
@@ -297,82 +370,247 @@
 
   function pager(data) {
     var html = '';
-    if (data.prev) html += '<a class="p-prev" href="#' + data.prev.id + '"><span class="pager-tx"><small>Предыдущий раздел</small><b>' + esc(data.prev.title) + '</b></span></a>';
+    if (data.prev) html += '<a class="p-prev" href="#' + data.prev.id + '" data-tone="' + esc(data.prev.id) + '"><span class="pager-tx"><small>Предыдущий раздел</small><b>' + esc(data.prev.title) + '</b></span></a>';
     html += data.next
-      ? '<a class="p-next" href="#' + data.next.id + '"><span class="pager-tx"><small>Следующий раздел</small><b>' + esc(data.next.title) + '</b></span></a>'
-      : '<a class="p-next" href="#home"><span class="pager-tx"><small>На главную</small><b>Содержание пособия</b></span></a>';
+      ? '<a class="p-next" href="#' + data.next.id + '" data-tone="' + esc(data.next.id) + '"><span class="pager-tx"><small>Следующий раздел</small><b>' + esc(data.next.title) + '</b></span></a>'
+      : '<a class="p-next" href="#home" data-tone="home"><span class="pager-tx"><small>На главную</small><b>Содержание пособия</b></span></a>';
     return el('nav', 'pager', html);
-  }
-
-  /* Разделы темы со статусом — «список задач» */
-  function tasks(topic, curId) {
-    var lb = isLab(topic);
-    return '<ul class="tasks">' + topic.screens.map(function (s) {
-      var no = lb ? '' : screenNo(s);
-      var read = isRead(s.id);
-      return '<li><span>' + (no && no !== '—' ? '<span class="tn">' + no + '</span>' : '') +
-        (s.id === curId ? '<b>' + esc(s.title) + '</b>' : '<a href="#' + s.id + '">' + esc(s.title) + '</a>') + '</span>' +
-        '<span class="tm">' + (s.min ? s.min + ' мин' : '') +
-        (read ? '<strong class="tag is-green">Прочитан</strong>' : '<strong class="tag is-grey">Не начат</strong>') + '</span></li>';
-    }).join('') + '</ul>';
   }
 
   /* ── Главная ───────────────────────────────────────────── */
 
-  function viewHome() {
-    var page = el('div', 'page');
-    var ch = chapter(), lb = lab();
-    var cols = el('div', 'cols');
-    var m = el('div', 'col-main');
-    var done = ch ? readCount(ch) : 0;
-    var startId = ch ? (done && done < ch.screens.length ? firstUnread(ch) : ch.screens[0].id) : 'home';
-    m.innerHTML =
-      '<h1>' + esc(MENU.title1) + ' ' + esc(MENU.title2) + '</h1>' +
-      '<p class="lead">Интерактивное учебное пособие для курсантов УИ ГА им. Б. П. Бугаева.</p>' +
-      '<p>' + esc(MENU.lead) + '</p>' +
-      '<a class="btn is-start" href="#' + startId + '">' + (done && ch && done < ch.screens.length ? 'Продолжить чтение' : 'Начать с главы 6') +
-      '<svg viewBox="0 0 33 40" aria-hidden="true"><path d="M0 0h13l20 20-20 20H0l20-20z"/></svg></a>';
-    var side = el('aside', 'col-side');
-    side.innerHTML = '<div class="related"><h2>Быстрый переход</h2><ul>' +
-      (ch ? '<li><a href="#' + ch.screens[0].id + '">Глава 6. ' + esc(ch.title) + '</a></li>' : '') +
-      (lb ? '<li><a href="#' + lb.screens[0].id + '">Практикум: DA 40 NG по системам</a></li>' : '') +
-      '<li><a href="#fc-quiz">Тест по главе 6</a></li><li><a href="#da40-quiz">Тест по практикуму</a></li></ul></div>';
-    cols.appendChild(m); cols.appendChild(side);
-    page.appendChild(cols);
+  /* Порядок полос в поле красок — по кругу оттенков: сначала нейтральный
+     планер, затем системы от киновари к маджента. Так поле читается как
+     палитра, а не как случайный набор цветов. */
+  var PALETTE_ORDER = ['da40-fuselage', 'da40-wing', 'da40-cabin', 'da40-powerplant', 'da40-fuel', 'da40-gear',
+    'da40-instruments', 'da40-air', 'da40-controls', 'da40-electrical', 'da40-radio'];
+  function inPalette(list) {
+    return list.slice().sort(function (a, b) {
+      var i = PALETTE_ORDER.indexOf(a.id), j = PALETTE_ORDER.indexOf(b.id);
+      return (i < 0 ? 99 : i) - (j < 0 ? 99 : j);
+    });
+  }
 
+  /* Жизнь поля на главной.
+     Стробы на законцовках срабатывают не постоянно, а раз в 10–30 с.
+     Пассивный показ: если посетитель ~6 с ничего не делает, полосы по очереди
+     (каждые 3 с) раздвигаются и показывают превью системы — план DA 40 с её
+     трассой и строку о составе. Любое движение, касание, клавиша или прокрутка
+     сразу возвращают поле в обычный вид. Наведение мыши на полосу показывает
+     её превью сразу, без ожидания. */
+  function fieldLife(field, sys) {
+    var tStrobe = null, tick = null, io = null, seen = true;
+    function strobe() {
+      if (!field.isConnected) return;
+      field.classList.remove('is-strobe');
+      void field.offsetWidth;                       /* перезапуск анимации */
+      field.classList.add('is-strobe');
+      tStrobe = setTimeout(strobe, 10000 + Math.random() * 20000);
+    }
+    tStrobe = setTimeout(strobe, 3000 + Math.random() * 5000);
+
+    var bandsEl = field.querySelector('.bands'), bands = field.querySelectorAll('.band'), keys = field.querySelectorAll('.field-keys a');
+    var last = Date.now(), demo = false, cur = -1, nextAt = 0;
+    function show(i) {
+      [].forEach.call(bands, function (b, j) { b.classList.toggle('is-pv', j === i); if (j !== i) b.classList.remove('is-in'); });
+      [].forEach.call(keys, function (k, j) { k.classList.toggle('is-pv', j === i); });
+      if (i < 0) return;
+      var b = bands[i], s = sys[i];
+      if (!b.querySelector('.band-pv')) {
+        var pv = el('div', 'band-pv');
+        pv.setAttribute('aria-hidden', 'true');
+        pv.innerHTML = (s.note ? '<p>' + esc(s.note) + '</p>' : '') + '<span class="go">Открыть раздел</span>';
+        b.insertBefore(pv, b.firstChild);
+      }
+      /* Окошко с планом лежит над всем полем, а не внутри полосы: полоса с
+         анимацией появления — свой слой, и окошко внутри неё уходило под
+         самолёт. Окошко едет за левым краем раскрывающейся полосы. */
+      card.setAttribute('data-tone', s.id);
+      /* окошки планов по системам: искать только среди своих — внутри плана
+         у контуров систем тоже есть data-sys, и поиск по нему находил контур */
+      if (!plans[s.id]) {
+        plans[s.id] = el('div', 'pv-plan');
+        card.appendChild(plans[s.id]);
+        Plan.mount(plans[s.id], { cur: s.id });
+      }
+      Object.keys(plans).forEach(function (k) { plans[k].hidden = k !== s.id; });
+      card.classList.add('is-on');
+      follow(b);
+      requestAnimationFrame(function () { requestAnimationFrame(function () { b.classList.add('is-in'); }); });
+    }
+    var card = el('div', 'field-pv'), tFollow = null, plans = {};
+    card.setAttribute('aria-hidden', 'true');
+    field.appendChild(card);
+    function follow(b) {
+      var t0 = performance.now();
+      cancelAnimationFrame(tFollow);
+      (function step() {
+        var fr = field.getBoundingClientRect(), br = b.getBoundingClientRect();
+        var w = Math.min(320, Math.max(220, br.width - 24), fr.width - 24), x = Math.max(12, Math.min(br.left - fr.left + 12, fr.width - w - 12));
+        card.style.transform = 'translateX(' + Math.round(x) + 'px)';
+        card.style.width = w + 'px';
+        /* до конца раскрытия полосы (0,38 с) и с запасом: соседние полосы
+           сужаются в то же время, и левый край приходит на место последним */
+        if (performance.now() - t0 < 1000) tFollow = requestAnimationFrame(step);
+      })();
+    }
+    function stop() {
+      if (!demo) return;
+      demo = false; cur = -1; want = -1;
+      bandsEl.classList.remove('is-demo');
+      card.classList.remove('is-on');
+      show(-1);
+    }
+    /* Наведение мыши на полосу показывает то же превью. Чтобы раскрытие не
+       мерцало, полоса меняется только при настоящем движении мыши и после
+       задержки 120 мс: раздвинувшаяся полоса сдвигает соседние, курсор
+       «оказывается» над другой, но без движения переключения нет. */
+    var hover = false, want = -1, tWant = null, tLeave = null;
+    function hoverTo(i) {
+      hover = true;
+      if (!demo) { demo = true; bandsEl.classList.add('is-demo'); }
+      if (i !== cur) { cur = i; show(i); }
+    }
+    listen(bandsEl, 'pointermove', function (e) {
+      if (e.pointerType === 'touch' || (!e.movementX && !e.movementY)) return;
+      clearTimeout(tLeave);
+      var b = e.target.closest('.band'), i = [].indexOf.call(bands, b);
+      if (i < 0 || i === cur || i === want) return;
+      want = i;
+      clearTimeout(tWant);
+      tWant = setTimeout(function () { if (want === i) hoverTo(i); }, 120);
+    });
+    listen(bandsEl, 'pointerleave', function () {
+      want = -1; clearTimeout(tWant);
+      tLeave = setTimeout(function () { hover = false; stop(); }, 250);
+    });
+    function wake(e) {
+      last = Date.now();
+      /* движение мыши над полосами — это наведение, а не конец показа */
+      if (e && e.type === 'pointermove' && bandsEl.contains(e.target)) return;
+      stop();
+    }
+    ['pointermove', 'pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'].forEach(function (n) {
+      listen(window, n, wake, { passive: true });
+    });
+    if (window.IntersectionObserver) {
+      io = new IntersectionObserver(function (e) { seen = e[0].isIntersecting; if (!seen) stop(); });
+      io.observe(field);
+    }
+    tick = setInterval(function () {
+      if (!field.isConnected) return;
+      var now = Date.now();
+      if (hover || document.hidden || !seen || now - last < 6000) return;
+      if (!demo) { demo = true; bandsEl.classList.add('is-demo'); cur = -1; nextAt = 0; }
+      if (now >= nextAt) {
+        cur = (cur + 1) % bands.length;
+        show(cur);
+        nextAt = now + 3000;
+      }
+    }, 500);
+    offPage.push(function () { clearTimeout(tStrobe); clearInterval(tick); if (io) io.disconnect(); });
+  }
+
+  function viewHome() {
+    var page = el('div', 'home');
+    var ch = chapter(), lb = lab();
+    var done = ch ? readCount(ch) : 0;
+    var going = !!(ch && done && done < ch.screens.length);
+    var startId = ch ? (going ? firstUnread(ch) : ch.screens[0].id) : 'home';
+
+    /* титул: название курса, а под ним — поле красок систем с самолётом */
+    var hero = el('section', 'hero');
+    hero.innerHTML =
+      '<div class="hero-in">' +
+        '<h1 class="hero-title">' + esc(MENU.title1) + ' <span>' + esc(MENU.title2) + '</span></h1>' +
+        '<div class="hero-copy">' +
+          '<p class="hero-lead">' + esc(MENU.lead) + '</p>' +
+          '<div class="hero-acts">' +
+            (ch ? '<a class="btn" href="#' + startId + '">' + (going ? 'Продолжить чтение' : 'Начать с главы 6') + '</a>' : '') +
+            (lb ? '<a class="btn is-ghost" href="#' + lb.screens[0].id + '">Практикум в 3D</a>' : '') +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    if (lb) {
+      var sys = inPalette(systems());
+      var field = el('div', 'field');
+      field.innerHTML =
+        '<nav class="bands" aria-label="Системы DA&nbsp;40&nbsp;NG">' + sys.map(function (s, i) {
+          return '<a class="band" href="#' + s.id + '" data-tone="' + s.id + '" style="--w:' + (s.min || 6) + ';--i:' + i + '">' +
+            '<b>' + esc(s.ata) + '</b><span>' + esc(shy(s.short || s.title)) + '</span></a>';
+        }).join('') + '</nav>' +
+        /* огни как на разбеге: навигационные горят (правая законцовка — зелёный,
+           левая — красный), стробы на законцовках дают двойную вспышку,
+           посадочная и рулёжная фары в левом крыле включены */
+        '<div class="field-plane"><img src="assets/img/da40-hero.webp?v=128" width="1600" height="617" alt="Учебный самолёт DA&nbsp;40&nbsp;NG — 3D-модель пособия">' +
+        '<span class="lt lt-nav lt-green" style="left:4.1%;top:29.6%"></span>' +
+        '<span class="lt lt-nav lt-red" style="left:92.8%;top:43.8%"></span>' +
+        '<span class="lt lt-strobe" style="left:4.5%;top:30.2%"></span>' +
+        '<span class="lt lt-strobe" style="left:93.3%;top:44.3%"></span>' +
+        '<span class="lt lt-land" style="left:80.6%;top:45.7%"></span>' +
+        '<span class="lt lt-land" style="left:82.4%;top:45.7%"></span></div>' +
+        '<ul class="field-keys">' + sys.map(function (s) {
+          return '<li><a href="#' + s.id + '" data-tone="' + s.id + '">' + esc(s.short || s.title) + '</a></li>';
+        }).join('') + '</ul>';
+      hero.appendChild(field);
+      /* после show(): роутер снимает обработчики прошлой страницы уже
+         после построения новой — таймеры, заведённые сразу, погасли бы */
+      setTimeout(function () { if (field.isConnected) fieldLife(field, sys); }, 0);
+    }
+    page.appendChild(hero);
+
+    /* глава 6: спектр разделов и строки с отметкой о прочитанном */
     if (ch) {
-      var sec = el('section');
-      sec.innerHTML = '<h2>Глава 6. ' + esc(ch.title) + '</h2>' +
-        '<p class="hint">' + ch.screens.length + ' разделов, около ' + minutes(ch) + ' минут чтения' + (done ? '. Прочитано ' + done + ' из ' + ch.screens.length : '') + '.</p>' +
-        tasks(ch);
+      var sec = el('section', 'home-sec');
+      sec.innerHTML =
+        '<div class="sec-head"><h2>Глава 6. ' + esc(ch.title) + '</h2>' +
+        '<p>Разделы идут от жёсткой проводки DA&nbsp;40&nbsp;NG к электродистанционному управлению A320 и SSJ-100, и цвет раздела меняется вместе с ними: от бирюзы к малиновому.</p></div>' +
+        '<div class="ch-grid"><div class="ch-side">' +
+          '<p><b>' + ch.screens.length + ' разделов</b>, около ' + minutes(ch) + ' минут чтения. ' +
+            (done ? 'Прочитано ' + done + ' из ' + ch.screens.length + '.' : 'Ширина полосы — время чтения раздела.') + '</p>' +
+          '<a class="btn' + (going ? '' : ' is-ghost') + '" href="#' + startId + '">' + (going ? 'Продолжить чтение' : 'Открыть главу 6') + '</a>' +
+        '</div><div class="ch-main">' + spectrum(ch, null) +
+          '<ol class="ch-list">' + ch.screens.map(function (s) {
+            var read = isRead(s.id), no = screenNo(s);
+            return '<li><a href="#' + s.id + '" data-tone="' + s.id + '"' + (read ? ' class="is-read"' : '') + '>' +
+              '<span class="no">' + (no === '—' ? '' : no) + '</span>' +
+              '<span class="t">' + esc(s.title) + '</span><span class="m">' + (s.min ? s.min + ' мин' : '') + '</span>' +
+              '<span class="st" title="' + (read ? 'Прочитан' : 'Не прочитан') + '">' + ICON.check + '</span></a></li>';
+          }).join('') + '</ol>' +
+        '</div></div>';
       page.appendChild(sec);
     }
+
+    /* практикум: план с системами в цвете и основные данные */
     if (lb) {
-      var ls = el('section');
-      ls.innerHTML = '<h2>Практикум: самолёт DA 40 NG по системам</h2>' +
-        '<p>Каждая система показана в 3D-модели, собранной по руководству по технической эксплуатации. Выберите систему в перечне или на виде сверху.</p>';
+      var ls = el('section', 'home-sec');
+      ls.innerHTML = '<div class="sec-head"><h2>Практикум: DA&nbsp;40&nbsp;NG по системам</h2>' +
+        '<p>Каждая система показана в 3D-модели, собранной по руководству по технической эксплуатации. Наведите на систему в перечне или на виде сверху — она проявится своим цветом.</p></div>';
       planBox(ls, null, { dims: true, caption: '<span>Вид сверху снят с 3D-модели. Размеры — по РЛЭ, раздел 1.</span>' +
         '<span class="plan-links"><a href="#' + lb.screens[0].id + '">Самолёт целиком</a><a href="#da40-quiz">Тест по практикуму</a></span>' });
-      var tb = el('div', 'table-scroll');
-      tb.innerHTML = '<table><caption class="h-m" style="text-align:left;font-weight:700;font-size:24px;padding-bottom:10px">Основные данные DA 40 NG</caption><tbody>' +
-        [['Размах крыла', '11,63 м'], ['Длина', '8,06 м'], ['Максимальная взлётная масса', '1 280 кг'], ['Мощность двигателя', '123,5 кВт'],
-         ['Максимально допустимая скорость V<sub>NE</sub>', '172 уз'], ['Топливо (два бака)', '2 × 56,8 л']]
-          .map(function (r) { return '<tr><th scope="row">' + r[0] + '</th><td>' + r[1] + '</td></tr>'; }).join('') +
-        '</tbody></table>';
-      ls.appendChild(tb);
-      ls.appendChild(el('p', 'hint', 'Данные — по РЛЭ DA 40 NG, разделы 1 и 2.'));
+      var facts = el('dl', 'facts');
+      facts.innerHTML = [['Размах крыла', '11,63 м'], ['Длина', '8,06 м'], ['Максимальная взлётная масса', '1 280 кг'], ['Мощность двигателя', '123,5 кВт'],
+        ['Максимально допустимая скорость V<sub>NE</sub>', '172 уз'], ['Топливо, два бака', '2 × 56,8 л']]
+        .map(function (r) { return '<div><dt>' + r[0] + '</dt><dd>' + r[1] + '</dd></div>'; }).join('');
+      ls.appendChild(facts);
+      ls.appendChild(el('p', 'facts-src', 'Данные — по РЛЭ DA&nbsp;40&nbsp;NG, разделы 1 и 2.'));
       page.appendChild(ls);
     }
-    var cc = el('section');
+
+    /* программа курса: готовые темы — цветом своего первого раздела */
+    var cc = el('section', 'home-sec');
     var parts = MENU.parts.filter(function (p) { return !p.topics.some(isLab); });
-    cc.innerHTML = '<h2>Все темы курса</h2>' + parts.map(function (p) {
-      return '<h3>' + esc(p.name) + '</h3><ul class="tasks">' + p.topics.map(function (t) {
-        var ready = t.status === 'ready';
-        return '<li><span><span class="tn">' + esc(t.num) + '</span>' +
-          (ready ? '<a href="#' + (t.screens ? t.screens[0].id : t.id) + '">' + esc(t.title) + '</a>' : esc(t.title)) + '</span>' +
-          '<span class="tm">' + (ready ? '<strong class="tag">Готово</strong>' : '<strong class="tag is-grey">В работе</strong>') + '</span></li>';
-      }).join('') + '</ul>';
-    }).join('');
+    cc.innerHTML = '<div class="sec-head"><h2>Программа курса</h2>' +
+      '<p>Готовые темы открываются целиком; остальные входят в программу и наполняются.</p></div>' +
+      '<div class="topics">' + parts.map(function (p) {
+        return '<div><h3>' + esc(p.name) + '</h3><ol>' + p.topics.map(function (t) {
+          var ready = t.status === 'ready';
+          var first = t.screens ? t.screens[0].id : t.id;
+          return '<li' + (ready ? ' class="is-ready" data-tone="' + first + '"' : '') + '><span class="no">' + esc(t.num) + '</span>' +
+            (ready ? '<a class="t" href="#' + first + '">' + esc(t.title) + '</a>' : '<span class="t">' + esc(t.title) + '</span>') +
+            '<span class="st">' + (ready ? 'Готово' : 'В работе') + '</span></li>';
+        }).join('') + '</ol></div>';
+      }).join('') + '</div>';
     page.appendChild(cc);
     return page;
   }
@@ -380,33 +618,42 @@
   /* ── Тема «скоро» ──────────────────────────────────────── */
 
   function viewSoon(t) {
-    var page = el('div', 'page');
-    var cols = el('div', 'cols');
-    var m = el('div', 'col-main');
-    m.appendChild(head({ id: t.id, title: t.title, lead: '' }));
+    var page = el('div', 'doc');
+    var band = el('div', 'doc-band');
+    var bin = el('div', 'doc-band-in');
+    bin.appendChild(head({ id: t.id, title: t.title, lead: '' }, null, 'Тема <b>' + esc(t.num) + '</b> · в работе'));
+    band.appendChild(bin);
+    page.appendChild(band);
+    var wrap = el('div', 'page');
     var items = (t.sub || '').split(';').map(function (s) { return s.trim(); })
       .filter(Boolean).map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('');
     var ch = chapter();
-    m.appendChild(el('div', 'soon',
+    wrap.appendChild(el('div', 'soon article',
       '<p>Тема входит в программу курса, но ещё не наполнена.' + (ch ? ' Полностью готова <a href="#' + ch.screens[0].id + '">глава 6</a>.' : '') + '</p>' +
       (items ? '<h2>Что войдёт в тему</h2><ul>' + items + '</ul>' : '')));
-    cols.appendChild(m);
-    page.appendChild(cols);
+    page.appendChild(wrap);
     return page;
   }
 
-  /* ── Раздел главы: текст и «связанные разделы» сбоку ───── */
+  /* ── Раздел главы: полоса заголовка, текст, указатель сбоку ─ */
 
   function viewDoc(data, topic) {
-    var page = el('div', 'page');
+    var page = el('div', 'doc');
     var s = screenOf(data.id);
     var idx = topic ? topic.screens.indexOf(s) : -1;
-    var cols = el('div', 'cols');
-    var m = el('div', 'col-main');
-    m.appendChild(head(data, [
+    var band = el('div', 'doc-band');
+    var bin = el('div', 'doc-band-in');
+    bin.appendChild(head(data, [
       ['Время чтения', s && s.min ? 'около ' + s.min + ' мин' : ''],
       ['Раздел', idx >= 0 ? (idx + 1) + ' из ' + topic.screens.length : '']
     ]));
+    band.appendChild(bin);
+    page.appendChild(band);
+    /* язычки разделов главы свисают из-под листа; текущий — его продолжение */
+    if (topic) page.appendChild(el('div', 'doc-strip', spectrum(topic, data.id)));
+    var wrap = el('div', 'page');
+    var cols = el('div', 'cols');
+    var m = el('div', 'col-main');
     var art = el('article', 'article');
     Render.blocks(data.blocks || [], art);
     m.appendChild(art);
@@ -417,13 +664,13 @@
       var hs = art.querySelectorAll('h2');
       var onPage = '';
       if (hs.length > 1) {
-        onPage = '<h2>На этой странице</h2><ul>';
+        onPage = '<div class="on-page"><h2>На этой странице</h2><ul>';
         hs.forEach(function (h, i) { h.id = 'h-' + (i + 1); onPage += '<li><a href="#' + data.id + '" data-h="' + h.id + '">' + esc(h.textContent) + '</a></li>'; });
-        onPage += '</ul>';
+        onPage += '</ul></div>';
       }
-      side.innerHTML = '<div class="related">' + onPage + '<h2>' + (isLab(topic) ? 'Практикум DA 40 NG' : 'Глава ' + esc(topic.num)) + '</h2><ul>' +
+      side.innerHTML = '<div class="related">' + onPage + '<h2>' + (isLab(topic) ? 'Практикум DA&nbsp;40&nbsp;NG' : 'Глава ' + esc(topic.num)) + '</h2><ul>' +
         topic.screens.map(function (x) {
-          return '<li class="' + (x.id === data.id ? 'is-cur' : '') + '"><a href="#' + x.id + '">' + esc(isLab(topic) ? x.title : x.title) + '</a></li>';
+          return '<li class="' + (x.id === data.id ? 'is-cur' : '') + '"><a href="#' + x.id + '" data-tone="' + x.id + '">' + esc(x.title) + '</a></li>';
         }).join('') + '</ul></div>';
       side.querySelectorAll('[data-h]').forEach(function (a) {
         a.addEventListener('click', function (e) {
@@ -434,7 +681,8 @@
       });
     }
     cols.appendChild(m); cols.appendChild(side);
-    page.appendChild(cols);
+    wrap.appendChild(cols);
+    page.appendChild(wrap);
     return page;
   }
 
@@ -445,7 +693,7 @@
     p.setAttribute('role', 'dialog');
     p.setAttribute('aria-label', 'Системы DA 40 NG');
     var inn = el('div', 'systems-in');
-    inn.innerHTML = '<div class="systems-h"><h2>Системы DA 40 NG</h2>' +
+    inn.innerHTML = '<div class="systems-h"><h2>Системы DA&nbsp;40&nbsp;NG</h2>' +
       '<button class="systems-x" type="button">Закрыть' + ICON.close.replace('<svg', '<svg width="18" height="18"') + '</button></div>';
     p.appendChild(inn);
     var built = false;
@@ -493,9 +741,10 @@
     if (data.id !== 'model-da40') view.appendChild(map);     /* на обзоре план — в колонке текста */
 
     text.appendChild(head(data, [
-      ['Глава ATA', s && s.ata ? esc(s.ata) : ''],
       ['Время чтения', s && s.min ? 'около ' + s.min + ' мин' : '']
     ]));
+    /* под листом системы — язычки всего практикума: где она среди остальных */
+    text.insertAdjacentHTML('beforeend', spectrum(topic, data.id));
     /* обзор: перечень систем с планом вместо состава */
     if (data.id === 'model-da40') {
       var sec = el('div', 'legend');
@@ -537,9 +786,13 @@
     main.textContent = '';
   }
 
-  function show(node, title, cls) {
+  /* tone — палитра страницы (id раздела); body, а не main: цвет нужен
+     и шапке с полосой прочитанного, и шторке содержания. */
+  function show(node, title, cls, tone) {
     clearMain();
     main.className = 'main' + (cls ? ' ' + cls : '');
+    document.body.setAttribute('data-tone', tone || 'home');
+    document.body.setAttribute('data-view', cls || '');
     main.appendChild(node);
     document.title = title;
     Figures.mountAll(main);
@@ -566,7 +819,7 @@
 
     var topic = findTopic(id);
     if (topic && topic.status !== 'ready') {
-      show(viewSoon(topic), topic.title + ' — КиЛЭ ВС');
+      show(viewSoon(topic), topic.title + ' — КиЛЭ ВС', 'is-doc');
       return;
     }
     /* Адрес темы (#t06, #t3d) — под этим кодом тема напечатана в методичке
@@ -584,7 +837,7 @@
       if (routeId() !== id) return;
       markNav(id);
       var t = topicOf(id);
-      show(viewPage(data), data.title + ' — КиЛЭ ВС', isLab(t) ? 'is-lab' : 'is-doc');
+      show(viewPage(data), data.title + ' — КиЛЭ ВС', isLab(t) ? 'is-lab' : 'is-doc', id);
     }).catch(function (e) {
       delete cache['content/' + id + '.json'];
       if (routeId() === id) fail(id, e);

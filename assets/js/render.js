@@ -40,6 +40,7 @@ var Render = (function () {
        подряд через знаки — *S*ок/*S*р, *M*ш = *Y*р·*x*р − *Y*ск·*x*ск. */
     t = t.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
     t = t.replace(/->/g, '→');
+    t = t.replace(/DA 40 NG/g, 'DA&nbsp;40&nbsp;NG');    /* название самолёта не разрываем */
     return t;
   }
 
@@ -101,10 +102,10 @@ var Render = (function () {
     frame.dataset.figure = b.name;
     if (b.opts) frame.dataset.opts = JSON.stringify(b.opts);
     node.appendChild(frame);
-    /* Подсказка про горизонтальную прокрутку — только для широких SVG-схем.
-       У 3D-модели свои правила управления, там она сбивает с толку. */
+    /* Подсказка на телефоне: схемы встают во всю ширину, а двигать их можно
+       пальцем прямо по рисунку. У 3D-модели свои правила управления. */
     if (b.name !== 'model3d') {
-      node.appendChild(el('div', 'figure-hint', 'Схему можно листать вбок →'));
+      node.appendChild(el('div', 'figure-hint', 'Рисунок можно тянуть пальцем'));
     }
     if (b.caption) {
       node.appendChild(el('figcaption', 'figure-cap', inline(b.caption)));

@@ -18,6 +18,8 @@ var Plan = (function () {
   'use strict';
 
   var SRC = 'assets/img/da40-plan.svg?v=51';
+  /* Цвета систем на плане задаёт style.css по data-sys каждого пятна:
+     у каждой системы своя палитра, как в тексте и в 3D. */
   var text = null;
 
   function load() {
@@ -147,6 +149,7 @@ var Plan = (function () {
           if (opts.onHot) opts.onHot(id);
           var ti = opts.titles && opts.titles[id];
           if (ti) {
+            tag.setAttribute('data-sys', id);      /* цвет системы — из палитры style.css */
             tag.innerHTML = (ti.ata ? '<i>ATA ' + ti.ata + '</i>' : '') + '<b>' + ti.t + '</b>';
             tag.hidden = false;
           }
