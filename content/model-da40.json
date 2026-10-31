@@ -82,7 +82,29 @@
           {
             "src": "models/da40/da40-cabin.glb",
             "title": "Салон",
-            "hint": "Салон: кресла, приборная доска, педали — чтобы видеть, где система относительно кабины"
+            "hint": "Салон: кресла, приборная доска с G1000, педали. Питание включено, двигатель не запущен: экраны работают, подсветка приборов и плафон горят",
+            "on": true
+          },
+          {
+            "src": [
+              "models/da40/da40-controls.glb",
+              "models/da40/da40-fuel.glb",
+              "models/da40/da40-electrical.glb",
+              "models/da40/da40-instruments.glb",
+              "models/da40/da40-pitot-static.glb",
+              "models/da40/da40-radio.glb",
+              "models/da40/da40-air.glb",
+              "models/da40/da40-induction.glb",
+              "models/da40/da40-oil.glb",
+              "models/da40/da40-cooling.glb",
+              "models/da40/da40-brakes.glb",
+              "models/da40/da40-equipment.glb",
+              "models/da40/da40-bonding.glb"
+            ],
+            "title": "Системы",
+            "on": true,
+            "lite": false,
+            "hint": "Все системы самолёта сразу: управление, топливо, электрика, приборы и ПВД, радио, вентиляция, впуск, масло, охлаждение, тормоза, оборудование, металлизация. Видны, если убавить обшивку"
           }
         ],
         "sections": [

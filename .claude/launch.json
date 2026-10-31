@@ -11,6 +11,16 @@
       ],
       "port": 5178,
       "autoPort": false
+    },
+    {
+      "name": "g1000-stand",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "C:/Users/boucher48/Desktop/x/DA-40/g1000_capture/serve.py",
+        "5191"
+      ],
+      "port": 5191,
+      "autoPort": false
     }
   ]
 }

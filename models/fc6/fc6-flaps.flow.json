@@ -1,0 +1,67 @@
+{
+ "axis": "x",
+ "sides": [
+  1,
+  -1
+ ],
+ "alpha": "lift",
+ "hud": "flaps",
+ "le": {
+  "p": [
+   -0.30973,
+   0.023824
+  ],
+  "q": [
+   0.75539,
+   0.076777
+  ]
+ },
+ "te": {
+  "p": [
+   1.08224,
+   -0.061397
+  ],
+  "q": [
+   0.66017,
+   0.084088
+  ]
+ },
+ "thick": 0.1595,
+ "foil": "models/fc6/fx63137.json",
+ "foilName": "Wortmann FX 63-137",
+ "controls": [
+  {
+   "key": "flap",
+   "name": "Закрылок",
+   "parent": null,
+   "nodes": {
+    "1": "Bone_l",
+    "-1": "Bone_r"
+   },
+   "surf": {
+    "1": "Flap L surface",
+    "-1": "Flap R surface"
+   },
+   "xh": 0.7902,
+   "aft": 0.0,
+   "travel": 41.0,
+   "span": [
+    0.6312,
+    3.9465
+   ]
+  }
+ ],
+ "skin": {
+  "fixed": [
+   "Wing L skin",
+   "Wing R skin"
+  ]
+ },
+ "stations": [
+  1.5,
+  3.4,
+  4.6
+ ],
+ "source": "practicum (tools/da40/controls.py, AMM 27)",
+ "note": "Blender axes: x span (+ left), y aft, z up. axis z: section plane (p=y, q=x). Lines linear in |span|."
+}

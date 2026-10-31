@@ -132,12 +132,17 @@ var Render = (function () {
         s.btn.classList.toggle('is-on', j === i);
         s.btn.setAttribute('aria-pressed', j === i ? 'true' : 'false');
         s.slot.hidden = j !== i;
+        /* скрытая живая 3D-схема выгружается: два WebGL на рисунок телефону не по силам */
+        if (j !== i && s.frame.dataset.mounted && s.frame.dataset.lazy === 'live3d' && window.Figures && Figures.unmountFrame) {
+          Figures.unmountFrame(s.frame);
+          delete s.frame.dataset.figure;
+        }
       });
       var f = slots[i].frame;
       if (!f.dataset.figure) {
         f.dataset.figure = f.dataset.lazy;
         /* при первой отрисовке страницы монтирует роутер; позже — сами */
-        if (node.isConnected && window.Figures) Figures.mountAll(node);
+        if (node.isConnected && window.Figures) Figures.mountAll(slots[i].slot);
       }
     }
     function onVar(e) {

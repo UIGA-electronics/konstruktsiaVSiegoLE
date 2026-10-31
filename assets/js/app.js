@@ -393,11 +393,14 @@
 
   /* Жизнь поля на главной.
      Стробы на законцовках срабатывают не постоянно, а раз в 10–30 с.
-     Пассивный показ: если посетитель ~6 с ничего не делает, полосы по очереди
-     (каждые 3 с) раздвигаются и показывают превью системы — план DA 40 с её
-     трассой и строку о составе. Любое движение, касание, клавиша или прокрутка
-     сразу возвращают поле в обычный вид. Наведение мыши на полосу показывает
-     её превью сразу, без ожидания. */
+     Сначала — быстрый «ручеёк»: полосы, как только встали, все вместе
+     волной слева направо вспыхивают и подбрасывают подписи (без раскрытия) —
+     видно, что они живые. Сразу за ним — показ: полосы по очереди (каждые
+     3 с) раздвигаются и показывают превью системы прямо в себе — план
+     DA 40 с её трассой и строку о составе. На компьютере любое движение,
+     касание, клавиша или прокрутка возвращают поле в обычный вид, а дальше
+     показ идёт после ~6 с бездействия; наведение на полосу раскрывает её
+     сразу. На телефоне показ идёт, пока поле на экране. */
   function fieldLife(field, sys) {
     var tStrobe = null, tick = null, io = null, seen = true;
     function strobe() {
@@ -411,59 +414,74 @@
 
     var bandsEl = field.querySelector('.bands'), bands = field.querySelectorAll('.band'), keys = field.querySelectorAll('.field-keys a');
     var last = Date.now(), demo = false, cur = -1, nextAt = 0;
+    /* ручеёк: после появления полос (~1 с) волна идёт по ним за ~1,1 с */
+    var calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var waveEnd = Date.now() + (calm ? 0 : 2300), tWave = null;
+    if (!calm) tWave = setTimeout(function () {
+      bandsEl.classList.add('is-wave');
+      tWave = setTimeout(function () {
+        bandsEl.classList.remove('is-wave');
+        /* появление закончилось: без анимации полоса не своя прослойка, и
+           превью внутри неё встаёт поверх самолёта */
+        bandsEl.classList.add('is-ready');
+        last = Date.now() - 6000;                    /* показ — сразу за ручейком */
+        [].forEach.call(bands, function (b, i) { preview(i); });
+      }, 1300);
+    }, 1000);
+    else { bandsEl.classList.add('is-ready'); setTimeout(function () { [].forEach.call(bands, function (b, i) { preview(i); }); }, 0); }
     function show(i) {
       [].forEach.call(bands, function (b, j) { b.classList.toggle('is-pv', j === i); if (j !== i) b.classList.remove('is-in'); });
       [].forEach.call(keys, function (k, j) { k.classList.toggle('is-pv', j === i); });
       if (i < 0) return;
       var b = bands[i], s = sys[i];
-      if (!b.querySelector('.band-pv')) {
-        var pv = el('div', 'band-pv');
-        pv.setAttribute('aria-hidden', 'true');
-        pv.innerHTML = (s.note ? '<p>' + esc(s.note) + '</p>' : '') + '<span class="go">Открыть раздел</span>';
-        b.insertBefore(pv, b.firstChild);
-      }
-      /* Окошко с планом лежит над всем полем, а не внутри полосы: полоса с
-         анимацией появления — свой слой, и окошко внутри неё уходило под
-         самолёт. Окошко встаёт к краю поля со стороны полосы, а самолёт
-         отъезжает в свободную часть поля и не прячется под окошком. */
+      preview(i);
+      /* телефон: под полем — карточка с названием и составом (касание
+         открывает раздел, смахивание листает) */
       card.setAttribute('data-tone', s.id);
-      txt.innerHTML = '<b>' + esc(s.title || s.short) + '</b>' + (s.note ? '<p>' + esc(s.note) + '</p>' : '') + '<span class="go">Открыть раздел</span>';
-      /* окошки планов по системам: искать только среди своих — внутри плана
-         у контуров систем тоже есть data-sys, и поиск по нему находил контур */
-      if (!plans[s.id]) {
-        plans[s.id] = el('div', 'pv-plan');
-        card.appendChild(plans[s.id]);
-        Plan.mount(plans[s.id], { cur: s.id });
-      }
-      Object.keys(plans).forEach(function (k) { plans[k].hidden = k !== s.id; });
+      txt.innerHTML = '<b><i>' + esc(s.ata) + '</i> ' + esc(s.title || s.short) + '</b>' + (s.note ? '<p>' + esc(s.note) + '</p>' : '') + '<span class="go">Открыть раздел</span>';
       card.classList.add('is-on');
       card.classList.remove('is-tick'); void card.offsetWidth; card.classList.add('is-tick');
       place(i);
       requestAnimationFrame(function () { requestAnimationFrame(function () { b.classList.add('is-in'); }); });
     }
-    var card = el('div', 'field-pv'), txt = el('div', 'pv-text'), plans = {}, tEdge = null;
+    var card = el('div', 'field-pv'), txt = el('div', 'pv-text'), tEdge = null;
+    /* Превью — внутри самой полосы: план с трассой системы, строка
+       о составе и ссылка. План не шире полосы. Собираем все заранее, сразу
+       после ручейка: иначе первое наведение ждало загрузки плана. */
+    function preview(i) {
+      var b = bands[i], s = sys[i];
+      if (b.querySelector('.band-pv')) return;
+      var pv = el('div', 'band-pv'), pl = el('div', 'pv-plan');
+      pv.setAttribute('aria-hidden', 'true');
+      pv.appendChild(pl);
+      Plan.mount(pl, { cur: s.id });
+      pv.insertAdjacentHTML('beforeend', (s.note ? '<p>' + esc(s.note) + '</p>' : '') + '<span class="go">Открыть раздел</span>');
+      b.insertBefore(pv, b.firstChild);
+    }
     var plane = field.querySelector('.field-plane'), phone = window.matchMedia('(max-width:720px)');
     card.setAttribute('aria-hidden', 'true');
     card.appendChild(txt);
     field.insertBefore(card, field.querySelector('.field-keys'));
-    /* Место окошка и самолёта. Окошко — у левого края поля, если полоса в
-       левой половине, иначе у правого. Самолёт сдвигается (и при нехватке
-       места уменьшается) так, чтобы целиком стоять рядом с окошком.
-       Двигаются только translate и scale — без пересчёта вёрстки. */
+    /* Место самолёта. Раскрытая полоса растёт до ×3,6 своей доли, прочие
+       сжимаются до ×0,78 (style.css, .bands.is-demo); где она окажется,
+       считаем сразу по долям, не дожидаясь конца перехода. Самолёт отходит
+       в свободную часть поля (и при нехватке места уменьшается), чтобы не
+       закрывать превью в полосе. Двигаются только translate и scale. */
     function place(i) {
-      if (phone.matches) { plane.style.translate = plane.style.scale = ''; edge(); return; }
-      var fw = field.clientWidth, br = bands[i].getBoundingClientRect(), fr = field.getBoundingClientRect();
-      var w = Math.round(Math.max(220, Math.min(320, fw * .28))), left = br.left + br.width / 2 - fr.left < fw / 2;
-      var x = left ? 12 : fw - w - 12;
-      card.style.width = w + 'px';
-      card.style.transform = 'translateX(' + x + 'px)';
-      var pw = plane.offsetWidth, room = fw - w - 36, sc = Math.min(1, room / pw), ps = pw * sc;
-      var dx = left ? Math.max(0, w + 24 + ps / 2 - fw / 2) : Math.min(0, fw - w - 24 - ps / 2 - fw / 2);
+      if (phone.matches) { plane.style.translate = plane.style.scale = ''; clearTimeout(tEdge); tEdge = setTimeout(edge, 240); return; }
+      var fw = field.clientWidth, g = [], sum = 0;
+      [].forEach.call(bands, function (b, j) {
+        var w = parseFloat(b.style.getPropertyValue('--w')) || 1, v = w * (j === i ? 3.6 : 0.78);
+        g.push(v); sum += v;
+      });
+      var x0 = 0;
+      for (var j = 0; j < i; j++) x0 += g[j] / sum * fw;
+      var x1 = x0 + g[i] / sum * fw, left = (x0 + x1) / 2 < fw / 2;
+      var room = left ? fw - x1 - 24 : x0 - 24;
+      var pw = plane.offsetWidth, sc = Math.min(1, room / pw);
+      var dx = (left ? x1 + 12 + room / 2 : 12 + room / 2) - fw / 2;
       plane.style.translate = Math.round(dx) + 'px 0';
       plane.style.scale = sc < 1 ? sc.toFixed(3) : '';
-      /* полосы под окошком встают на место за 0,38 с — тогда и сверяем цвета */
-      clearTimeout(tEdge);
-      tEdge = setTimeout(edge, 420);
     }
     /* Окошко цвета полосы может лечь на полосу того же или близкого цвета
        (или на фон страницы того же тона) и слиться с ней. Тогда у окошка
@@ -477,13 +495,8 @@
     }
     function edge() {
       if (cur < 0) return;
-      var mine = rgb(getComputedStyle(bands[cur]).backgroundColor), cr = card.getBoundingClientRect(), hit = false;
-      if (phone.matches) hit = near(mine, rgb(getComputedStyle(document.body).backgroundColor));
-      else [].forEach.call(bands, function (b) {
-        var r = b.getBoundingClientRect();
-        if (r.right > cr.left && r.left < cr.right && near(mine, rgb(getComputedStyle(b).backgroundColor))) hit = true;
-      });
-      card.classList.toggle('is-edge', hit);
+      var mine = rgb(getComputedStyle(bands[cur]).backgroundColor);
+      card.classList.toggle('is-edge', phone.matches && near(mine, rgb(getComputedStyle(document.body).backgroundColor)));
     }
     function stop() {
       if (!demo || phone.matches) return;
@@ -505,7 +518,7 @@
     listen(card, 'click', function () { if (phone.matches && cur >= 0) location.hash = '#' + sys[cur].id; });
     /* Наведение мыши на полосу показывает то же превью. Чтобы раскрытие не
        мерцало, полоса меняется только при настоящем движении мыши и после
-       задержки 120 мс: раздвинувшаяся полоса сдвигает соседние, курсор
+       задержки 50 мс: раздвинувшаяся полоса сдвигает соседние, курсор
        «оказывается» над другой, но без движения переключения нет. */
     var hover = false, want = -1, tWant = null, tLeave = null;
     function hoverTo(i) {
@@ -520,11 +533,11 @@
       if (i < 0 || i === cur || i === want) return;
       want = i;
       clearTimeout(tWant);
-      tWant = setTimeout(function () { if (want === i) hoverTo(i); }, 120);
+      tWant = setTimeout(function () { if (want === i) hoverTo(i); }, 50);
     });
     listen(bandsEl, 'pointerleave', function () {
       want = -1; clearTimeout(tWant);
-      tLeave = setTimeout(function () { hover = false; stop(); }, 250);
+      tLeave = setTimeout(function () { hover = false; stop(); }, 200);
     });
     var lastTouch = 0;
     listen(field, 'touchstart', function () { lastTouch = Date.now(); card.classList.remove('is-tick'); }, { passive: true });
@@ -545,6 +558,7 @@
     tick = setInterval(function () {
       if (!field.isConnected) return;
       var now = Date.now();
+      if (now < waveEnd) return;                     /* сначала ручеёк */
       /* телефон: карточка под полем видна всегда и листает системы, пока
          поле на экране; касание поля останавливает листание на 8 с */
       if (phone.matches) {
@@ -562,7 +576,7 @@
         nextAt = now + 3000;
       }
     }, 500);
-    offPage.push(function () { clearTimeout(tStrobe); clearInterval(tick); if (io) io.disconnect(); });
+    offPage.push(function () { clearTimeout(tStrobe); clearTimeout(tWave); clearInterval(tick); if (io) io.disconnect(); });
   }
 
   function viewHome() {
@@ -604,7 +618,7 @@
         '<span class="lt lt-land" style="left:80.6%;top:45.7%"></span>' +
         '<span class="lt lt-land" style="left:82.4%;top:45.7%"></span></div>' +
         '<ul class="field-keys">' + sys.map(function (s) {
-          return '<li><a href="#' + s.id + '" data-tone="' + s.id + '">' + esc(s.short || s.title) + '</a></li>';
+          return '<li><a href="#' + s.id + '" data-tone="' + s.id + '"><span><i>' + esc(s.ata) + '</i> ' + esc(s.short || s.title) + '</span></a></li>';
         }).join('') + '</ul>';
       hero.appendChild(field);
       /* после show(): роутер снимает обработчики прошлой страницы уже

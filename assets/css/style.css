@@ -86,6 +86,8 @@
 [data-tone="da40-cabin"],[data-sys="da40-cabin"]{ --c:#c0a27e; --cd:#d6b894; --on:#0f1b33; }
 /* системы — круг оттенков */
 [data-tone="da40-powerplant"],[data-sys="da40-powerplant"]{ --c:#e55033; --cd:#fe6749; --on:#0f1b33; }
+/* контур плана DA 40 в превью полосы: на красном тёмные тонкие линии сливаются — белый */
+[data-tone="da40-powerplant"]{ --pl:#fff; }
 [data-tone="da40-fuel"],[data-sys="da40-fuel"]{ --c:#f5af20; --cd:#ffc457; --on:#0f1b33; }
 [data-tone="da40-gear"],[data-sys="da40-gear"]{ --c:#77a32f; --cd:#8cb948; --on:#0f1b33; }
 [data-tone="da40-instruments"],[data-sys="da40-instruments"]{ --c:#05a291; --cd:#26b9a7; --on:#0f1b33; }
@@ -480,6 +482,77 @@ tbody th{ font-weight:500; }
   .pl-spot{ width:24px; height:24px; font-size:12px; }
 }
 /* чертёж AMM из 3D-модели: белый лист, выноски поверх холста */
+/* Живая схема: модель из Blender в тёмной студии, поток светится на ней.
+   Студия ночного синего — тот же тон, что в шапке сайта; в обеих темах одна. */
+.figure-frame.is-live3d{ padding:0; background:#fff; }
+.live3d{ position:relative; min-height:220px; overflow:hidden; color:#e8edf6;
+  background:radial-gradient(120% 90% at 50% 38%, #1b2a47 0%, #0f1a2f 55%, #080f1d 100%); }
+.live3d canvas{ display:block; width:100%; height:auto; touch-action:none; cursor:grab; }
+.live3d canvas.is-hand{ cursor:pointer; }
+.live3d canvas.is-grab{ cursor:grabbing; }
+.live3d .model3d-note{ color:#aeb8cb; }
+.l3-spots{ position:absolute; inset:0; pointer-events:none; }
+.l3-spots .pl-spot{ width:24px; height:24px; font-size:12px; border-color:#e8edf6; background:rgba(11,19,34,.82); color:#e8edf6;
+  box-shadow:0 0 0 3px rgba(11,19,34,.35); }
+.l3-spots .pl-spot.is-on{ background:#3d7bff; border-color:#3d7bff; color:#fff; box-shadow:0 0 0 3px rgba(61,123,255,.35), 0 0 0 9px rgba(61,123,255,.18); }
+.l3-hud{ position:absolute; left:10px; top:8px; display:flex; flex-wrap:wrap; gap:4px 14px; max-width:calc(100% - 20px);
+  padding:6px 10px; border-radius:10px; background:rgba(11,19,34,.62); -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
+  font-size:13px; line-height:1.35; font-variant-numeric:tabular-nums; pointer-events:none; text-shadow:0 1px 2px rgba(0,0,0,.6); }
+.l3-hud:empty{ display:none; }
+.l3-hud b{ font-weight:500; color:#fff; }
+.l3-hud span{ color:#c9d3e4; white-space:nowrap; }
+.l3-hud .l3-roll{ color:#fff; font-weight:500; }
+.l3-tools{ position:absolute; left:10px; right:10px; bottom:10px; display:flex; flex-wrap:wrap; align-items:center; gap:6px; pointer-events:none; }
+.l3-t{ pointer-events:auto; min-height:32px; padding:0 12px; border:1px solid rgba(232,237,246,.28); border-radius:16px; background:rgba(11,19,34,.55);
+  color:#c9d3e4; font:400 13px/1 var(--font); cursor:pointer; backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); }
+.l3-t:hover{ color:#fff; border-color:rgba(232,237,246,.5); }
+.l3-t.is-on{ background:#e8edf6; border-color:#e8edf6; color:#0b1322; }
+.l3-spd{ pointer-events:auto; display:flex; align-items:center; gap:8px; margin-left:auto; padding:0 12px; min-height:32px; border-radius:16px;
+  background:rgba(11,19,34,.55); font-size:13px; color:#c9d3e4; backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); }
+.l3-spd input{ width:110px; accent-color:#7fb4ff; }
+.l3-spd b{ min-width:4.2em; font-weight:500; color:#fff; font-variant-numeric:tabular-nums; }
+.l3-legend{ position:absolute; right:12px; bottom:52px; display:grid; grid-template-columns:auto auto; gap:3px 10px; width:150px;
+  font-size:11.5px; color:#aeb8cb; pointer-events:none; }
+.l3-legend i{ grid-column:1 / -1; height:7px; border-radius:4px;
+  background:linear-gradient(90deg, #5c2bd9 0%, #2a7bff 25%, #8cd9ff 41%, #edf2f7 50%, #ffd166 60%, #ff8538 78%, #db3033 100%); }
+.l3-legend span:last-child{ text-align:right; }
+.l3-legend.is-low{ bottom:14px; }
+.l3-marks{ display:flex; gap:6px; flex:1 1 100%; order:-1; }
+.l3-modes{ display:flex; flex-wrap:wrap; gap:6px; flex:1 1 100%; order:-2; }
+.l3-modes .fig-btn.is-on{ background:var(--acc); border-color:var(--acc); color:var(--on-acc); }
+.l3-marks[hidden], .l3-tools[hidden], .l3-legend[hidden], .l3-spd[hidden]{ display:none; }
+.l3-steps{ display:flex; gap:6px; flex:1 1 100%; order:-1; }
+.l3-steps .fig-btn[data-step]{ min-width:40px; font-size:18px; line-height:1; }
+.l3-steps .l3-sgo.is-on{ background:var(--acc); border-color:var(--acc); color:var(--on-acc); }
+/* цвета ролей в упрощённом виде */
+.l3-glegend{ position:absolute; left:10px; bottom:10px; display:flex; flex-wrap:wrap; gap:4px 12px; max-width:calc(100% - 20px);
+  padding:6px 10px; border-radius:10px; background:rgba(11,19,34,.62); font-size:12px; color:#c9d3e4; pointer-events:none; }
+.l3-glegend span{ display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+.l3-glegend i{ width:12px; height:12px; border-radius:3px; flex:0 0 auto; }
+.l3-marks .fig-btn.is-on{ background:var(--acc); border-color:var(--acc); color:var(--on-acc); }
+.l3-info{ min-height:3.2em; margin:0; padding:14px 18px 4px; font-size:15px; line-height:1.5; color:#141a26; }
+.l3-info b{ font-weight:500; }
+.is-live3d .fig-controls{ margin:0; padding:12px 18px 14px; }
+/* Телефон: на модели — только модель и номера деталей; сводка, шкала и
+   слои — полосами под ней, ничего не закрывает самолёт. */
+@media (max-width:720px){
+  .live3d{ display:flex; flex-direction:column; }
+  .l3-hud{ position:static; order:1; max-width:none; gap:2px 10px; padding:8px 12px; border-radius:0;
+    background:rgba(8,15,29,.92); -webkit-backdrop-filter:none; backdrop-filter:none; font-size:12px; }
+  .l3-hud span{ white-space:normal; }
+  .l3-legend, .l3-legend.is-low{ position:static; order:2; width:auto; margin:8px 12px 0; }
+  .l3-tools{ position:static; order:3; gap:5px; padding:8px 10px 10px; }
+  .l3-t{ min-height:30px; padding:0 9px; font-size:12px; backdrop-filter:none; -webkit-backdrop-filter:none; }
+  .l3-spd{ margin-left:0; flex:1 1 100%; backdrop-filter:none; -webkit-backdrop-filter:none; }
+  .l3-spd input{ flex:1; width:auto; }
+  .l3-spots .pl-spot{ width:22px; height:22px; font-size:11px; }
+  .l3-glegend{ position:static; order:2; max-width:none; border-radius:0; background:rgba(8,15,29,.92); padding:8px 12px; }
+  .l3-info{ padding:12px 12px 4px; }
+  .is-live3d .fig-controls{ padding:10px 12px 12px; }
+  .is-live3d .fig-cams{ flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+  .is-live3d .fig-cams::-webkit-scrollbar{ display:none; }
+  .is-live3d .fig-cam{ flex:0 0 auto; }
+}
 .amm3d{ position:relative; margin:-18px -18px 0; background:#fff; min-height:200px; }
 .amm3d canvas{ display:block; width:100%; height:auto; cursor:ew-resize; }
 .amm3d-over{ position:absolute; inset:0; width:100%; height:100%; pointer-events:none; overflow:visible; }
@@ -846,18 +919,29 @@ tbody th{ font-weight:500; }
 /* Наведение не меняет ширину полос: при перестройке ширины полоса уезжала
    из-под курсора, соседняя ловила наведение — и поле дёргалось. Теперь
    меняются только прозрачность вуали и сдвиг подписи, без пересчёта вёрстки. */
-.band::after{ content:''; position:absolute; inset:0; z-index:1; background:#fff; opacity:0; pointer-events:none; transition:opacity .35s var(--ease); }
+.band::after{ content:''; position:absolute; inset:0; z-index:1; background:#fff; opacity:0; pointer-events:none; transition:opacity .2s var(--ease); }
 .bands:hover .band::after{ opacity:.28; }
 .bands .band:hover::after,.bands .band:focus-visible::after{ opacity:0; }
-.band b,.band span{ transition:transform .35s var(--ease); }
+.band b,.band span{ transition:transform .2s var(--ease); }
 .band:hover b,.band:hover span,.band:focus-visible b,.band:focus-visible span{ transform:translateY(-8px); }
 .band b{ position:relative; z-index:2; font-size:clamp(17px,1.7vw,24px); font-weight:400; line-height:1; letter-spacing:-.03em; font-variant-numeric:tabular-nums; white-space:nowrap; }
-.band b::after{ content:' →'; opacity:0; transition:opacity .35s var(--ease); }
+.band b::after{ content:' →'; opacity:0; transition:opacity .2s var(--ease); }
 .band:hover b::after,.band:focus-visible b::after{ opacity:1; }
 .band span{ position:relative; z-index:2; font-size:14px; font-weight:400; line-height:1.25; hyphens:manual; overflow-wrap:normal; }
 @media (prefers-reduced-motion: reduce){ .band::after,.band b,.band span{ transition:none; } }
 .band:focus-visible{ outline:3px solid var(--on-acc); outline-offset:-6px; }
 @keyframes band-in{ from{ transform:scaleY(.5); } to{ transform:none; } }
+/* появление кончилось (app.js): без анимации полоса не своя прослойка, и
+   превью в ней ложится поверх самолёта */
+.bands.is-ready .band{ animation:none; }
+/* «Ручеёк»: быстрый первый проигрыш всех полос волной — вспышка вуали и
+   подскок подписи, без раскрытия. Сдвиг — свойством translate, а не
+   transform: на телефоне номер повёрнут через transform. */
+.bands.is-wave .band::after{ animation:band-wave-veil .5s var(--ease) both; animation-delay:calc(var(--i,0) * 60ms); }
+.bands.is-wave .band b,.bands.is-wave .band span{ animation:band-wave-lift .5s var(--ease) both; animation-delay:calc(var(--i,0) * 60ms); }
+@keyframes band-wave-veil{ 0%{ opacity:0; } 35%{ opacity:.4; } 100%{ opacity:0; } }
+@keyframes band-wave-lift{ 0%{ translate:0 0; } 35%{ translate:0 -10px; } 100%{ translate:0 0; } }
+@media (prefers-reduced-motion: reduce){ .bands.is-wave .band::after,.bands.is-wave .band b,.bands.is-wave .band span{ animation:none; } }
 .field-plane{ position:absolute; z-index:1; left:50%; top:3%; height:72%; width:auto; max-width:none; aspect-ratio:1600 / 617; container-type:inline-size; transform:translateX(-50%); pointer-events:none;
   animation:plane-in 1.1s var(--ease) .25s both; }
 .field-plane img{ display:block; width:100%; height:100%; }
@@ -890,11 +974,20 @@ tbody th{ font-weight:500; }
 /* Пассивный показ: пока посетитель ничего не делает, полосы по очереди
    раздвигаются и показывают превью системы — план с её трассой и строку
    о составе. Любое действие останавливает показ. */
-.band{ transition:flex-grow .38s var(--ease); }
+/* раскрытие быстрое (0,22 с), пересчёт вёрстки не выходит за полосу */
+.band{ transition:flex-grow .22s var(--ease); contain:layout style; }
 .bands.is-demo .band{ flex-grow:calc(var(--w,1) * .78); }
 .bands.is-demo .band.is-pv{ flex-grow:calc(var(--w,1) * 3.6); }
-.band-pv{ position:relative; z-index:2; display:none; flex-direction:column; gap:8px; margin-bottom:10px; opacity:0; transform:translateY(8px);
-  transition:opacity .25s .12s var(--ease), transform .25s .12s var(--ease); }
+.band-pv{ position:relative; z-index:2; display:none; flex-direction:column; gap:8px; margin-bottom:10px; min-width:0; opacity:0; transform:translateY(8px);
+  transition:opacity .16s .04s var(--ease), transform .16s .04s var(--ease); }
+/* план системы — в самой полосе и не шире её */
+.band-pv .pv-plan{ width:100%; max-width:300px; }
+.band-pv .plan{ width:100%; }
+.band-pv .plan svg{ display:block; width:100%; height:auto; max-height:min(150px, 34vh); }
+/* контур — одной толщины в пикселях при любом размере плана */
+.band-pv .plan .pl-outline path{ fill:none; stroke:var(--pl, var(--on-acc)); stroke-opacity:.95; stroke-width:1.6px; vector-effect:non-scaling-stroke; }
+.band-pv .plan .pl-sys path{ fill:var(--on-acc); fill-opacity:0; stroke:var(--on-acc); stroke-opacity:0; pointer-events:none; }
+.band-pv .plan .pl-sys path.is-cur{ fill-opacity:.95; stroke-opacity:.95; }
 .band.is-pv .band-pv{ display:flex; }
 .band.is-pv.is-in .band-pv{ opacity:1; transform:none; }
 .band-pv p{ margin:0; max-width:24em; font-size:14px; line-height:1.4; color:var(--on-acc); opacity:.86; }
@@ -902,8 +995,9 @@ tbody th{ font-weight:500; }
    отъезжает от него (translate и scale задаёт app.js) */
 /* точка масштаба — левый верх рамки: после translateX(-50%) это середина
    самолёта, и уменьшенный самолёт остаётся по центру своего места */
-.field-plane{ transform-origin:0 0; transition:translate .5s var(--ease), scale .5s var(--ease); }
-.field-pv{ position:absolute; z-index:3; left:0; top:14px; padding:10px 12px; pointer-events:none; color:var(--on-acc);
+.field-plane{ transform-origin:0 0; transition:translate .3s var(--ease), scale .3s var(--ease); will-change:translate, scale; }
+/* окошко под полем — только на телефоне; на компьютере превью в полосе */
+.field-pv{ display:none; position:absolute; z-index:3; left:0; top:14px; padding:10px 12px; pointer-events:none; color:var(--on-acc);
   /* цвет плашки — цвет полосы: план и текст в цвете подписи полосы читаются на любом тоне */
   background:color-mix(in oklab, var(--acc) 92%, transparent); box-shadow:0 12px 30px rgba(0,0,0,.14);
   -webkit-backdrop-filter:blur(10px) saturate(1.2); backdrop-filter:blur(10px) saturate(1.2);
@@ -931,21 +1025,34 @@ tbody th{ font-weight:500; }
   /* на телефоне полосы не меняют ширину (это пересчёт вёрстки на каждом
      кадре и прыгающий самолёт): текущая полоса остаётся яркой, остальные
      приглушены вуалью — анимируется только прозрачность */
-  .band{ padding:0; animation:none; transition:none; }
-  .bands.is-demo .band, .bands.is-demo .band.is-pv{ flex-grow:var(--w,1); }
+  /* На телефоне полоса тоже раскрывается: текущая растёт и показывает план
+     системы в себе, остальные сужаются и приглушены вуалью. Самолёт стоит
+     поверх полос во всю ширину и от ширины полос не зависит — не прыгает. */
+  .band{ padding:0 4px 10px; align-items:center; animation:none; transition:flex-grow .22s var(--ease); }
+  .bands.is-demo .band{ flex-grow:calc(var(--w,1) * .7); }
+  .bands.is-demo .band.is-pv{ flex-grow:calc(var(--w,1) * 4.2); align-items:stretch; padding:0 8px 10px; }
   .bands.is-demo .band::after{ opacity:.42; }
   .bands.is-demo .band.is-pv::after{ opacity:0; }
-  .band b,.band span,.band-pv{ display:none !important; }
+  /* номер по ATA — вдоль узкой полосы, у раскрытой — поперёк */
+  .band b{ font-size:12.5px; letter-spacing:0; writing-mode:vertical-rl; transform:rotate(180deg); }
+  .band.is-pv b{ font-size:15px; writing-mode:horizontal-tb; transform:none; }
+  .band b::after,.band span,.band-pv p,.band-pv .go{ display:none; }
+  .band-pv{ margin-bottom:6px; }
+  .band-pv .plan svg{ max-height:80px; }
   .field-plane{ top:14px; width:108%; height:auto; animation:none; translate:none; scale:none; }
   /* карточка системы под полем: план слева, название и состав справа;
      высота постоянная, чтобы страница под ней не прыгала */
-  .field-pv{ position:relative; top:auto; z-index:auto; display:grid; grid-template-columns:40% 1fr; gap:14px; align-items:center;
-    width:auto !important; min-height:150px; margin:14px var(--gut) 0; padding:14px; transform:none !important;
+  .field-pv{ position:relative; top:auto; z-index:auto; display:grid; grid-template-columns:1fr; gap:14px; align-items:center;
+    width:auto !important; min-height:132px; margin:14px var(--gut) 0; padding:14px; transform:none !important;
     opacity:1; pointer-events:auto; cursor:pointer; overflow:hidden; box-shadow:none; -webkit-backdrop-filter:none; backdrop-filter:none;
     background:var(--acc); -webkit-tap-highlight-color:transparent; }
   .field-pv.is-edge{ box-shadow:0 0 0 2px var(--on-acc); }
+  /* до первой системы карточка пустая — место держим, но не показываем */
+  .field-pv:not(.is-on){ visibility:hidden; }
   .pv-text{ display:flex; flex-direction:column; gap:6px; order:2; min-width:0; }
   .pv-text b{ font-size:17px; font-weight:500; line-height:1.2; letter-spacing:-.01em; }
+  .pv-text b i,.field-keys a i{ font-style:normal; font-variant-numeric:tabular-nums; opacity:.72; }
+  .pv-text b i{ margin-right:4px; }
   .pv-text p{ margin:0; font-size:13.5px; line-height:1.35; opacity:.86; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
   .pv-text .go{ font-size:14px; }
   .pv-text .go::after{ content:' →'; }
@@ -1043,3 +1150,27 @@ tbody th{ font-weight:500; }
 .k-sl{ display:flex; align-items:center; gap:8px; flex:1 1 220px; }
 .k-sl .fig-range{ min-width:110px; }
 .k-modes, .k-steps{ display:inline-flex; flex-wrap:wrap; gap:8px; }
+
+/* ── Garmin G1000 (g1000.js): рамка тренажёра, экран — снимок состояния,
+   поверх рамки — прозрачные кнопки на местах настоящих ── */
+.g1k{ display:grid; gap:18px; }
+.g1k-note{ padding:24px; color:var(--ink-2); font-size:15px; }
+.g1k-gdu{ display:grid; gap:6px; }
+.g1k-head{ display:flex; align-items:baseline; gap:10px; font-size:14px; color:var(--ink-2); }
+.g1k-head b{ color:var(--ink); font-weight:500; letter-spacing:.04em; }
+.g1k-page{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.g1k-reset{ font:inherit; font-size:13px; padding:4px 10px; border:1px solid var(--line, #8884); background:transparent; color:var(--ink); cursor:pointer; }
+.g1k-face{ position:relative; aspect-ratio:1268 / 903; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
+.g1k-face img{ position:absolute; display:block; pointer-events:none; }
+.g1k-bezel{ inset:0; width:100%; height:100%; }
+.g1k-scr{ background:#000; image-rendering:auto; }
+.g1k-key{ position:absolute; z-index:1; padding:0; border:0; border-radius:4px; background:transparent; cursor:pointer;
+  -webkit-tap-highlight-color:transparent; transition:background-color .12s; }
+.g1k-key:hover{ background:rgba(255,255,255,.12); }
+.g1k-key:focus-visible{ outline:2px solid var(--acc, #4af); outline-offset:1px; }
+.g1k-key.is-press{ animation:g1k-press .18s ease-out; }
+.g1k-key:disabled{ cursor:default; background:transparent; }
+.g1k-knob{ border-radius:50%; }
+@keyframes g1k-press{ from{ background:rgba(255,255,255,.38); } to{ background:transparent; } }
+.g1k-hint{ margin:0; font-size:13px; line-height:1.45; color:var(--ink-2); }
+@media (prefers-reduced-motion: reduce){ .g1k-key, .g1k-key.is-press{ transition:none; animation:none; } }

@@ -94,8 +94,63 @@
     return env;
   }
 
+  /* Студийное окружение для отражений вместо RoomEnvironment: у той белые
+     лампы-кубы и светлые стены — белая краска отражала их всем бортом и
+     самолёт выглядел пересвеченным. Здесь тёмный зал, сверху — большой
+     тёплый софтбокс (как свет под потолком ангара), сбоку — холодный
+     контровой, спереди низко — слабый заполняющий. Блики мягкие, борт
+     держит форму. */
+  function studioEnv(THREE, renderer) {
+    if (!THREE.PMREMGenerator) return null;
+    var es = new THREE.Scene();
+    var sph = new THREE.SphereGeometry(10, 32, 16), col = [], pos = sph.attributes.position;
+    for (var i = 0; i < pos.count; i++) {
+      var y = pos.getY(i) / 10, c = y > 0 ? 0.10 + 0.16 * y : 0.10 + 0.07 * y;
+      col.push(c, c * 1.02, c * 1.08);
+    }
+    sph.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    es.add(new THREE.Mesh(sph, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
+    function box(w, h, x, y, z, r, g, b) {
+      var m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+      m.material.color.setRGB(r, g, b);
+      m.position.set(x, y, z);
+      m.lookAt(0, 0, 0);
+      es.add(m);
+    }
+    box(9, 6, 1.5, 8.5, 2.5, 2.6, 2.45, 2.2);     /* потолочный софтбокс, тёплый */
+    box(3, 6, -8.5, 2.5, -3, 0.9, 1.05, 1.3);     /* контровой, холодный */
+    box(6, 1.5, 3, 1.2, 8.5, 0.5, 0.5, 0.52);     /* заполняющий спереди */
+    var pm = new THREE.PMREMGenerator(renderer);
+    var env = pm.fromScene(es, 0.02).texture;
+    pm.dispose();
+    es.traverse(function (o) { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+    return env;
+  }
+
+  /* Окружение, снятое в Blender: вечерний ангар (DA40 project/scripts/
+     env_hangar.py → models/env/hangar.hdr, панорама 512×256 из Cycles).
+     Тёплые потолочные лампы, бра у стены, холодные сумерки из ворот —
+     от них рассеянный свет и блики на краске и стекле, как на эталонном
+     рендере. Читаем в 8-битном RGBE: так PMREM работает и на телефонах
+     без плавающих текстур. gain — сдвиг экспоненты, ×2 на единицу. */
+  function hangarEnv(THREE, renderer, url, gain) {
+    return new Promise(function (res, rej) {
+      if (!THREE.RGBELoader || !THREE.PMREMGenerator) return rej(new Error('нет RGBELoader'));
+      new THREE.RGBELoader().setDataType(THREE.UnsignedByteType).load(url, function (t) {
+        var d = t.image && t.image.data;
+        if (gain && d) for (var i = 3; i < d.length; i += 4) if (d[i]) d[i] = Math.max(1, Math.min(255, d[i] + gain));
+        var pm = new THREE.PMREMGenerator(renderer);
+        var env = pm.fromEquirectangular(t).texture;
+        pm.dispose();
+        t.dispose();
+        res(env);
+      }, null, rej);
+    });
+  }
+
   /* r — габарит модели, gy — высота пола; meter — метр в единицах модели. */
-  function showroom(THREE, scene, renderer, r, gy, meter) {
+  /* noEnv — окружение уже есть (панорама ангара), студийную карту не считать */
+  function showroom(THREE, scene, renderer, r, gy, meter, noEnv) {
     meter = meter || 1;
     scene.background = backdrop(THREE);
     scene.fog = new THREE.Fog(pal().fog, r * 2.2, r * 7);
@@ -120,7 +175,7 @@
     catcher.name = 'scenery-shadow';
     scene.add(catcher);
     scene.userData.scenery = { floor: floor, catcher: catcher };
-    return roomEnv(THREE, renderer);
+    return noEnv ? null : (studioEnv(THREE, renderer) || roomEnv(THREE, renderer));
   }
 
   /* Перекраска при смене темы: фон, туман, пол и плотность тени. */
@@ -144,5 +199,5 @@
 
   function studio(THREE) { return backdrop(THREE); }
 
-  window.Scenery = { showroom: showroom, studio: studio, retheme: retheme, isDark: isDark };
+  window.Scenery = { showroom: showroom, studio: studio, retheme: retheme, isDark: isDark, hangar: hangarEnv };
 })();

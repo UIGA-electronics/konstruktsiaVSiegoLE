@@ -1,0 +1,62 @@
+{
+ "axis": "z",
+ "sides": [
+  1
+ ],
+ "alpha": "level",
+ "hud": "yaw",
+ "le": {
+  "p": [
+   4.09837,
+   0.613169
+  ],
+  "q": [
+   0.00755,
+   -0.006423
+  ]
+ },
+ "te": {
+  "p": [
+   5.52882,
+   0.11452
+  ],
+  "q": [
+   0.00516,
+   -0.005747
+  ]
+ },
+ "thick": 0.1303,
+ "naca": 13.0,
+ "foilName": "симметричный, толщина модели",
+ "controls": [
+  {
+   "key": "rud",
+   "name": "Руль направления",
+   "parent": null,
+   "nodes": {
+    "1": "BONE_8"
+   },
+   "surf": {
+    "1": "Rudder surface"
+   },
+   "xh": 0.6092,
+   "aft": 0.0,
+   "travel": 30.0,
+   "span": [
+    -0.0513,
+    1.1834
+   ]
+  }
+ ],
+ "skin": {
+  "fixed": [
+   "Fuselage skin"
+  ]
+ },
+ "stations": [
+  0.55,
+  1.03
+ ],
+ "source": "DA40NG.blend driver rig",
+ "note": "Blender axes: x span (+ left), y aft, z up. axis z: section plane (p=y, q=x). Lines linear in |span|."
+}

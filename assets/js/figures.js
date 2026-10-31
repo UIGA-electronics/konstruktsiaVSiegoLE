@@ -143,6 +143,18 @@ var Figures = (function () {
      перед тем, как показать следующий раздел. */
   var disposers = [];
   function onUnmount(frame, fn) { disposers.push({ frame: frame, fn: fn }); }
+  /* Один рисунок целиком: скрытый вариант живой 3D-схемы отдаёт WebGL и память
+     (на старом телефоне контекстов мало); при показе монтируется заново. */
+  function unmountFrame(frame) {
+    disposers = disposers.filter(function (d) {
+      if (d.frame !== frame && !frame.contains(d.frame)) return true;
+      try { d.fn(); } catch (e) { console.warn('уборка схемы:', e); }
+      return false;
+    });
+    frame.innerHTML = '';
+    frame.classList.remove('is-live3d', 'is-plate', 'is-kin', 'is-scrub');
+    delete frame.dataset.mounted;
+  }
   function unmountAll(root) {
     disposers = disposers.filter(function (d) {
       if (root && d.frame.isConnected && !root.contains(d.frame)) return true;
@@ -214,7 +226,9 @@ var Figures = (function () {
              файлы систем DA 40 NG в models/da40 (tools/split-da40.js). */
           loadScript(THREE_BASE + 'examples/js/libs/meshopt_decoder.js'),
           loadScript(THREE_BASE + 'examples/js/controls/OrbitControls.js'),
-          loadScript(THREE_BASE + 'examples/js/environments/RoomEnvironment.js')
+          loadScript(THREE_BASE + 'examples/js/environments/RoomEnvironment.js'),
+          /* панорама ангара из Blender (Scenery.hangar) */
+          loadScript(THREE_BASE + 'examples/js/loaders/RGBELoader.js')
         ]);
       });
     return threeReady;
@@ -232,7 +246,9 @@ var Figures = (function () {
      пиксели не плотнее 1,5 и тень 1024. На iPad раздел с салоном просил
      больше гигабайта, текстуры приходили чёрными, вкладка падала. */
   var LITE = TOUCH || !!(navigator.deviceMemory && navigator.deviceMemory <= 4);
-  var LITE_FILES = { 'models/da40/da40-airframe.glb': 1, 'models/da40/da40-cabin.glb': 1 };
+  /* Яркость панорамы ангара (Scenery.hangar): шаг экспоненты RGBE, ×2 на единицу. */
+  var HDR_GAIN = -1;
+  var LITE_FILES = { 'models/da40/da40-airframe.glb': 1, 'models/da40/da40-cabin.glb': 1, 'models/da40/da40-wheels.glb': 1 };
   function liteSrc(src) {
     return LITE && LITE_FILES[src] ? src.replace(/\.glb$/, '-lite.glb') : src;
   }
@@ -778,7 +794,16 @@ var Figures = (function () {
       /* Окружение для отражений. Без него металлу и стеклу отражать нечего:
          полированный шток выглядит серой краской, а фонарь — мутной плёнкой.
          Карта считается один раз и затем отдаётся сцене. */
-      if (THREE.RoomEnvironment && THREE.PMREMGenerator) {
+      /* Зал: окружение — панорама ангара, её начинаем грузить сразу, вместе
+         с моделями (240 КБ против мегабайт планера — приходит раньше). Тогда
+         шейдеры компилируются один раз: каждая смена карты окружения
+         (комната → студия → ангар) перекомпилировала все материалы, и на
+         телефоне страница замирала на секунды. */
+      var apron0 = opts.scene === 'showroom' || opts.scene === 'apron', hangarEnv = null, hangarP = null;
+      if (apron0) hangarP = Scenery.hangar(THREE, renderer, withV('models/env/hangar.hdr'), HDR_GAIN)
+        .then(function (h) { if (dead) { h.dispose(); return null; } hangarEnv = h; return h; })
+        .catch(function (e) { console.warn('ангар:', e); return null; });
+      if (!apron0 && THREE.RoomEnvironment && THREE.PMREMGenerator) {
         var pmrem = new THREE.PMREMGenerator(renderer);
         pmrem.compileEquirectangularShader();
         scene.environment = pmrem.fromScene(new THREE.RoomEnvironment(), 0.04).texture;
@@ -790,14 +815,22 @@ var Figures = (function () {
          читается формой, а не пересвеченным пятном. Ключевой свет сверху
          спереди, холодный контровой сзади обводит силуэт. */
       var apron = opts.scene === 'showroom' || opts.scene === 'apron';
-      var hemi = new THREE.HemisphereLight(0xdde5ee, 0x1c1f24, apron ? 0.32 : 0.4);
+      /* Зал: свет как под потолком ангара — тёплый ключевой сверху-спереди,
+         слабый небесный и холодный контровой. Белая краска в нём читается
+         белой, но не выбивается в лист (раньше экспозиция и яркое окружение
+         пересвечивали борт). */
+      /* Ангар нейтральный (панорама из Blender, env_hangar.py: лампы ~5000 K,
+         сзади холодные сумерки из ворот). Тёплый свет — только штатный свет
+         самолёта в кабине (cockpit.js). */
+      var hemi = new THREE.HemisphereLight(0xdfe6f0, 0x1c1f24, apron ? 0.16 : 0.4);
       scene.add(hemi);
-      var key = new THREE.DirectionalLight(0xfff6ea, apron ? 1.25 : 1.1);
-      renderer.toneMappingExposure = apron ? 0.9 : 0.95;
+      /* Вечер: ангар приглушён, чтобы был виден штатный свет кабины. */
+      var key = new THREE.DirectionalLight(apron ? 0xfff6ec : 0xfff0dc, apron ? 0.8 : 1.1);
+      renderer.toneMappingExposure = apron ? 0.82 : 0.95;
       key.position.set(3, 5, 4);
       scene.add(key);
       scene.add(key.target);
-      var fill = new THREE.DirectionalLight(0x9fb8d6, apron ? 0.55 : 0.4);
+      var fill = new THREE.DirectionalLight(apron ? 0x93ade0 : 0x9fb8d6, apron ? 0.36 : 0.4);
       fill.position.set(-4, 2.5, -5);
       scene.add(fill);
       if (!apron) scene.background = Scenery.studio(THREE);
@@ -847,7 +880,40 @@ var Figures = (function () {
         themeObs.disconnect();
         if (mqDark && mqDark.removeEventListener) mqDark.removeEventListener('change', onScheme);
       });
+      /* Мелочь вдали не рисуем. В салоне сотни кнопок, винтов и ручек —
+         на общем виде меньше пикселя, а каждая деталь — отдельный вызов
+         отрисовки (на телефоне их было 1100 за кадр). Деталь меньше 8 см
+         (на телефоне — 15 см) прячем, пока на экране она мельче полутора
+         пикселей (на телефоне — двух); подлетели — появляется. Прячем через слои (layers), а не visible: видимость
+         деталей ведут слои, обшивка и подсветка систем. */
+      var tiny = [], lodAt = new THREE.Vector3(1e9, 0, 0), lodC = new THREE.Vector3(), lodS = new THREE.Vector3();
+      function collectTiny(node) {
+        node.updateMatrixWorld(true);
+        node.traverse(function (o) {
+          if (!o.isMesh || !o.geometry || o.name === 'glow') return;
+          var g = o.geometry;
+          if (!g.boundingSphere) g.computeBoundingSphere();
+          o.getWorldScale(lodS);
+          var rr = g.boundingSphere.radius * Math.max(lodS.x, lodS.y, lodS.z);
+          if (rr < (LITE ? 0.15 : 0.08)) { o.__lodR = rr; tiny.push(o); }
+        });
+        lodAt.set(1e9, 0, 0);
+      }
+      function lod() {
+        if (!tiny.length || camera.position.distanceToSquared(lodAt) < 1e-6) return;
+        lodAt.copy(camera.position);
+        var k = renderer.domElement.height / (2 * Math.tan(camera.fov * Math.PI / 360));
+        for (var i = 0; i < tiny.length; i++) {
+          var o = tiny[i];
+          lodC.copy(o.geometry.boundingSphere.center).applyMatrix4(o.matrixWorld);
+          var on = o.__lodR / Math.max(1e-3, lodC.distanceTo(lodAt)) * k > (LITE ? 2 : 1.5);
+          if (on === !!o.__far) { o.__far = !on; if (on) o.layers.enable(0); else o.layers.disable(0); }
+        }
+      }
+      /* экраны G1000 в кабине сменились (g1000.js → cockpit.js) — перерисовать */
+      listen(window, 'g1000:redraw', function () { render(); });
       function render() {
+        lod();
         /* Под пол камеру не пускаем: снизу пол прозрачен, и вид
            получается не с земли, а из-под земли. */
         if (floorY !== null && ctrl && camera.position.y < floorY) {
@@ -1023,6 +1089,12 @@ var Figures = (function () {
       var GENERIC = /^(cube|plane|cylinder|circle|sphere|torus|beziercurve|nurbspath|mesh|object|empty)\b[\s\d_]*/i;
 
       var files = [];
+      /* Лампы кабины заводим сразу, погашенными: салон приходит позже планера,
+         и новые источники света заставили бы перекомпилировать шейдеры всех
+         уже показанных материалов. Число ламп в сцене с начала то же —
+         при загрузке салона cockpit.js только ставит и зажигает их. Лампы —
+         в общей группе модели: её сдвигают при кадрировании вместе с салоном. */
+      var cabinPool = window.Cockpit && JSON.stringify(opts).indexOf('da40-cabin') >= 0 ? Cockpit.pool(THREE, root, LITE) : null;
       /* Основа — строка (файл) или { src, title }: колёса стоят в основе
          у каждой страницы с залом, и подписываться «Планером» им незачем. */
       baseSrc.forEach(function (s) {
@@ -1041,8 +1113,12 @@ var Figures = (function () {
           opacity: d.opacity != null ? d.opacity : null });
       });
       layerDefs.forEach(function (d) {
-        files.push({ src: d.src, role: 'extra', layer: true, on: !!d.on, title: d.title, hint: d.hint,
-          plain: true });
+        var on = !!d.on && !(LITE && d.lite === false), members = [];
+        [].concat(d.src).forEach(function (src, k) {
+          var f = { src: src, role: 'extra', layer: !k, on: on, title: d.title, hint: d.hint, plain: true };
+          members.push(f); files.push(f);
+        });
+        members[0].members = members;
       });
 
       var shells = [], parts = [];
@@ -1079,7 +1155,8 @@ var Figures = (function () {
 
       function adopt(f, sceneNode) {
         sceneNode.traverse(function (o) {
-          if (!o.isMesh) return;
+          /* ореолы кабины (cockpit.js) — не детали: не выбираются и не отбрасывают тень */
+          if (!o.isMesh || o.name === 'glow') return;
           /* Из слоя, взятого частично (match), лишние детали не входят ни в систему,
              ни в обшивку: воздуховоды с материалом «Fuselage» иначе считались бы
              обшивкой и просвечивали вместе с ней. */
@@ -1099,6 +1176,7 @@ var Figures = (function () {
           o.__col = o.material && o.material.color ? o.material.color.getHex() : null;
           o.__ei = o.material && o.material.emissiveIntensity != null
             ? o.material.emissiveIntensity : 1;
+          if (apron && o.material && /^(Fuselage2?|Wings)$/.test(o.material.__baseName || '')) o.material.envMapIntensity = 0.6;
           o.__env = o.material && o.material.envMapIntensity != null
             ? o.material.envMapIntensity : 1;
           o.__shell = isShellMesh(o);
@@ -1132,7 +1210,11 @@ var Figures = (function () {
             f.scene = gltf.scene;
             f.scene.visible = f.on;
             root.add(f.scene);
+            if (/da40-cabin/.test(f.src) && window.Cockpit) {
+              try { Cockpit.live(THREE, f.scene, { lite: LITE, withV: withV, pool: cabinPool }); } catch (e) { console.warn('кабина:', e); }
+            }
             adopt(f, f.scene);
+            collectTiny(f.scene);
             f.clips = {};
             (gltf.animations || []).forEach(function (c) { f.clips[c.name] = c; });
             if (gltf.animations && gltf.animations.length) {
@@ -1307,12 +1389,21 @@ var Figures = (function () {
              поэтому высоту земли задаёт opts.groundY в координатах модели;
              без неё — низ основы. */
           var gy = (opts.groundY != null ? opts.groundY : bb.min.y) - mid.y;
-          var env = Scenery.showroom(THREE, scene, renderer, r, gy, 1);
+          /* панорама уже пришла — студийную карту не считаем вовсе */
+          var env = Scenery.showroom(THREE, scene, renderer, r, gy, 1, !!hangarEnv);
           floorY = gy + r * 0.02;
+          if (hangarEnv) env = hangarEnv;
           if (env) {
-            if (scene.environment) scene.environment.dispose();
+            if (scene.environment && scene.environment !== env) scene.environment.dispose();
             scene.environment = env;
           }
+          /* редкий случай: модель пришла раньше панорамы — подменим, когда придёт */
+          if (!hangarEnv && hangarP) hangarP.then(function (h) {
+            if (!h || dead) return;
+            if (scene.environment) scene.environment.dispose();
+            scene.environment = h;
+            render();
+          });
           var sc = key.shadow.camera, sr = r * 0.62;
           key.position.set(3, 5, 4).setLength(r * 3);
           sc.left = -sr; sc.right = sr; sc.top = sr; sc.bottom = -sr;
@@ -1572,6 +1663,8 @@ var Figures = (function () {
             ['Общий вид', null],
             ['Двигатель', [0, 0.02, 0.45], [0.65, 0.35, 0.6], 0.3],
             ['Кабина', [0, 0.08, 0.16], [0.55, 0.75, -0.35], 0.34],
+            /* между креслами, на высоте глаз, на приборную доску: экраны G1000 и подсветка */
+            ['Приборы', [0, 0.107, 0.288], [0, 0.3, -0.95], 0.07],
             ['Носовая стойка', [0, -0.22, 0.3], [0.8, 0.12, 0.6], 0.3],
             ['Основная стойка', [0.14, -0.22, 0.02], [0.85, 0.12, 0.4], 0.3],
             ['Крыло', [0.24, 0.02, 0.02], [0.35, 0.75, 0.45], 0.5],
@@ -1927,6 +2020,26 @@ var Figures = (function () {
       /* Слой по кнопке. Первое включение грузит файл; пока он идёт, кнопка
          это показывает — на телефоне пара мегабайт занимает секунды. */
       function toggleLayer(f, btn) {
+        /* слой из нескольких файлов: все переключаются вместе */
+        if (f.members && f.members.length > 1) {
+          var to = !f.on;
+          f.members.forEach(function (m) { if (m.on !== to) { m.on = to; if (m.scene) m.scene.visible = to; } });
+          btn.classList.toggle('is-on', to);
+          btn.setAttribute('aria-pressed', to ? 'true' : 'false');
+          var need = f.members.filter(function (m) { return to && !m.scene; });
+          if (!need.length) { applyShell(); applyParts(); render(); return; }
+          btn.classList.add('is-busy');
+          info.textContent = 'Загрузка: ' + f.title + '…';
+          Promise.all(need.map(loadFile)).then(function () {
+            btn.classList.remove('is-busy');
+            need.forEach(function (m) { m.scene.visible = m.on; });
+            applyShell(); applyParts();
+            if (current) play(current);
+            info.textContent = f.hint || f.title;
+            render();
+          }).catch(function (err) { btn.classList.remove('is-busy'); console.error(err); });
+          return;
+        }
         f.on = !f.on;
         btn.classList.toggle('is-on', f.on);
         btn.setAttribute('aria-pressed', f.on ? 'true' : 'false');
@@ -2542,5 +2655,10 @@ var Figures = (function () {
     }
   }
 
-  return { mountAll: mountAll, unmountAll: unmountAll, register: function (k, f) { reg[k] = f; } };
+  return {
+    mountAll: mountAll, unmountAll: unmountAll, unmountFrame: unmountFrame, register: function (k, f) { reg[k] = f; },
+    /* общие помощники для схем из отдельных файлов (live3d.js) */
+    util: { ensureThree: ensureThree, controls: controls, driver: driver, loop: loop, onUnmount: onUnmount,
+      withV: withV, clamp: clamp, TOUCH: TOUCH, LITE: LITE, AUTO: AUTO }
+  };
 })();

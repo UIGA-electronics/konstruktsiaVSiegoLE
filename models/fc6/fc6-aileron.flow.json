@@ -1,0 +1,67 @@
+{
+ "axis": "x",
+ "sides": [
+  1,
+  -1
+ ],
+ "alpha": "lift",
+ "hud": "roll",
+ "le": {
+  "p": [
+   -0.31282,
+   0.023011
+  ],
+  "q": [
+   0.75134,
+   0.077309
+  ]
+ },
+ "te": {
+  "p": [
+   1.08232,
+   -0.061383
+  ],
+  "q": [
+   0.66879,
+   0.083126
+  ]
+ },
+ "thick": 0.1403,
+ "foil": "models/fc6/fx63137.json",
+ "foilName": "Wortmann FX 63-137",
+ "controls": [
+  {
+   "key": "ail",
+   "name": "Элерон",
+   "parent": null,
+   "nodes": {
+    "1": "Bone2_l",
+    "-1": "Bone2_r"
+   },
+   "surf": {
+    "1": "Aileron L surface",
+    "-1": "Aileron R surface"
+   },
+   "xh": 0.7893,
+   "aft": 0.0,
+   "travel": 16.6,
+   "span": [
+    3.9389,
+    5.5798
+   ]
+  }
+ ],
+ "skin": {
+  "fixed": [
+   "Wing L skin",
+   "Wing R skin"
+  ]
+ },
+ "stations": [
+  3.1,
+  4.15,
+  5.3
+ ],
+ "source": "practicum (tools/da40/controls.py, AMM 27)",
+ "note": "Blender axes: x span (+ left), y aft, z up. axis z: section plane (p=y, q=x). Lines linear in |span|."
+}

@@ -4,25 +4,33 @@
    ~390 → ~100 МБ, у салона ~720 → ~190 МБ. Без этого на iPad раздел с салоном
    просит больше гигабайта, текстуры приходят чёрными, а вкладка падает.
 
-     node tools/lite-textures.js models/da40/da40-cabin.glb [...]
+     node tools/lite-textures.js [--simplify=0.5] models/da40/da40-cabin.glb [...]
      → models/da40/da40-cabin-lite.glb
+
+   --simplify=R — ещё и сетки проще (meshoptimizer): цель — доля R
+   треугольников, но не дальше погрешности --error (по умолчанию 0,3 %
+   габарита детали: у колеса ~1,5 мм), так что форма не плывёт. У колёс протектор — 3,4 МБ одной геометрии; на телефоне
+   этих мелочей не видно, а качать и рисовать их приходится.
 
    Сайт берёт -lite.glb сам на устройствах без мыши (figures.js, liteSrc). */
 const path = require('path');
 const fs = require('fs');
 const { NodeIO } = require('@gltf-transform/core');
 const { ALL_EXTENSIONS } = require('@gltf-transform/extensions');
-const { meshopt } = require('@gltf-transform/functions');
-const { MeshoptDecoder, MeshoptEncoder } = require('meshoptimizer');
+const { meshopt, dequantize, weld, simplify, normals } = require('@gltf-transform/functions');
+const { MeshoptDecoder, MeshoptEncoder, MeshoptSimplifier } = require('meshoptimizer');
 const sharp = require('sharp');
 
 (async () => {
   await MeshoptDecoder.ready;
   await MeshoptEncoder.ready;
+  await MeshoptSimplifier.ready;
+  const args = process.argv.slice(2), opt = (args.find(a => a.startsWith('--simplify=')) || '').split('=')[1];
+  const ratio = opt ? +opt : 0, err = +((args.find(a => a.startsWith('--error=')) || '=0.003').split('=')[1]);
   const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({
     'meshopt.decoder': MeshoptDecoder, 'meshopt.encoder': MeshoptEncoder
   });
-  for (const src of process.argv.slice(2)) {
+  for (const src of args.filter(a => !a.startsWith('--'))) {
     const doc = await io.read(src);
     let before = 0, after = 0;
     for (const t of doc.getRoot().listTextures()) {
@@ -35,6 +43,27 @@ const sharp = require('sharp');
       t.setImage(new Uint8Array(out)).setMimeType('image/webp');
       if (t.getURI()) t.setURI(t.getURI().replace(/\.\w+$/, '.webp'));
       after += w * h;
+    }
+    if (ratio) {
+      let t0 = 0, t1 = 0;
+      const tris = () => doc.getRoot().listMeshes().reduce((n, m) => n + m.listPrimitives().reduce((k, p) => k + (p.getIndices() ? p.getIndices().getCount() : p.getAttribute('POSITION').getCount()) / 3, 0), 0);
+      await doc.transform(dequantize());
+      t0 = tris();
+      /* у деталей без текстур развёртка не нужна, а её швы и жёсткие нормали
+         не дают склеить вершины — упрощать было бы нечего; нормали потом
+         считаем заново */
+      const bare = [];
+      for (const m of doc.getRoot().listMeshes()) for (const pr of m.listPrimitives()) {
+        const mat = pr.getMaterial();
+        const tex = mat && (mat.getBaseColorTexture() || mat.getNormalTexture() || mat.getMetallicRoughnessTexture() || mat.getEmissiveTexture() || mat.getOcclusionTexture());
+        if (tex) continue;
+        for (const sem of pr.listSemantics()) if (/^(TEXCOORD_|NORMAL|TANGENT)/.test(sem)) pr.setAttribute(sem, null);
+        bare.push(pr);
+      }
+      await doc.transform(weld(), simplify({ simplifier: MeshoptSimplifier, ratio, error: err, lockBorder: false }));
+      if (bare.length) await doc.transform(normals({ overwrite: false }));
+      t1 = tris();
+      console.log(path.basename(src), 'треугольники', Math.round(t0), '→', Math.round(t1));
     }
     await doc.transform(meshopt({ encoder: MeshoptEncoder, level: 'medium' }));
     const dst = src.replace(/\.glb$/, '-lite.glb');

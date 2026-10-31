@@ -1,0 +1,65 @@
+{
+ "axis": "x",
+ "sides": [
+  1,
+  -1
+ ],
+ "alpha": "level",
+ "hud": "pitch",
+ "le": {
+  "p": [
+   4.65311,
+   0.241648
+  ],
+  "q": [
+   2.21924,
+   -0.01138
+  ]
+ },
+ "te": {
+  "p": [
+   5.57834,
+   -0.030479
+  ],
+  "q": [
+   2.24438,
+   -0.008291
+  ]
+ },
+ "thick": 0.1391,
+ "naca": 13.9,
+ "foilName": "симметричный, толщина модели",
+ "controls": [
+  {
+   "key": "elev",
+   "name": "Руль высоты",
+   "parent": null,
+   "nodes": {
+    "1": "BONE_11",
+    "-1": "BONE_11"
+   },
+   "surf": {
+    "1": "Elevator surface",
+    "-1": "Elevator surface"
+   },
+   "xh": 0.6889,
+   "aft": 0.0085,
+   "travel": 14.4,
+   "span": [
+    0.0,
+    1.4789
+   ]
+  }
+ ],
+ "skin": {
+  "fixed": [
+   "Stabiliser skin"
+  ]
+ },
+ "stations": [
+  0.35,
+  1.25
+ ],
+ "source": "practicum (tools/da40/controls.py, AMM 27)",
+ "note": "Blender axes: x span (+ left), y aft, z up. axis z: section plane (p=y, q=x). Lines linear in |span|."
+}

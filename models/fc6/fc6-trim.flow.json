@@ -1,0 +1,86 @@
+{
+ "axis": "x",
+ "sides": [
+  1,
+  -1
+ ],
+ "alpha": "level",
+ "hud": "trim",
+ "le": {
+  "p": [
+   4.66789,
+   0.241587
+  ],
+  "q": [
+   1.24933,
+   -0.013116
+  ]
+ },
+ "te": {
+  "p": [
+   5.59361,
+   -0.030759
+  ],
+  "q": [
+   1.26382,
+   -0.007601
+  ]
+ },
+ "thick": 0.1394,
+ "naca": 13.9,
+ "foilName": "симметричный, толщина модели",
+ "controls": [
+  {
+   "key": "elev",
+   "name": "Руль высоты",
+   "parent": null,
+   "nodes": {
+    "1": "BONE_11",
+    "-1": "BONE_11"
+   },
+   "surf": {
+    "1": "Elevator surface",
+    "-1": "Elevator surface"
+   },
+   "xh": 0.6888,
+   "aft": 0.0086,
+   "travel": 0.0,
+   "span": [
+    0.0,
+    1.4789
+   ]
+  },
+  {
+   "key": "tab",
+   "name": "Триммер",
+   "parent": "elev",
+   "nodes": {
+    "1": "BONE_9",
+    "-1": "BONE_9"
+   },
+   "surf": {
+    "1": "Trim tab surface",
+    "-1": "Trim tab surface"
+   },
+   "xh": 0.9971,
+   "aft": 0.0862,
+   "travel": 28.0,
+   "span": [
+    0.0,
+    0.512
+   ]
+  }
+ ],
+ "skin": {
+  "fixed": [
+   "Stabiliser skin"
+  ]
+ },
+ "stations": [
+  0.12,
+  0.42,
+  1.15
+ ],
+ "source": "DA40NG.blend driver rig",
+ "note": "Blender axes: x span (+ left), y aft, z up. axis z: section plane (p=y, q=x). Lines linear in |span|."
+}
