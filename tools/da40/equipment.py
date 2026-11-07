@@ -118,6 +118,54 @@ def roll_bar_inner(z_target, side):
     return best
 
 
+# ── Энергопоглощающие элементы передних кресел (AMM 25-10 рис. 1) ─────────
+# В модели MSFS чашка кресла — одинарная поверхность (подушка Cube.058 / Cube.065, боковины Cube.096 /
+# Cube.041), пол салона Plane.378 сплошной до заднего лонжерона. Блок стоит на этом полу, верх повторяет
+# наклон чашки; задняя грань — у передней стенки переднего главного шпангоута (structure.py: FRONT_MB 0,012).
+
+SEAT_SURF = ('Cube.058', 'Cube.065', 'Cube.096', 'Cube.041')
+CRASH_Y1 = 0.012 - 0.003          # задняя грань блока: 3 мм до стенки шпангоута
+CRASH_DX = (0.042, 0.024)         # центр блока снаружи от узла ремня: внутренний, внешний
+CRASH_W = (0.044, 0.036)          # ширина поперёк
+CRASH_DEPTH = (0.065, 0.042)      # вдоль полёта; перед внешним блоком из разъёма P2400 / P2401 к крылу уходят жгут
+                                  # огней и провода обогрева ПВД (z −0,09), перед внутренним правым — сервопривод триммера
+_seat_bvh, _floor_bvh = None, None
+
+
+def crash_block(p, x, w, depth):
+    global _seat_bvh, _floor_bvh
+    if _seat_bvh is None:
+        _seat_bvh = ref._bvh([bpy.data.objects[n] for n in SEAT_SURF])
+        _floor_bvh = ref._bvh([bpy.data.objects['Plane.378']])
+    y0, y1 = CRASH_Y1 - depth, CRASH_Y1
+    corners = [(x - w / 2, y0), (x + w / 2, y0), (x + w / 2, y1), (x - w / 2, y1)]
+    bot, top = [], []
+    for cx, cy in corners:
+        f = _floor_bvh.ray_cast(V((cx, cy, 0.0)), V((0, 0, -1)), 0.4)[0]
+        u = _seat_bvh.ray_cast(V((cx, cy, f.z + 0.01)), V((0, 0, 1)), 0.4)[0]
+        bot.append(f.z)
+        top.append(u.z - 0.002 if u else None)
+    known = [z for z in top if z is not None]
+    top = [z if z is not None else min(known) for z in top]
+    import bmesh
+    tmp = bmesh.new()
+    vb = [tmp.verts.new(V((cx, cy, z))) for (cx, cy), z in zip(corners, bot)]
+    vt = [tmp.verts.new(V((cx, cy, z))) for (cx, cy), z in zip(corners, top)]
+    tmp.faces.new(list(reversed(vb)))
+    tmp.faces.new(vt)
+    for i in range(4):
+        j = (i + 1) % 4
+        tmp.faces.new([vb[i], vb[j], vt[j], vt[i]])
+    bmesh.ops.recalc_face_normals(tmp, faces=tmp.faces)
+    bmesh.ops.bevel(tmp, geom=list(tmp.verts) + list(tmp.edges), offset=0.003, segments=2, affect='EDGES', profile=0.5)
+    lib._merge(p, tmp, lambda co: co, 0, smooth=True)
+    # слои углепластика — тёмные полосы по бокам
+    zlo, zhi = max(bot) + 0.02, min(top) - 0.02
+    for k in range(5):
+        z = zlo + (zhi - zlo) * k / 4
+        box(p, V((x, (y0 + y1) / 2, z)), (w + 0.0016, depth + 0.0016, 0.0015), Matrix.Identity(3), p.m(M['web']))
+
+
 # ── Передние кресла ──────────────────────────────────────────────────────
 
 def front_seat(s):
@@ -175,14 +223,17 @@ def front_seat(s):
     down.append(tg + V((s * 0.01, 0.0, 0.018)))
     strap(p, down, lambda i: (0, -0.9, 0.4), 0.04)
     p.done()
-    # энергопоглощающие элементы под задней частью кресла — снаружи от узлов ремня
-    p = P(f'Front seat crash elements {tag}', f'Деформационные (энергопоглощающие) элементы под задней частью кресла {who}: слоистый углепластик с жёстким пенопластом, при аварийной посадке сминаются',
-          'crash', 'AMM 25-10 2.C; РЛЭ 7.6')
-    for x in (xi + s * 0.04, xo + s * 0.025):
-        box(p, V((x, -0.045, -0.155)), (0.045, 0.06, 0.04), Matrix.Identity(3), 0, bevel=0.004)
-        for k in range(3):
-            box(p, V((x, -0.045, -0.170 + k * 0.012)), (0.047, 0.062, 0.002), Matrix.Identity(3), p.m(M['web']))   # слои
-    p.done()
+    # энергопоглощающие элементы (AMM 25-10 2.C, рис. 1): задняя часть чашки опирается на два высоких блока —
+    # внутренний и внешний, сразу снаружи от узлов поясного ремня; стоят перед передней стенкой переднего
+    # главного шпангоута, от пола до чашки кресла
+    for k, (kind, ru_kind, xa) in enumerate((('inner', 'Внутренний', xi), ('outer', 'Внешний', xo))):
+        p = P(f'Front seat {kind} crash element {tag}',
+              f'{ru_kind} деформационный (энергопоглощающий) элемент кресла {who}: высокий блок из слоистого углепластика '
+              f'с жёстким пенопластом перед передним главным шпангоутом, сразу снаружи от узла поясного ремня; на два таких '
+              f'элемента опирается задняя часть чашки кресла, при аварийной посадке они сминаются и поглощают энергию удара',
+              'crash', 'AMM 25-10 2.C, рис. 1; РЛЭ 7.6')
+        crash_block(p, xa + s * CRASH_DX[k], CRASH_W[k], CRASH_DEPTH[k])
+        p.done()
 
 
 # ── Заднее сиденье ───────────────────────────────────────────────────────
