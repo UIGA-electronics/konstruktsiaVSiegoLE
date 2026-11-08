@@ -1623,6 +1623,8 @@ objs, frames = build()
 bpy.context.scene.frame_set(FRAMES[0])
 push_clip(list(COL.all_objects), FLAP_CLIP)          # закрылки убраны — нейтраль
 pedal_adjusters()
+import rudder_cables  # noqa: E402  тросы кабины РН: кронштейны и пружины у перегородки, S-трубки салона (AMM 27-20 рис. 2, 3)
+rudder_cables.build(COL)
 elevator_rod_guides()
 build_sticks_and_chains()
 trim_tail()
