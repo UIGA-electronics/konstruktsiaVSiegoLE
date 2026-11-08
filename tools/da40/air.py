@@ -70,6 +70,7 @@ PAX_OUTLET_Y = 0.30                         # решётки обогрева н
 # жгут двигателя и кабели EECU за перегородкой прокладываются после вентиляции (electrical.py) — тоже уступают
 GLARE, SYS, RT = cabin.setup(R, 'air', skip={'brakes': lambda o: o.name.startswith(('Brake hose', 'Reservoir ')),
                                              'electrical': lambda o: o.name.startswith(('Engine harness', 'ECU backup', 'Alternator cable'))})
+RT.solids = list(RT.solids) + cabin.console_obstacles()     # секция управления двигателем в центральном пульте
 ROUTES = []
 
 

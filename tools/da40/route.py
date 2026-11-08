@@ -115,10 +115,11 @@ class Router:
         n = max(1, int((b - a).length / ds))
         return all(self.ok(a.lerp(b, i / n), r, margin, hidden, relax) for i in range(n + 1))
 
-    def route(self, a, b, r, lo, hi, margin=0.003, hidden=True, relax=(), prefer=0.012, max_nodes=400000):
-        """Опорные точки трассы от a до b (включая концы) или None."""
+    def route(self, a, b, r, lo, hi, margin=0.003, hidden=True, relax=(), prefer=0.012, max_nodes=400000, end_relax=0.02):
+        """Опорные точки трассы от a до b (включая концы) или None. end_relax — у самих концов (r + end_relax)
+        проверка зазора не ведётся (концы обычно у штуцера или разъёма); 0 — концы уже на свободном месте."""
         a, b = V(a), V(b)
-        relax = [(V(c), rad) for c, rad in relax] + [(a, r + 0.02), (b, r + 0.02)]
+        relax = [(V(c), rad) for c, rad in relax] + ([(a, r + end_relax), (b, r + end_relax)] if end_relax > 0 else [])
         s = self.step
         lo, hi = V(lo), V(hi)
 

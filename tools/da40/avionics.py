@@ -45,6 +45,7 @@ from mathutils.bvhtree import BVHTree  # noqa: E402
 import lib  # noqa: E402
 import ref  # noqa: E402
 import cabin  # noqa: E402
+import engine_controls  # noqa: E402
 import stub  # noqa: E402
 from lib import Part, basis, box, cyl, fillet, sweep, ring_tube  # noqa: E402
 
@@ -945,6 +946,12 @@ def build():
     TAIL = ((-0.30, 1.95, -0.14), (0.30, 5.50, 1.40))
     PANEL = ((-0.40, -1.00, 0.28), (0.43, -0.71, 0.62))
 
+    # секция управления двигателем в центральном пульте (AMM 31-10 рис. 2) и рычаг POWER (76-00 рис. 2) — до всех трасс:
+    # жгуты и кабели обходят её габарит и ход рычага (в RESERVED — не экспортируются)
+    engine_controls.build(COL_I)
+    engine_controls.envelope_mesh(RESERVED)
+    engine_controls.sweep_mesh(RESERVED)
+    refresh()
     # приборное оборудование
     dp = displays()
     gdc_conn, gea_conn = shelf_units()

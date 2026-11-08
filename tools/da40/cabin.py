@@ -105,6 +105,13 @@ def layer_bvh(R, g, keep):
     return [bvh] if bvh else []
 
 
+def console_obstacles():
+    """Габарит секции управления двигателем и ход рычага POWER (engine_controls.py) — препятствия для трасс: кабели
+    обходят секцию в центральном пульте, а не идут между её пластинами (сами детали секции — в слое instruments)."""
+    import engine_controls
+    return [ref._bvh([engine_controls.envelope_mesh(), engine_controls.sweep_mesh()])]
+
+
 def setup(R, own, step=0.010, extra=(), skip=None):
     """(отделка, соседние системы, планировщик) для слоя own."""
     trim = trim_bvh()

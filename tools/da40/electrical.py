@@ -60,6 +60,7 @@ TRIM, SYS, RT = cabin.setup(R, 'electrical', step=0.012, extra=GONE)
 # Стенки главных шпангоутов — нет: сквозь них кабели проходят, structure.py ставит там вырезы по трассам
 RT.solids = list(RT.solids) + cabin.layer_bvh(R, 'structure', ('Top hat profile',)) + \
     cabin.layer_bvh(R, 'bonding', ('Lightning conductor junction', 'Lightning conductor tube (firewall'))
+RT.solids += cabin.console_obstacles()   # секция управления двигателем в пульте (AMM 31-10 рис. 2): жгуты идут под ней
 CHECKS = []
 
 M = dict(

@@ -62,6 +62,7 @@ def pedal_parts():
 RT.solids = list(RT.solids) + [ref._bvh(pedal_parts())]
 # продольная труба молниеотвода (bonding.py) под креслом пилота идёт по заданным точкам — шланги её обходят
 RT.solids += cabin.layer_bvh(R, 'bonding', ('Lightning conductor tube (firewall',))
+RT.solids += cabin.console_obstacles()   # трос стояночного тормоза — спереди секции управления двигателем и под ней
 
 M = dict(
     mc=lib.mat('DA40 brake master cylinder (black anodised)', (0.07, 0.07, 0.08), 0.6, 0.4, ru='алюминиевый сплав, чёрное анодирование'),

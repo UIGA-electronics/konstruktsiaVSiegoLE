@@ -31,6 +31,7 @@ import bpy  # noqa: E402
 from mathutils import Matrix, Vector as V  # noqa: E402
 
 import cabin  # noqa: E402
+import flap_bonding  # noqa: E402
 import stub  # noqa: E402
 import lib  # noqa: E402
 import ref  # noqa: E402
@@ -493,9 +494,18 @@ def tail():
     p.done()
 
 
+def flap_tube_jumpers():
+    """Перемычки трубы асимметрии закрылков LH и RH (AMM 51-80 п. 2.A) — к продольной трубе молниеотвода над ней."""
+    path = next(p for n, p in TUBES if n.startswith(flap_bonding.COND))
+    L = lib.path_len(path)
+    busy = [lib.along(path, k * 0.35)[0].y for k in range(1, int(L / 0.35) + 1) if k * 0.35 < L - 0.05]   # хомуты трубы (tube)
+    flap_bonding.build(COL, M['braid'], M['steel'], flap_bonding.along_y(path), busy)
+
+
 build()
 tail()
 jumpers()
+flap_tube_jumpers()
 dup = [o.name for o in COL.all_objects if '.0' in o.name[-4:]]
 assert not dup, dup
 size = ref.export(COL, OUT, R.lift)
