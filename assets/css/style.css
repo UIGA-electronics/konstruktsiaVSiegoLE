@@ -676,7 +676,9 @@ tbody th{ font-weight:500; }
 .ws-text .article > h2{ font-size:clamp(23px,2vw,28px); }
 .ws-cap{ font-size:15px; color:var(--ink-2); }
 @media (max-width:1020px){
-  .ws{ grid-template-columns:1fr; }
+  /* minmax(0,…): иначе колонку раздувает строка ракурсов (9 вкладок ≈ 870 px),
+     и на телефоне вся страница становится шире экрана */
+  .ws{ grid-template-columns:minmax(0,1fr); }
   .ws-view{ position:relative; top:0; height:auto; }
   .ws-view .figure-frame.is-3d{ height:auto; }
   .ws-view .model3d{ height:min(62vh,560px); min-height:300px; }
@@ -696,7 +698,8 @@ tbody th{ font-weight:500; }
 .ws-map .plan .pl-outline path{ fill:#fff; stroke:#0f1b33; stroke-width:1.4; }
 .ws-map .plan .pl-lines path{ stroke:#9aa3b2; }
 .ws-map .plan .pl-sys path.is-cur{ fill:var(--c); stroke:var(--c); }
-@media (max-width:1020px){ .ws-map{ width:128px; } }
+/* в узком плане «Системы» и «Выбрать →» не помещаются в строку — по строке на каждое */
+@media (max-width:1020px){ .ws-map{ width:128px; } .ws-map .label{ flex-wrap:wrap; } }
 
 /* Состав системы — позиции с номерами, как перечень к рисунку */
 .legend{ margin:28px 0 32px; }
