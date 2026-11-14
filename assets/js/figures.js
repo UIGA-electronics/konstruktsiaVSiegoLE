@@ -1086,7 +1086,9 @@ var Figures = (function () {
       /* Трассы, которые в общем виде только мешают: тонкие шланги и провода
          через всю кабину. Прячем по умолчанию, показываем вместе с системой. */
       var quietRe = opts.quiet ? new RegExp(opts.quiet, 'i') : null;
-      var GENERIC = /^(cube|plane|cylinder|circle|sphere|torus|beziercurve|nurbspath|mesh|object|empty)\b[\s\d_]*/i;
+      /* После слова могут сразу идти цифры («Cube004 Cube106031»): \b здесь не годится,
+         между буквой и цифрой границы слова нет. */
+      var GENERIC = /^(cube|plane|cylinder|circle|sphere|torus|beziercurve|nurbspath|mesh|object|empty)(?![a-z])[\s\d_]*/i;
 
       var files = [];
       /* Лампы кабины заводим сразу, погашенными: салон приходит позже планера,

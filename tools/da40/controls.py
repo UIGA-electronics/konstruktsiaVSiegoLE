@@ -14,9 +14,12 @@ AMM 27-50 рис. 1–3: электропривод лежит поперёк п
 переборкой, кронштейн мотора — на левой задней замыкающей нервюре; шток
 привода — к промежуточной качалке (вертикальная ось); от неё две тяги к
 корневым нервюрам крыльев; в крыле длинная тяга идёт через ролики корневой
-нервюры к качалке на нервюре управления закрылком (x = 2,80), короткая тяга —
-к кронштейну закрылка. AMM 27-10: второй роликовый узел тяги элерона стоит на
-нервюре управления закрылком (в исходнике висел на x = 2,46, где нервюры нет).
+нервюры к качалке на нервюре крепления качалки закрылка, короткая тяга выходит
+под крыло через обтекатель на лючке качалки к наружному кабанчику закрылка
+(AMM 12-30 рис. 1, 52-40 рис. 1, 57-50 рис. 1). Станции качалок и кабанчиков —
+в wingctl.py: они сняты с наружных кабанчиков оболочки и совпадают с рисунками.
+AMM 27-10: второй роликовый узел тяги элерона стоит на нервюре крепления качалки
+закрылка, третий — на малой нервюре.
 
 Кинематика решается на каждом кадре клипа: угол закрылка (tools/da40/flap-angle.json,
 снят с клипа планера) → кронштейн → короткая тяга → качалка в крыле → длинная
@@ -33,13 +36,14 @@ from mathutils import Matrix, Quaternion, Vector as V  # noqa: E402
 
 import lib  # noqa: E402
 import ref  # noqa: E402
+import wingctl  # noqa: E402
 from lib import Part, basis, box, cyl, hexa, ring_tube  # noqa: E402
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else '/tmp/da40-controls-addon-raw.glb'
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 ref.open_source()
-R = ref.Ref()
+R = ref.Ref(exclude=wingctl.WING_BUMPS)        # лучи по обшивке — мимо обтекателей выхода тяг и ниш балансиров
 COL = lib.collection('DA40 Flight controls rebuilt (AMM 27-10, 27-50)')
 
 M = dict(
@@ -52,12 +56,29 @@ M = dict(
     gfrp=lib.mat('DA40 GFRP moulding', (0.83, 0.84, 0.74), 0.0, 0.55, ru='стеклопластик'),
     varnish=lib.mat('DA40 locking varnish (red)', (0.75, 0.10, 0.08), 0.0, 0.4, ru='контровочный лак'),
     lead=lib.mat('DA40 balance weight (lead, grey primer)', (0.42, 0.43, 0.44), 0.2, 0.6, ru='свинец, грунт'),
+    horn=lib.mat('DA40 control horn (painted aluminium)', (0.84, 0.85, 0.86), 0.25, 0.42, ru='алюминиевый сплав, окрашен'),
     sheath=lib.mat('DA40 trim cable outer sheath (black)', (0.035, 0.035, 0.04), 0.0, 0.55, ru='оболочка гибкого троса'),
 )
+
+# Предельные отклонения поверхностей — AMM 06-00 рис. 2 (Control Surface Adjustment Report). В клипах исходника
+# они другие (закрылки 41°, элерон 18° вверх и 22° вниз, руль высоты 15° вверх и 13° вниз): углы клипов
+# приводятся к этим пределам здесь, а в готовых файлах — tools/da40/clip-limits.js (та же таблица).
+FLAP_LDG = 42.0                          # закрылки LDG (T/O — 20°)
+AIL_UP, AIL_DOWN = 20.0, 13.0            # элерон вверх / вниз
+ELEV_UP, ELEV_DOWN = 21.0, 17.0          # руль высоты вверх / вниз
+
+
+def to_limits(angles, up, down, up_sign=1.0):
+    """Углы клипа (рад) → те же кадры с предельными отклонениями up / down (град); up_sign — знак «вверх»."""
+    hi = max(max(a * up_sign for a in angles), 1e-9)
+    lo = max(max(-a * up_sign for a in angles), 1e-9)
+    return [a * (math.radians(up) / hi if a * up_sign > 0 else math.radians(down) / lo) for a in angles]
+
 
 FPS = 24
 with open(os.path.join(HERE, 'flap-angle.json')) as f:
     _s = json.load(f)['samples']
+_s = [[_t, _a * FLAP_LDG / _s[-1][1]] for _t, _a in _s]
 FRAMES = list(range(1, 26))            # клип 1,04 с при 24 к/с: кадры 1…25
 
 
@@ -74,7 +95,9 @@ def theta_at(frame):
 # ось закрылка — с узла Bone_l / Bone_r клипа планера (glTF → Blender: x, −z, y; минус подъём)
 HINGE = {1: (V((4.3032, 0.6005, 1.0277 - R.lift)), V((-0.995, 0.044, -0.085)).normalized()),
          -1: (V((-4.3033, 0.6005, 1.0269 - R.lift)), V((-0.995, -0.044, 0.085)).normalized())}
-X_RIB, X_ROOT = 2.80, 1.205           # нервюра управления закрылком, корневая нервюра (wing.py)
+X_RIB, X_ROOT = wingctl.X_FLAP_RIB, wingctl.X_ROOT   # нервюра крепления качалки закрылка, корневая нервюра (wing.py)
+EYE_OFF = 0.0065                       # ушко наконечника рядом с пластиной рычага (на пальце)
+FLAP_A2, FLAP_A1 = 0.060, 0.024        # плечи качалки закрылка: к короткой тяге и к длинной
 IDLER = V((0.0, 0.66, -0.212))         # промежуточная качалка: под полом за задней главной переборкой
 IDLER_D = 0.050                        # плечи качалки (к тягам левого и правого крыла)
 MOTOR = V((0.60, 0.650, -0.192))       # мотор привода у левой задней замыкающей нервюры
@@ -112,30 +135,73 @@ def mirror(v, s):
     return V((s * v.x, v.y, v.z))
 
 
+def wing_plane(s, alpha):
+    """Плоскость качалки в крыле (AMM 12-30 рис. 1, 2: качалка наклонена и лежит в одной плоскости с короткой
+    тягой). e1 — вдоль размаха наружу, e2 — в плоскости назад-вниз вдоль короткой тяги (alpha к хорде),
+    nu — ось качалки, вверх-назад."""
+    e1 = V((s * 0.9964, 0, 0.085)).normalized()
+    r = V((0, math.cos(alpha), -math.sin(alpha)))
+    e2 = (r - e1 * r.dot(e1)).normalized()
+    nu = e1.cross(e2)
+    return e1, e2, (nu if nu.z > 0 else -nu)
+
+
+def horn_plane(hc, axis, off, alpha):
+    """Кабанчик лежит в плоскости, перпендикулярной оси навески (ось стреловидна и наклонена, плоскость не совпадает
+    с x = const). Возвращает нормаль плоскости (по оси, в сторону +x), палец тяги в этой плоскости (off — назад и
+    вниз от оси) и направление короткой тяги от пальца к качалке в той же плоскости (alpha — её наклон к хорде)."""
+    n = V(axis).normalized()
+    n = n if n.x > 0 else -n
+    pin = hc + V((-(off[0] * n.y + off[1] * n.z) / n.x, off[0], off[1]))
+    u = V((0, -math.cos(alpha), math.sin(alpha)))
+    u = (u - n * u.dot(n)).normalized()
+    return n, pin, u
+
+
 class Side:
-    """Геометрия одной стороны в покое (для правой — зеркально)."""
+    """Геометрия одной стороны в покое (для правой — зеркально).
+
+    Кабанчик закрылка — наружный, под крылом (оболочка MSFS, AMM 57-50 рис. 1): палец тяги ниже оси навески.
+    Короткая тяга идёт от пальца вперёд-вверх сквозь обтекатель на лючке качалки. Качалка — снаружи от нервюры
+    крепления качалки, в плоскости тяги: ушко короткой тяги — наружу от оси, ушко длинной — вперёд-вверх от оси
+    (длинная тяга проходит между поясами заднего лонжерона, позади его стенки). При выпуске закрылка палец
+    уходит вперёд, качалка сдвигает длинную тягу к фюзеляжу — в ту же сторону, что и раньше."""
 
     def __init__(self, s):
         self.s = s
         self.axis = HINGE[s][1]
-        xh = s * (X_RIB + 0.025)
-        self.hc = hinge_point(s, xh)                              # ось закрылка у кронштейна
-        self.h0 = self.hc + V((0, -0.035, 0.035))                 # палец кронштейна в покое
-        self.B = V((s * (X_RIB - 0.030), 0.555, -0.012))          # ось качалки на нервюре
-        self.nb = V((-s * 0.085, 0, 0.996)).normalized()          # ось качалки ⟂ плоскости крыла
-        self.a2 = V((s * 0.058, 0, 0))                            # плечо к короткой тяге
-        self.a1 = V((0, 0.040, 0))                                # плечо к длинной тяге
+        self.hc = hinge_point(s, s * wingctl.X_FLAP_HORN)         # ось закрылка у кабанчика
+        al = wingctl.FLAP_ROD_ANGLE
+        self.hn, self.h0, u = horn_plane(self.hc, self.axis, wingctl.FLAP_PIN_OFF, al)   # палец тяги, закрылок убран
+        self.h0e = self.h0.copy()                                 # ушко короткой тяги — в плоскости кабанчика, между его щеками
+        self.e1, self.e2, self.nb = wing_plane(s, al)
+        se = self.h0e + u * ((self.h0e.y - wingctl.FLAP_S_Y) / -u.y)   # ушко тяги на качалке — под пластиной
+        # ход ушка вдоль тяги на весь выпуск закрылка: качалка качается симметрично относительно размаха
+        th = math.radians(_s[-1][1])
+        dn = self.hc + rot(self.axis, th) @ (self.h0e - self.hc)
+        travel = (dn - self.h0e).dot(u)
+        self.beta = math.asin(min(0.9, travel / 2 / FLAP_A2))
+        cb, sb = math.cos(self.beta), math.sin(self.beta)
+        arm_s = (self.e1 * cb + self.e2 * sb) * FLAP_A2           # к ушку короткой тяги: наружу и назад-вниз
+        arm_w = (self.e1 * sb - self.e2 * cb) * FLAP_A1           # к ушку длинной тяги: вперёд-вверх
+        self.S0 = se + self.nb * EYE_OFF                          # палец короткой тяги на пластине
+        self.B = self.S0 - arm_s                                  # ось качалки
+        self.W0 = self.B + arm_w                                  # палец длинной тяги на пластине
+        self.a2 = se - self.B                                     # до ушка короткой тяги (под пластиной)
+        # ушко длинной тяги — тоже под пластиной: над ней, у той же нервюры, проходит длинная тяга элерона
+        # с роликами второй направляющей
+        self.a1 = self.W0 - self.nb * EYE_OFF - self.B
         self.G = V((s * X_ROOT, 0.625, -0.155))                   # ролики корневой нервюры
         a1p = self.B + self.a1
         d = (self.G - a1p).normalized()
         self.E0 = self.G + d * 0.06                               # внутренний конец длинной тяги
         self.L_long = (self.E0 - a1p).length
-        self.L_short = (self.B + self.a2 - self.h0).length
+        self.L_short = (self.B + self.a2 - self.h0e).length
         self.P0 = IDLER + V((0, -s * IDLER_D, 0))                 # палец качалки: левое крыло — впереди оси
         self.L_fus = (self.E0 - self.P0).length
 
     def horn(self, th):
-        return self.hc + rot(self.axis, th) @ (self.h0 - self.hc)
+        return self.hc + rot(self.axis, th) @ (self.h0e - self.hc)
 
     def arms(self, ph):
         q = rot(self.nb, ph)
@@ -211,17 +277,19 @@ def pivot_obj(p, pivot):
     return ob
 
 
-def rod(name, ru, a, b, r, doc, ends=True):
-    """Тяга: труба с наконечниками, в своей системе (ось Z от a к b)."""
+def rod(name, ru, a, b, r, doc, ends=True, twist_a=False):
+    """Тяга: труба с наконечниками, в своей системе (ось Z от a к b). twist_a — ушко у конца a повёрнуто
+    на 90° относительно ушка у конца b (пальцы на концах тяги стоят в разных плоскостях)."""
     L = (b - a).length
     p = P(name, ru, 'rod', doc)
     o, z = V((0, 0, 0)), V((0, 0, 1))
     if ends:
         cyl(p, o + z * 0.03, o + z * (L - 0.03), r, 0, segs=16)
-        for c, d in ((o, z), (o + z * L, -z)):
+        for k, (c, d) in enumerate(((o, z), (o + z * L, -z))):
             cyl(p, c + d * 0.012, c + d * 0.034, r * 0.55, p.m(M['steel']), segs=12)          # резьбовой хвостовик
             hexa(p, c + d * 0.024, c + d * 0.030, r * 1.6, p.m(M['varnish']))                # контргайка
-            ring_tube(p, c, V((1, 0, 0)), 0.0085, 0.0035, 0.008, p.m(M['steel']), segs=16)   # ушко шарнира
+            ax = V((0, 1, 0)) if (twist_a and k == 0) else V((1, 0, 0))
+            ring_tube(p, c, ax, 0.0085, 0.0035, 0.008, p.m(M['steel']), segs=16)             # ушко шарнира
     else:
         cyl(p, o, o + z * L, r, 0, segs=16)
     ob = p.done()
@@ -247,22 +315,107 @@ def key_rot(ob, q, fr):
     ob.keyframe_insert('rotation_quaternion', frame=fr)
 
 
-def roller_guide(name, ru, x, c, d, doc, nrm=(1, 0, 0)):
-    """Роликовая направляющая: пластина на нервюре и два ролика над и под тягой."""
+def rear_spar_cap_edge(X):
+    """Задняя кромка поясов заднего лонжерона на размахе X — тем же расчётом, что в wing.py (rear_web_spar и
+    полуширина пояса)."""
+    Xc = math.copysign(min(max(abs(X), 1.33), 5.45), X)
+    lo, up = R.wing_section(Xc, 0.28)
+    yc = R.spar_faces(Xc, (lo + up) / 2)[1] + 0.009
+    k = min(1.0, max(0.0, (abs(X) - 1.205) / (5.523 - 1.205)))
+    return yc + (0.078 + (0.042 - 0.078) * k) / 2
+
+
+def roller_guide(name, ru, x, c, d, doc, nrm=(1, 0, 0), r_rod=0.0085, y_min=None, r_roll=0.0085):
+    """Роликовая направляющая: пластина на нервюре и два ролика над и под тягой радиуса r_rod;
+    y_min — передний край пластины (позади пояса заднего лонжерона)."""
     d = V(d).normalized()
     up = V((0, 0, 1)) - d * d.z
     up.normalize()
     p = P(name, ru, 'alu', doc)
     lo, hi = R.wing_section(x - (0.01 if x > 0 else -0.01), c.y)
-    lo = max(lo if lo is not None else c.z - 0.045, c.z - 0.045) + 0.006
-    hi = min(hi if hi is not None else c.z + 0.045, c.z + 0.045) - 0.006
-    box(p, V((x, c.y, (lo + hi) / 2)), (0.004, 0.06, hi - lo), Matrix.Identity(3), 0, bevel=0.002)   # пластина по высоте нервюры
+    half = 0.045 if y_min is None else 0.032                 # у лонжерона пластина ниже его верхнего пояса, а снизу
+                                                             # под ней проходит плечо качалки закрылка
+    lo = max(lo if lo is not None else c.z - half, c.z - half) + 0.006
+    hi = min(hi if hi is not None else c.z + half, c.z + half) - 0.006
+    y0, y1 = (c.y - 0.03 if y_min is None else max(c.y - 0.03, y_min)), c.y + 0.03
+    box(p, V((x, (y0 + y1) / 2, (lo + hi) / 2)), (0.004, y1 - y0, hi - lo), Matrix.Identity(3), 0, bevel=0.002)   # пластина по высоте нервюры
     side = d.cross(up).normalized()
+    side = side if side.y > 0 else -side                     # вдоль оси ролика, назад
+    # у лонжерона ролики сдвинуты на 2 мм назад, а ось спереди короче: её конец подходил под верхний пояс
+    sh, fr = (0.002, 0.0105) if y_min is not None else (0.0, 0.013)
     for k in (1, -1):
-        rc = c + up * k * 0.017
-        cyl(p, rc - side * 0.009, rc + side * 0.009, 0.0085, p.m(M['nylon']), segs=16)
-        cyl(p, rc - side * 0.013, rc + side * 0.013, 0.003, p.m(M['steel']), segs=8)
+        rc = c + up * k * (r_rod + r_roll + 0.0003) + side * sh
+        cyl(p, rc - side * 0.009, rc + side * 0.009, r_roll, p.m(M['nylon']), segs=16)
+        cyl(p, rc - side * fr, rc + side * 0.013, 0.003, p.m(M['steel']), segs=8)
     p.done()
+
+
+def surface_horn(name, ru, doc, s, hc, pin, y_rear, n):
+    """Кабанчик закрылка или элерона по AMM 57-50 рис. 1, 57-60 рис. 1 и 12-30 рис. 1, 2: алюминиевая деталь
+    в плоскости хорды, место и размеры — по наружным кабанчикам оболочки. Вверху спереди — проушина навески
+    с втулками (кабанчик служит одной из навесок), вниз от неё — рычаг к пальцу короткой тяги, назад под нижней
+    обшивкой поверхности — полка на трёх болтах, от пальца к полке — раскос; между рычагом, полкой и раскосом —
+    треугольное окно. Рычаг — вилка из двух щёк: наконечник тяги стоит между ними на болте с дистанционными
+    шайбами. hc — точка оси навески на станции кабанчика, pin — палец тяги, y_rear — задний болт полки,
+    n — нормаль плоскости кабанчика (ось навески)."""
+    out = n * s                                               # наружу по размаху: гайки — с наружной стороны
+    p = P(name, ru, 'horn', doc)
+    G, tc = 0.0095, 0.003                                     # щёки: от плоскости тяги и их толщина; между ними тяга
+                                                              # качается с запасом 1,5 мм на сторону
+
+    def bot(y):                                               # низ поверхности рядом с кабанчиком
+        zs = [R.skin(hc.x + dx, y, 'lower')[0] for dx in (-0.03, 0.03)]
+        zs = [q.z for q in zs if q is not None]
+        return sum(zs) / len(zs)
+    ys = [hc.y + 0.026 + (y_rear - hc.y - 0.026) * k / 3 for k in range(4)]
+    arm = []
+    for y in ys:                                              # точки полки — в плоскости кабанчика
+        z = bot(y) - 0.0055
+        arm.append(V((hc.x - ((y - hc.y) * n.y + (z - hc.z) * n.z) / n.x, y, z)))
+    for k in (1, -1):
+        o = n * (k * G)
+        link_bar(p, hc + o, pin + o, 0.018, n, tc)                       # рычаг к пальцу тяги
+        link_bar(p, pin + o, arm[1] + o, 0.010, n, tc)                   # раскос
+        link_bar(p, hc + o, arm[0] + o, 0.014, n, tc)
+        for a, b in zip(arm, arm[1:]):
+            link_bar(p, a + o, b + o, 0.010, n, tc)                      # стенки под полкой
+    for a, b in zip(arm, arm[1:]):                                       # полка под нижней обшивкой поверхности
+        link_bar(p, a + V((0, 0, 0.0045)), b + V((0, 0, 0.0045)), 2 * G + tc + 0.004, V((0, 0, 1)), 0.002)
+    half = G + tc / 2
+    cyl(p, hc - n * half, hc + n * half, 0.0105, 0, segs=18)                                     # проушина навески
+    cyl(p, hc - n * (half + 0.002), hc + n * (half + 0.002), 0.0052, p.m(M['steel']), segs=14)    # втулки с буртиком
+    cyl(p, pin - out * (half + 0.004), pin + out * (half + 0.007), 0.0032, p.m(M['steel']), segs=10)   # болт тяги
+    hexa(p, pin - out * (half + 0.004), pin - out * half, 0.009, p.m(M['steel']))                # головка — изнутри
+    hexa(p, pin + out * half, pin + out * (half + 0.005), 0.009, p.m(M['steel']))                # гайка — снаружи
+    for k in (1, -1):                                                                            # дистанционные шайбы
+        cyl(p, pin + n * (k * 0.0043), pin + n * (k * (G - tc / 2)), 0.0055, p.m(M['steel']), segs=12)
+    for q in (arm[0] + V((0, 0.004, 0)), arm[1], arm[3] - V((0, 0.003, 0))):                     # три болта к нижней обшивке
+        hexa(p, q - V((0, 0, 0.0095)), q - V((0, 0, 0.0055)), 0.008, p.m(M['steel']))
+        cyl(p, q - V((0, 0, 0.0055)), q + V((0, 0, 0.012)), 0.0024, p.m(M['steel']), segs=8)
+    return pivot_obj(p, hc)
+
+
+def bellcrank_mount(name, ru, doc, s, x_rib, pv, nu, e1, shift=0.004, width=0.024):
+    """Опора качалки в крыле: основание под качалкой от жёсткой вставки нервюры до оси, ось качалки и два болта
+    крепления к вставке (AMM 27-10 рис. 2, 27-50 рис. 2: болты ставят сверху, гайки — снизу, через лючок качалки)."""
+    p = P(name, ru, 'black', doc)
+    fwd = e1.cross(nu)
+    fwd = fwd if fwd.y < 0 else -fwd                          # в плоскости качалки вперёд-вверх
+    base = pv - nu * 0.0165 + fwd * shift                     # под нижним торцом ступицы
+    a = base + e1 * ((s * (x_rib + 0.002) - base.x) / e1.x)   # у наружной грани нервюры
+    b = base + e1 * 0.013                                     # за осью
+    link_bar(p, a, b, width, nu, 0.004)
+    cyl(p, pv - nu * 0.0225, pv + nu * 0.019, 0.004, p.m(M['steel']), segs=10)      # ось качалки
+    hexa(p, pv + nu * 0.015, pv + nu * 0.019, 0.011, p.m(M['steel']))
+    hexa(p, pv - nu * 0.0225, pv - nu * 0.0185, 0.011, p.m(M['steel']))
+    for k in (0.22, 0.60):                                    # болты крепления к вставке нервюры
+        q = a.lerp(base, k)
+        cyl(p, q - nu * 0.009, q + nu * 0.006, 0.0025, p.m(M['steel']), segs=8)
+        hexa(p, q + nu * 0.002, q + nu * 0.006, 0.008, p.m(M['steel']))
+    p.done()
+
+
+BELLCRANKS = {}          # оси и плоскости качалок в крыле: по ним wing.py ставит жёсткие вставки нервюр
 
 
 def build():
@@ -271,48 +424,32 @@ def build():
     for sd in (L, Rt):
         s, tag = sd.s, ('LH' if sd.s > 0 else 'RH')
         gen = 'левого' if s > 0 else 'правого'
-        # кронштейн закрылка
-        p = P(f'Flap horn {tag}', f'Кабанчик {gen} закрылка: к нему короткая тяга от качалки закрылка в крыле', 'alu', 'AMM 27-50 рис. 2')
-        foot = sd.hc + V((0, -0.01, -0.02))
-        box(p, (foot + sd.h0) / 2, (0.006, 0.03, (sd.h0 - foot).length + 0.016), basis(sd.h0 - foot), 0, bevel=0.002)
-        cyl(p, sd.h0 - V((0.012, 0, 0)), sd.h0 + V((0.012, 0, 0)), 0.004, p.m(M['steel']), segs=10)
-        objs[('horn', s)] = pivot_obj(p, sd.hc)
-        # качалка на нервюре управления закрылком
-        p = P(f'Flap bellcrank {tag}', f'Качалка {gen} закрылка на нервюре крепления качалки закрылка: длинная тяга вдоль размаха → короткая тяга назад к кабанчику',
-              'alu', 'AMM 27-50 2.B, рис. 2')
-        pb = [sd.B, sd.B + sd.a2, sd.B + sd.a1]
-        c = sum(pb, V()) / 3
-        for q in pb:
-            if (q - c).length > 1e-4:
-                box(p, (c + q) / 2, (0.02, (q - c).length + 0.018, 0.005), frame(q - c, sd.nb), 0, bevel=0.002)
-        for q in pb:
-            cyl(p, q - sd.nb * 0.008, q + sd.nb * 0.008, 0.0065, p.m(M['steel']), segs=12)
-        objs[('bc', s)] = pivot_obj(p, sd.B)
-        p = P(f'Flap bellcrank bracket (flap control rib) {tag}', f'Кронштейн качалки {gen} закрылка на нервюре крепления качалки закрылка (x = {X_RIB:.2f} м)',
-              'black', 'AMM 27-50 рис. 2, 57-10')
-        lo, hi = R.wing_section(s * X_RIB, sd.B.y)          # в высоте профиля: у задней кромки он тонкий
-        z0 = max(sd.B.z - 0.029, (lo if lo is not None else -9) + 0.005)
-        z1 = min(sd.B.z + 0.021, (hi if hi is not None else 9) - 0.005)
-        box(p, V((s * X_RIB, sd.B.y, (z0 + z1) / 2)), (0.004, 0.06, z1 - z0), Matrix.Identity(3), 0, bevel=0.002)
-        box(p, sd.B - sd.nb * 0.012 + V((s * 0.008, 0, 0)), (0.02, 0.03, 0.004), Matrix.Identity(3), 0, bevel=0.001)
-        p.done()
+        # кабанчик закрылка — наружный, под крылом
+        objs[('horn', s)] = surface_horn(
+            f'Flap horn {tag}', f'Кабанчик {gen} закрылка: алюминиевая деталь на трёх болтах к нижней обшивке закрылка, две втулки спереди '
+            'образуют одну из навесок; к пальцу внизу подходит короткая тяга от качалки — она выходит из крыла через обтекатель '
+            'на лючке качалки', 'AMM 57-50 2.D, рис. 1; 12-30 рис. 1', s, sd.hc, sd.h0, wingctl.FLAP_HORN_REAR_Y, sd.hn)
+        # качалка снаружи от нервюры крепления качалки, в плоскости короткой тяги
+        objs[('bc', s)] = bellcrank_part(
+            f'Flap bellcrank {tag}', f'Качалка {gen} закрылка у нервюры крепления качалки: длинная тяга вдоль размаха поворачивает качалку, '
+            'короткая тяга идёт от неё назад-вниз к кабанчику; отверстие под стопорный штифт', 'AMM 27-50 2.B, рис. 2; 12-30 рис. 1',
+            sd.B, [sd.S0, sd.W0], sd.nb, w=0.017, rig=sd.B + (sd.S0 - sd.B) * 0.5, pin_lo=0.0105, pin_hi=0.0065)
+        bellcrank_mount(f'Flap bellcrank bracket (flap control rib) {tag}', f'Опора качалки {gen} закрылка на жёсткой вставке нервюры '
+                        'крепления качалки: основание, ось и болты, гайки которых доступны через лючок качалки',
+                        'AMM 27-50 рис. 2, 57-10 2.E', s, X_RIB, sd.B, sd.nb, sd.e1, shift=0.0, width=0.022)
+        BELLCRANKS[f'flap{s:+d}'] = dict(x_rib=X_RIB, p=list(sd.B), n=list(sd.nb), e1=list(sd.e1), e2=list(sd.e2))
         # тяги
         f0 = frames[0][s]
-        objs[('short', s)] = rod(f'Flap short push rod {tag}', f'Короткая тяга {gen} закрылка: качалка — кабанчик закрылка',
-                                 f0['a2'], f0['horn'], 0.0065, 'AMM 27-50 рис. 2')
-        objs[('long', s)] = rod(f'Flap long push rod {tag}', f'Длинная тяга {gen} закрылка в крыле: от корневой нервюры к качалке закрылка',
-                                f0['e'], f0['a1'], 0.009, 'AMM 27-50 2.B')
+        objs[('short', s)] = rod2(f'Flap short push rod {tag}', f'Короткая тяга {gen} закрылка: качалка — кабанчик закрылка; выходит под крыло '
+                                  'через обтекатель на лючке качалки', f0['a2'], f0['horn'], 0.0065, 'AMM 27-50 рис. 2; 12-30 рис. 1',
+                                  eye=sd.hn, twist_a=True)
+        objs[('long', s)] = rod2(f'Flap long push rod {tag}', f'Длинная тяга {gen} закрылка в крыле: от корневой нервюры к качалке закрылка',
+                                 f0['e'], f0['a1'], 0.009, 'AMM 27-50 2.B', eye=sd.nb)
         objs[('fus', s)] = rod(f'Flap push rod in the fuselage {tag}', f'Тяга {gen} закрылка в фюзеляже: промежуточный рычаг — корневая нервюра',
                                idler_pin(s, frames[0]['ps']), f0['e'], 0.009, 'AMM 27-50 2.B, рис. 1')
         d = (f0['a1'] - f0['e']).normalized()
         roller_guide(f'Flap push rod guide (root rib) {tag}', f'Ролики тяги {gen} закрылка на корневой нервюре', s * X_ROOT, sd.G, d,
                      'AMM 27-50 рис. 2')
-    # направляющие тяг элеронов на нервюре управления закрылком (AMM 27-10 2.): вместо висевших на x = 2,46
-    for s in (1, -1):
-        tag = 'LH' if s > 0 else 'RH'
-        c, d = V((s * X_RIB, 0.553, 0.048)), V((s * 0.995, -0.03, 0.072))
-        roller_guide(f'Aileron push rod guide 2 (flap control rib) {tag}', f'Направляющая № 2 тяги {"левого" if s > 0 else "правого"} элерона — на нервюре крепления качалки закрылка',
-                     s * X_RIB, c, d, 'AMM 27-10 2., рис. 2')
     # промежуточная качалка
     p = P('Flap idler lever', 'Промежуточный рычаг закрылков на заднем лонжероне центроплана: тяга исполнительного механизма и тяги к обоим крыльям', 'alu', 'AMM 27-50 рис. 1, 3')
     cyl(p, IDLER - V((0, 0, 0.032)), IDLER + V((0, 0, 0.010)), 0.011, 0, segs=18)
@@ -362,8 +499,8 @@ def build():
             s, v = sd.s, st[sd.s]
             key_rot(objs[('horn', s)], rot(sd.axis, st['th']), fr)
             key_rot(objs[('bc', s)], rot(sd.nb, v['ph']), fr)
-            key_rod(objs[('short', s)], v['a2'], v['horn'], fr)
-            key_rod(objs[('long', s)], v['e'], v['a1'], fr)
+            key_rod2(objs[('short', s)], v['a2'], v['horn'], fr)
+            key_rod2(objs[('long', s)], v['e'], v['a1'], fr)
             key_rod(objs[('fus', s)], idler_pin(s, st['ps']), v['e'], fr)
         key_rot(objs['idler'], rot((0, 0, 1), st['ps']), fr)
         for s_ in (1, -1):
@@ -1032,14 +1169,11 @@ RB_2e = RB_2 - V((0, 0, EYE))
 CS_EYE = {1: 0.007, -1: -0.007}
 _MSFS_R = {s: V((s * 1.2, 0.6002, -0.0685)) for s in (1, -1)}       # внутренний конец длинной тяги исходника
 _MSFS_W = {s: V((s * 3.82, 0.5237, 0.1218)) for s in (1, -1)}
-LONG_D = {s: (_MSFS_W[s] - _MSFS_R[s]).normalized() for s in (1, -1)}
-# стык тяги центроплана с длинной тягой — на той же линии, но в центроплане (x 1,12), а не в зазоре
+_LONG_OLD = {s: (_MSFS_W[s] - _MSFS_R[s]).normalized() for s in (1, -1)}
+# стык тяги центроплана с длинной тягой — на линии тяги исходника, но в центроплане (x 1,12), а не в зазоре
 # между наружной нервюрой центроплана (1,19) и корневой нервюрой крыла (1,205): обе нервюры тяга проходит в вырезах
-ROOT_END = {s: _MSFS_R[s] + LONG_D[s] * ((s * 1.12 - _MSFS_R[s].x) / LONG_D[s].x) for s in (1, -1)}
-X_AIL_BC = 3.94                                   # качалка элерона снаружи от нервюры её крепления (x 3,88)
-AIL_A1, AIL_A2 = 0.030, 0.0425                    # плечи качалки элерона: к длинной тяге, к короткой (между задним
-                                                  # лонжероном, y 0,48, и задней стенкой, y 0,56)
-AIL_HORN_X, AIL_HORN_R, AIL_HORN_FWD = 4.012, 0.055, -0.012
+ROOT_END = {s: _MSFS_R[s] + _LONG_OLD[s] * ((s * 1.12 - _MSFS_R[s].x) / _LONG_OLD[s].x) for s in (1, -1)}
+AIL_A1, AIL_A2 = 0.030, 0.060                     # плечи качалки элерона: к длинной тяге, к короткой
 # руль высоты
 EL_LEVER = V((0.10, -0.3499, -0.2273))            # ушко короткой тяги на рычаге вала (исходник)
 EI_C, EI_LO, EI_HI = V((0.10, 0.0572, -0.022)), V((0.10, 0.0542, -0.2107)), V((0.10, 0.058, -0.079))   # ось вверху (AMM 27-30 3.);
@@ -1050,6 +1184,13 @@ FE_C = V((0.0, 4.8928, 0.066))                    # ось качалки в н�
 FE_LONG = V((0.0, 4.8928, 0.111))                 # плечо вверх: длинная тяга назад — качалка поворачивается, переднее плечо
                                                   # поднимает вертикальную тягу (руль высоты вниз)
 ELEV_HINGE = V((0.0, 5.3307, 1.2879))             # ось руля высоты (клип MSFS)
+# упоры руля высоты стоят в слое набора (structure.py, trim_bracket_and_stops): по ним строится кабанчик
+STOP_Y = 5.279                                    # середина кронштейна механизма триммера (y 5,262…5,296) и колодки
+BUSH_Z, BUSH_R = 1.262 + 0.0068, 0.0065           # втулка болта-упора «вверх»: ось и радиус
+EROD_X = -0.003                                   # плоскость вертикальной тяги и вилки кабанчика: чуть в стороне от
+                                                  # наконечника троса триммера (x 0,010…0,029) и его держателя
+# труба молниеотвода в киле (bonding.py) огибает вертикальную тягу сзади-снизу; ближайшая к тяге точка её изгиба
+FIN_TUBE_PT = V((0.0, 4.9014, 0.3542))
 
 
 def rot_about(c, ax, ang, p):
@@ -1080,34 +1221,34 @@ def bone_axis(name):
 
 
 class WingChain:
-    """Качалка элерона и кабанчик одной стороны."""
+    """Качалка элерона и кабанчик одной стороны.
 
-    def __init__(self, s, a2=AIL_A2, hr=AIL_HORN_R, hz=AIL_HORN_FWD):
+    Кабанчик элерона — наружный, под крылом (оболочка MSFS, AMM 57-60 рис. 1, 12-30 рис. 2): палец тяги ниже оси
+    навески. Качалка — снаружи от нервюры крепления качалки, в плоскости короткой тяги (12-30 рис. 2): ушко
+    короткой тяги — наружу от оси, ушко длинной — вперёд-вверх от оси. Длинная тяга идёт наружу — качалка толкает
+    короткую тягу назад, элерон поднимается (AMM 27-10 3.)."""
+
+    def __init__(self, s, a2=AIL_A2, a1=AIL_A1):
         self.s = s
-        d = LONG_D[s]
-        self.d = d
-        self.W0 = ROOT_END[s] + d * ((s * X_AIL_BC - ROOT_END[s].x) / d.x)
-        self.n = V((-s * 0.085, 0, 0.996)).normalized()
-        m = self.n.cross(d).normalized()
-        self.m = -m if m.y > 0 else m                                 # в плоскости крыла, вперёд
-        self.P = self.W0 + self.m * AIL_A1
-        self.S0 = self.P + d * a2
-        self.W0e = self.W0 + self.n * EYE_OFF                         # ушко длинной тяги — над пластиной
-        self.S0e = self.S0 - self.n * EYE_OFF                         # короткой — под ней
-        self.L_long = (self.W0e - ROOT_END[s]).length
         p, ax = bone_axis('Bone2_l' if s > 0 else 'Bone2_r')
         self.hax = ax
-        self.hc = p + ax * ((s * AIL_HORN_X - p.x) / ax.x)
-        up = V((0, 0, 1)) - ax * ax.z
-        up.normalize()
-        fwd = ax.cross(up).normalized()
-        fwd = -fwd if fwd.y > 0 else fwd
-        self.H0 = self.hc + up * hr + fwd * hz
-        self.up = up
-        self.H0e = self.H0 + ax * EYE_OFF                             # ушко короткой тяги — с внутренней стороны кабанчика
+        self.hc = p + ax * ((s * wingctl.X_AIL_HORN - p.x) / ax.x)
+        al = wingctl.AIL_ROD_ANGLE
+        self.hn, self.H0, u = horn_plane(self.hc, ax, wingctl.AIL_PIN_OFF, al)         # палец тяги в нейтрали
+        self.H0e = self.H0.copy()                                     # ушко короткой тяги — в плоскости кабанчика, между его щеками
+        self.e1, self.e2, self.n = wing_plane(s, al)
+        self.S0e = self.H0e + u * ((self.H0e.y - wingctl.AIL_S_Y) / -u.y)   # ушко короткой тяги — под пластиной
+        self.S0 = self.S0e + self.n * EYE_OFF
+        self.P = self.S0 - self.e1 * a2                               # ось качалки
+        self.W0 = self.P - self.e2 * a1                               # палец длинной тяги
+        self.W0e = self.W0 + self.n * EYE_OFF                         # ушко длинной тяги — над пластиной
+        self.d = (self.W0e - ROOT_END[s]).normalized()
+        self.L_long = (self.W0e - ROOT_END[s]).length
         pins = [V(q) for q in AIL['horn_L' if s > 0 else 'horn_R']]
         rest = pins[AIL['stick_deg'].index(0.0)] if 0.0 in AIL['stick_deg'] else pins[len(pins) // 2]
-        self.ang = [surf_angle(p, ax, rest, q) for q in pins]          # угол элерона по кадрам (клип MSFS)
+        ang = [surf_angle(p, ax, rest, q) for q in pins]              # угол элерона по кадрам (клип MSFS)
+        up = 1.0 if (rot(ax, 0.1) @ V((0, 0.1, 0))).z > 0 else -1.0   # знак поворота «задняя кромка вверх»
+        self.ang = to_limits(ang, AIL_UP, AIL_DOWN, up)               # пределы — AMM 06-00 рис. 2
         self.L_short = (self.S0e - self.H0e).length
 
     def short_var(self, slide):
@@ -1124,6 +1265,10 @@ class WingChain:
     def solve(self, E, prev, n=200):
         ph = bisect(lambda a: (rot_about(self.P, self.n, a, self.W0e) - E).length - self.L_long, prev, -1.0, 1.0, n)
         return ph, rot_about(self.P, self.n, ph, self.W0e), rot_about(self.P, self.n, ph, self.S0e)
+
+
+# длинная тяга элерона в крыле: от стыка в центроплане к ушку на качалке
+LONG_D = {s: WingChain(s).d for s in (1, -1)}
 
 
 def solve_aileron():
@@ -1153,17 +1298,17 @@ def solve_aileron():
             slide[s] = bisect(lambda x: (ROOT_END[s] + LONG_D[s] * x - c).length - L_cs[s], slide[s], -0.12, 0.12)
             slides[s].append(slide[s])
         out.append(st)
-    # плечо качалки элерона к короткой тяге и палец кабанчика: короткая тяга должна меньше всего менять длину
+    # плечи качалки элерона: короткая тяга должна меньше всего менять длину (палец кабанчика задан оболочкой).
+    # Плечо к короткой тяге не длиннее 66 мм: ось качалки стоит снаружи от нервюры крепления качалки
     best = None
-    for a2 in [0.030 + 0.0025 * i for i in range(13)]:
-        for hr in (0.050, 0.055):
-            for hz in (-0.012, -0.006, 0.0):
-                var = max(WingChain(s, a2, hr, hz).short_var(slides[s]) for s in (1, -1))
-                if best is None or var < best[0]:
-                    best = (var, a2, hr, hz)
-    _, a2, hr, hz = best
-    print(f'AIL качалка элерона: плечо к короткой тяге {a2 * 1000:.1f} мм, палец кабанчика {hr * 1000:.0f} мм над осью, {hz * 1000:+.0f} мм вперёд')
-    wings = {s: WingChain(s, a2, hr, hz) for s in (1, -1)}
+    for a2 in [0.028 + 0.002 * i for i in range(20)]:
+        for a1 in (0.026, 0.028, 0.030, 0.032, 0.034, 0.036):
+            var = max(WingChain(s, a2, a1).short_var(slides[s]) for s in (1, -1))
+            if best is None or var < best[0]:
+                best = (var, a2, a1)
+    _, a2, a1 = best
+    print(f'AIL качалка элерона: плечо к короткой тяге {a2 * 1000:.1f} мм, к длинной {a1 * 1000:.0f} мм')
+    wings = {s: WingChain(s, a2, a1) for s in (1, -1)}
     for k, st in enumerate(out):
         for s in (1, -1):
             E = ROOT_END[s] + LONG_D[s] * slides[s][k]
@@ -1182,7 +1327,7 @@ def solve_aileron():
 def elevator_horn_design():
     """Палец кабанчика руля высоты и плечо качалки киля: вертикальная тяга должна меньше всего менять длину."""
     stick = [math.radians(d) for d in ELV['stick_deg']]
-    elev = [math.radians(d) for d in ELV['elevator_deg']]
+    elev = to_limits([math.radians(d) for d in ELV['elevator_deg']], ELEV_UP, ELEV_DOWN)   # пределы — AMM 06-00 рис. 2
     L_s = (EI_LOe - EL_LEVER).length
     L_l = (FE_LONG - EI_HIe).length
     lev, ei, fe = [], [], []
@@ -1196,33 +1341,41 @@ def elevator_horn_design():
         ei.append(pi)
         fe.append(pf)
     best = None
-    for yh in [5.225 + 0.005 * i for i in range(5)]:
+    # палец на y 5,235: дальше назад тяга при полном отклонении руля вверх подходит к держателю наконечника троса
+    # триммера (y от 5,261), дальше вперёд — при отклонении вниз задевает торец швеллера передней стенки киля (y 5,20)
+    for yh in (5.235,):
         for zh in [1.262 + 0.004 * i for i in range(6)]:
-            H0 = V((0.0, yh, zh))
-            for av in [0.035 + 0.005 * i for i in range(9)]:
+            H0 = V((EROD_X, yh, zh))
+            for av in [0.035 + 0.005 * i for i in range(12)]:
                 d = (H0 - FE_C).normalized()
                 arm = V((0, -d.z, d.y))                               # поперёк тяги
                 arm = arm if arm.y < 0 else -arm                      # вперёд: верхнее плечо назад — переднее вверх; сзади
                                                                       # вертикальной тяге мешают нижний кронштейн руля направления и задняя стенка киля
                 V0 = FE_C + arm * av
                 L_v = (H0 - V0).length
-                H0e = H0 + V((EYE_OFF, 0, 0))
-                ls = [(rot_about(ELEV_HINGE, AX_X, e, H0e) - rot_about(FE_C, AX_X, f, V0)).length for e, f in zip(elev, fe)]
+                H0e = H0                                              # наконечник тяги — в вилке кабанчика
+                ends = [(rot_about(ELEV_HINGE, AX_X, e, H0e), rot_about(FE_C, AX_X, f, V0)) for e, f in zip(elev, fe)]
+                ls = [(a - b).length for a, b in ends]
                 var = max(ls) - min(ls)
-                if best is None or var < best[0]:
-                    best = (var, H0, V0, av)
-    var, H0, V0, av = best
+                # зазор оси тяги (в плоскости симметрии) до трубы молниеотвода во всех кадрах: тяга Ø18 и ещё 0,8 мм
+                gap = min(((FIN_TUBE_PT - b) - (a - b).normalized() * (FIN_TUBE_PT - b).dot((a - b).normalized())).length
+                          for a, b in ends) - 0.009
+                key = (gap < 0.0008, var if gap >= 0.0008 else -gap)
+                if best is None or key < best[0]:
+                    best = (key, H0, V0, av, var, gap)
+    _, H0, V0, av, var, gap = best
     print(f'ELV кабанчик: палец {tuple(round(c, 4) for c in H0)}, плечо качалки к вертикальной тяге {av * 1000:.0f} мм, '
-          f'вертикальная тяга меняет длину на {var * 1000:.1f} мм; промежуточный рычаг ±{math.degrees(max(abs(a) for a in ei)):.1f}°, '
+          f'вертикальная тяга меняет длину на {var * 1000:.1f} мм, до трубы молниеотвода в киле {gap * 1000:.1f} мм; '
+          f'промежуточный рычаг ±{math.degrees(max(abs(a) for a in ei)):.1f}°, '
           f'качалка киля {math.degrees(min(fe)):.1f}…{math.degrees(max(fe)):.1f}°')
     return dict(stick=stick, elev=elev, lev=lev, ei=ei, fe=fe, H0=H0, V0=V0)
 
 
 # ── Детали цепи ─────────────────────────────────────────────────────────────
 
-def rod2(name, ru, a, b, r, doc, eye=V((0, 0, 1))):
-    """Тяга, у которой ушки наконечников поперёк оси eye (ось пальца)."""
-    ob = rod(name, ru, a, b, r, doc)
+def rod2(name, ru, a, b, r, doc, eye=V((0, 0, 1)), twist_a=False):
+    """Тяга, у которой ушки наконечников поперёк оси eye (ось пальца); twist_a — см. rod()."""
+    ob = rod(name, ru, a, b, r, doc, twist_a=twist_a)
     ob['eye'] = list(eye)
     q = basis(b - a, up=V(eye).cross((b - a).normalized())).to_quaternion()
     ob.rotation_quaternion = q
@@ -1265,16 +1418,21 @@ def link_bar(p, a, b, w, n, t, mi=0):
         cyl(p, q - n * t / 2, q + n * t / 2, w / 2, mi, segs=16)
 
 
-def bellcrank_part(name, ru, doc, c, pins, n, t=0.005, w=0.018, mat='alu', rig=None, hub=0.012):
+def bellcrank_part(name, ru, doc, c, pins, n, t=0.005, w=0.018, mat='alu', rig=None, hub=0.012, pin_lo=0.013, pin_hi=0.013):
     """Качалка: плечи от оси c к пальцам pins в плоскости с нормалью n; rig — точка отверстия под стопорный штифт;
-    hub — полудлина втулки оси (между щеками кронштейна)."""
+    hub — полудлина втулки оси (между щеками кронштейна); pin_lo, pin_hi — вылет пальцев под пластину и над ней
+    (над пластиной — гайка; при малом pin_hi там только головка болта, гайка — снизу, под ушком тяги)."""
     p = P(name, ru, mat, doc)
     for q in pins:
         link_bar(p, c, q, w, n, t)
     cyl(p, c - n * hub, c + n * hub, 0.009, p.m(M['steel']), segs=16)                # втулка оси
     for q in pins:
-        cyl(p, q - n * 0.013, q + n * 0.013, 0.0035, p.m(M['steel']), segs=10)        # палец
-        hexa(p, q + n * 0.012, q + n * 0.016, 0.009, p.m(M['steel']))
+        cyl(p, q - n * pin_lo, q + n * pin_hi, 0.0035, p.m(M['steel']), segs=10)      # палец
+        if pin_hi >= 0.012:
+            hexa(p, q + n * (pin_hi - 0.001), q + n * (pin_hi + 0.003), 0.009, p.m(M['steel']))
+        else:
+            hexa(p, q + n * (t / 2), q + n * pin_hi, 0.009, p.m(M['steel']))            # головка болта на пластине
+            hexa(p, q - n * (pin_lo + 0.004), q - n * pin_lo, 0.009, p.m(M['steel']))   # гайка под ушком тяги
     if rig is not None:
         ring_tube(p, rig, n, 0.0055, 0.0028, t + 0.002, p.m(M['steel']), segs=14)     # втулка отверстия под штифт
     return pivot_obj(p, c)
@@ -1401,39 +1559,30 @@ def build_sticks_and_chains():
     for s, w in wings.items():
         tag, gen, gen2 = ('LH', 'левого', 'левом') if s > 0 else ('RH', 'правого', 'правом')
         objs[('long', s)] = rod2(f'Aileron long push rod in the {tag} wing', f'Длинная тяга {gen} элерона в крыле: через направляющие ролики корневой нервюры, '
-                                 'нервюры крепления качалки закрылка и малой нервюры', ROOT_END[s], w.W0e, 0.010, 'AMM 27-10 2., рис. 2')
-        objs[('wbc', s)] = bellcrank_part(f'Aileron bellcrank {tag}', f'Качалка {gen} элерона на опорном кронштейне нервюры крепления качалки элерона: '
-                                          'длинная тяга — сзади, короткая — снаружи; отверстие под стопорный штифт', 'AMM 27-10 2., рис. 2',
-                                          w.P, [w.W0, w.S0], w.n, w=0.020, rig=w.P + (w.S0 - w.P) * 0.5)
-        p = P(f'Aileron bellcrank support bracket {tag}', f'Опорный кронштейн качалки {gen} элерона на нервюре крепления качалки элерона (x = 3,88)',
-              'black', 'AMM 27-10 рис. 2, 57-10')
-        xr = s * 3.906                                               # на жёсткой вставке нервюры (x 3,88…3,904, wing.py)
-        for dz in (-0.012, 0.012):                                   # узкие щёки: выше — верхний пояс заднего лонжерона
-            a = V((xr, w.P.y, w.P.z + dz))
-            b = w.P + w.n * dz
-            link_bar(p, a, b, 0.016, w.n, 0.004)
-        lo, hi = R.wing_section(xr, w.P.y)
-        z0 = max(w.P.z - 0.03, (lo or -9) + 0.004)
-        z1 = min(w.P.z + 0.03, (hi or 9) - 0.004)
-        y0, y1 = max(w.P.y - 0.02, 0.4835), min(w.P.y + 0.02, 0.501)  # позади пояса заднего лонжерона (y 0,48), до выреза под тягу
-        box(p, V((xr, (y0 + y1) / 2, (z0 + z1) / 2)), (0.004, y1 - y0, z1 - z0), None, 0, bevel=0.001)
-        cyl(p, w.P - w.n * 0.02, w.P + w.n * 0.02, 0.004, p.m(M['steel']), segs=10)
-        p.done()
-        objs[('short', s)] = rod2(f'Aileron short push rod {tag}', f'Короткая тяга: качалка — кабанчик {gen} элерона; регулировкой длины смещают диапазон '
-                                  'отклонения элерона вверх или вниз', w.S0e, w.H0e, 0.0065, 'AMM 27-10 2., рис. 2')
-        p = P(f'Aileron control horn {tag}', f'Кабанчик {gen} элерона: пластина на трёх болтах к корневой части элерона, проходит в прорезь задней стенки '
-              'крыла; палец короткой тяги — над осью навески', 'alu', 'AMM 27-10 рис. 2, 57-60')
-        n = w.hax
-        root = w.hc + w.up * 0.012                                 # ось навески — у нижней обшивки: пластина начинается выше
-        link_bar(p, root, w.H0, 0.018, n, 0.006)
-        aft = n.cross(w.H0 - w.hc).normalized()
-        aft = aft if aft.y > 0 else -aft
-        link_bar(p, root, root + aft * 0.050, 0.014, n, 0.006)                                   # полка вдоль корня элерона
-        for k in range(3):
-            q = root + aft * (0.012 + 0.017 * k) + n * 0.004
-            hexa(p, q, q + n * 0.004, 0.008, p.m(M['steel']))
-        cyl(p, w.H0 - n * 0.012, w.H0 + n * 0.012, 0.0035, p.m(M['steel']), segs=10)
-        objs[('horn', s)] = pivot_obj(p, w.hc)
+                                 'нервюры крепления качалки закрылка и малой нервюры', ROOT_END[s], w.W0e, 0.010, 'AMM 27-10 2., рис. 2', eye=w.n)
+        objs[('wbc', s)] = bellcrank_part(f'Aileron bellcrank {tag}', f'Качалка {gen} элерона у нервюры крепления качалки элерона: длинная тяга вдоль '
+                                          'размаха поворачивает качалку, короткая тяга идёт от неё назад-вниз к кабанчику; отверстие под '
+                                          'стопорный штифт', 'AMM 27-10 2., рис. 2; 12-30 рис. 2',
+                                          w.P, [w.W0, w.S0], w.n, w=0.020, rig=w.P + (w.S0 - w.P) * 0.5, pin_lo=0.0105)
+        bellcrank_mount(f'Aileron bellcrank support bracket {tag}', f'Опора качалки {gen} элерона на жёсткой вставке нервюры крепления качалки: '
+                        'основание, ось и болты, гайки которых доступны через лючок качалки', 'AMM 27-10 рис. 2, 57-10 2.E',
+                        s, wingctl.X_AIL_RIB, w.P, w.n, w.e1)
+        BELLCRANKS[f'aileron{s:+d}'] = dict(x_rib=wingctl.X_AIL_RIB, p=list(w.P), n=list(w.n), e1=list(w.e1), e2=list(w.e2))
+        objs[('short', s)] = rod2(f'Aileron short push rod {tag}', f'Короткая тяга: качалка — кабанчик {gen} элерона; выходит под крыло через обтекатель на '
+                                  'лючке качалки. Регулировкой длины смещают диапазон отклонения элерона вверх или вниз',
+                                  w.S0e, w.H0e, 0.0065, 'AMM 27-10 2., рис. 2; 12-30 рис. 2', eye=w.hn, twist_a=True)
+        # кабанчик элерона — наружный, под крылом
+        objs[('horn', s)] = surface_horn(
+            f'Aileron control horn {tag}', f'Кабанчик {gen} элерона: алюминиевая деталь на трёх болтах к нижней обшивке элерона, служит и одной из '
+            'навесок; палец короткой тяги — под осью навески, поэтому тяга, идущая назад, поднимает элерон',
+            'AMM 57-60 2.C, рис. 1; 27-10 3.', s, w.hc, w.H0, wingctl.AIL_HORN_REAR_Y, w.hn)
+        # направляющие длинной тяги: № 2 — на нервюре крепления качалки закрылка, № 3 — на малой нервюре (AMM 27-10 2.)
+        for xg, nm, where in ((wingctl.X_FLAP_RIB, 'Aileron push rod guide 2 (flap control rib)', 'на нервюре крепления качалки закрылка'),
+                              (wingctl.X_GUIDE_RIB, 'Aileron push rod guide 3 (small rib)', 'на малой нервюре')):
+            c = ROOT_END[s] + w.d * ((s * xg - ROOT_END[s].x) / w.d.x)
+            cap = rear_spar_cap_edge(s * xg) + 0.004                 # пластина направляющей — позади поясов заднего лонжерона
+            roller_guide(f'{nm} {tag}', f'Направляющая № {nm.split()[4]} тяги {gen} элерона — {where}: два ролика над и под тягой',
+                         s * (xg + 0.004), c + w.d * (0.004 / abs(w.d.x)), w.d, 'AMM 27-10 2., рис. 2', r_rod=0.010, y_min=cap, r_roll=0.007)
 
     # руль высоты: короткая тяга, промежуточный рычаг, длинная тяга, качалка киля, вертикальная тяга, кабанчик
     objs['el_short'] = rod2('Elevator short push rod', 'Короткая тяга руля высоты: рычаг вала — промежуточный рычаг на переднем лонжероне центроплана',
@@ -1447,23 +1596,78 @@ def build_sticks_and_chains():
                                 'вертикальная тяга — к переднему; отверстие под стопорный штифт', 'AMM 27-30 2., рис. 2',
                                 FE_C, [FE_LONG, E['V0']], AX_X, t=0.008, w=0.022, rig=FE_C + (E['V0'] - FE_C) * 0.45, hub=0.007)
     objs['el_vert'] = rod2('Elevator vertical push rod', 'Вертикальная тяга руля высоты в киле: качалка — кабанчик руля высоты',
-                           E['V0'], E['H0'] + V((EYE_OFF, 0, 0)), 0.009, 'AMM 27-30 2., рис. 2', eye=AX_X)
-    p = P('Elevator control horn with balance weight', 'Кабанчик руля высоты на средней нервюре руля: передний выступ с балансировочным грузом входит '
-          'в стабилизатор и упирается в ограничители хода (вверх — болт с втулкой на кронштейне механизма триммера, вниз — колодка под '
-          'верхней обшивкой); снизу — палец вертикальной тяги', 'alu', 'AMM 27-30 2., рис. 2, 55-20')
+                           E['V0'], E['H0'], 0.009, 'AMM 27-30 2., рис. 2', eye=AX_X)
+    p = P('Elevator control horn with balance weight', 'Кабанчик руля высоты на рычажной нервюре руля: его передняя часть входит в стабилизатор. '
+          'Упорная пластина посередине ограничивает ход: при полном отклонении руля вверх она ложится на втулку болта в кронштейне '
+          'механизма триммера, при полном отклонении вниз упирается в колодку под верхней обшивкой стабилизатора. Боковые щёки обходят '
+          'упоры и несут вилку вертикальной тяги и балансировочный груз', 'alu', 'AMM 27-30 2., рис. 2; 06-00 рис. 2')
     hc, H0 = ELEV_HINGE, E['H0']
-    # выступ — узкая полоса высотой 8 мм (link_bar: ширина — в плоскости кабанчика), толщиной 20 мм поперёк:
-    # между упорным болтом снизу и колодкой сверху; подшипник оси — в средней опоре (structure.py)
-    corner = V((0, 5.279, 1.296))
-    tongue = [hc + (corner - hc).normalized() * 0.013, corner, V((0, 5.222, 1.296))]   # от ступицы; над упорным болтом (y 5,279)
-    for a, b in zip(tongue, tongue[1:]):
-        link_bar(p, a, b, 0.008, AX_X, 0.020)
-    link_bar(p, V((0, 5.240, 1.293)), H0, 0.016, AX_X, 0.010)                        # проушина вертикальной тяги
+    th_u, th_d = math.radians(ELEV_UP), math.radians(ELEV_DOWN)
+
+    def in_horn(q, e):
+        """Неподвижная точка q в системе кабанчика, когда руль отклонён на e (вверх — плюс)."""
+        return rot_about(hc, AX_X, -e, V(q))
+
+    def hp(u, w, x=0.0):
+        """Точка кабанчика: u — вдоль самолёта от оси руля (вперёд — минус), w — вверх от оси."""
+        return V((x, hc.y + u, hc.z + w))
+
+    # Упоры не регулируются и стоят на месте (AMM 27-30 2.), ход задаёт форма кабанчика. В системе кабанчика втулка
+    # болта берётся в положении «руль полностью вверх», низ колодки — в положении «руль полностью вниз»: упорная
+    # пластина лежит между ними. При полном отклонении вниз её верх прилегает к низу колодки всей плоскостью,
+    # при полном отклонении вверх низ касается втулки.
+    bush = in_horn((0, STOP_Y, BUSH_Z), th_u)
+    zb = R.hit((0.0, STOP_Y, 2.5), (0, 0, -1), 1.5)[0].z - 0.009      # низ колодки: 3 мм под обшивкой, колодка 6 мм
+    b_r, b_f = in_horn((0, STOP_Y + 0.015, zb), -th_d), in_horn((0, STOP_Y - 0.015, zb), -th_d)
+    d = (b_f - b_r).normalized()                                     # вдоль низа колодки, вперёд
+    nrm = V((0, -d.z, d.y))
+    nrm = nrm if nrm.z > 0 else -nrm                                 # от пластины к колодке
+    gap = 0.0003
+    t_pl = (b_r - bush).dot(nrm) - BUSH_R - 2 * gap                  # толщина пластины — всё место между колодкой и втулкой
+    assert 0.003 < t_pl < 0.008, t_pl
+    a_pl = b_r - d * 0.012 - nrm * (gap + t_pl / 2)                  # задний конец — позади колодки
+    c_pl = b_r + d * 0.024 - nrm * (gap + t_pl / 2)                  # до переднего края колодки не доходит: дальше — полка кронштейна
+    link_bar(p, a_pl, c_pl, t_pl, AX_X, 0.020)                                       # упорная пластина
+    neck = a_pl - nrm * 0.003                                        # шейка подходит к пластине снизу: её торец ниже низа колодки
+    link_bar(p, hc + (neck - hc).normalized() * 0.0125, neck, 0.010, AX_X, 0.020)    # шейка от ступицы
     ring_tube(p, hc, AX_X, 0.014, 0.0095, 0.020, 0, segs=20)                        # ступица на подшипнике средней опоры
-    box(p, V((0, 5.211, 1.293)), (0.050, 0.026, 0.010), None, p.m(M['lead']), bevel=0.002)          # балансировочный груз
-    cyl(p, H0 - V((0.013, 0, 0)), H0 + V((0.013, 0, 0)), 0.0035, p.m(M['steel']), segs=10)
+    # боковые щёки — снаружи головок болта-упора (x ±0,022) и колодки (x ±0,015): над полкой кронштейна механизма
+    # триммера они идут выше неё, под верхней обшивкой — ниже её, а впереди кронштейна опускаются
+    XS, ts = 0.0285, 0.005
+    side = [neck - V((0, 0, 0.001)), hp(-0.058, 0.0100), hp(-0.076, 0.0080), hp(-0.090, 0.0010)]
+    box(p, side[0], (2 * XS + ts, 0.010, 0.005), None, 0, bevel=0.001)               # поперечина позади упоров
+    for k in (1, -1):
+        for a, b in zip(side, side[1:]):
+            link_bar(p, a + V((k * XS, 0, 0)), b + V((k * XS, 0, 0)), 0.006, AX_X, ts)
+    box(p, side[-1], (2 * XS + ts, 0.008, 0.006), None, 0, bevel=0.001)              # передняя поперечина
+    # вилка вертикальной тяги и балансировочный груз впереди неё (AMM 27-30 рис. 2: Elevator Actuating Lever, Balance Weight)
+    wr = hp(-0.119, -0.0175, EROD_X)
+    for k in (1, -1):
+        o = V((k * 0.0062, 0, 0))
+        link_bar(p, side[-1] + V((EROD_X, 0, 0)) + o, H0 + o, 0.014, AX_X, 0.003)
+        link_bar(p, H0 + o, wr + o, 0.010, AX_X, 0.003)
+    # груз: спереди и снизу ограничен торцом швеллера передней стенки киля (y 5,20; z 1,235) — мимо него груз проходит
+    # при отклонении руля вверх; сзади — вертикальной тягой; по ширине — тросом триммера (x от 0,022)
+    box(p, hp(-0.128, -0.0175, EROD_X), (0.032, 0.018, 0.013), None, p.m(M['lead']), bevel=0.002)    # балансировочный груз
+    # болт вертикальной тяги: гайка — с правой стороны, головка — с левой, где рядом наконечник троса триммера
+    cyl(p, H0 - V((0.0125, 0, 0)), H0 + V((0.0105, 0, 0)), 0.0035, p.m(M['steel']), segs=10)
+    hexa(p, H0 - V((0.0125, 0, 0)), H0 - V((0.0077, 0, 0)), 0.009, p.m(M['steel']))
+    hexa(p, H0 + V((0.0077, 0, 0)), H0 + V((0.0105, 0, 0)), 0.009, p.m(M['steel']))
+    # запас до верхней обшивки стабилизатора при полном отклонении руля вниз (нос кабанчика вверху)
+    room = 9.0
+    for v in p.bm.verts:
+        q = rot_about(hc, AX_X, -th_d, v.co)
+        h = R.hit((q.x, q.y, 2.5), (0, 0, -1), 1.5)[0]
+        if h is not None:
+            room = min(room, h.z - 0.003 - q.z)
+    print(f'ELV упорная пластина {t_pl * 1000:.1f} мм между колодкой и втулкой; при полном отклонении вниз до верхней обшивки '
+          f'изнутри не меньше {room * 1000:.1f} мм')
     objs['e_horn'] = pivot_obj(p, hc)
 
+    with open(os.path.join(HERE, 'wing-bellcranks.json'), 'w') as f:
+        json.dump({k: {a: ([round(c, 4) for c in b] if isinstance(b, list) else b) for a, b in v.items()} for k, v in sorted(BELLCRANKS.items())},
+                  f, indent=1)
+        f.write('\n')
     lines = {'aileron_cs_RH': [RB_CS + V((0, 0, CS_EYE[-1])), ROOT_END[-1]], 'aileron_cs_LH': [RB_CS + V((0, 0, CS_EYE[1])), ROOT_END[1]],
              'elevator_long': [EI_HIe, FE_LONG], 'aileron_under_console': [FB_AFT + V((0, 0, EYE)), AI_LOe]}
     with open(os.path.join(HERE, 'controls-lines.json'), 'w') as f:
@@ -1508,7 +1712,7 @@ def build_sticks_and_chains():
         key_rot(objs['ei'], rot(AX_X, pi), fr)
         key_rod2(objs['el_long'], rot_about(EI_C, AX_X, pi, EI_HIe), rot_about(FE_C, AX_X, pf, FE_LONG), fr)
         key_rot(objs['fe'], rot(AX_X, pf), fr)
-        key_rod2(objs['el_vert'], rot_about(FE_C, AX_X, pf, E['V0']), rot_about(ELEV_HINGE, AX_X, e, E['H0'] + V((EYE_OFF, 0, 0))), fr)
+        key_rod2(objs['el_vert'], rot_about(FE_C, AX_X, pf, E['V0']), rot_about(ELEV_HINGE, AX_X, e, E['H0']), fr)
         key_rot(objs['e_horn'], rot(AX_X, e), fr)
     push_clip(animated, ELV['name'], rest)
     return objs
@@ -1590,6 +1794,7 @@ def check():
     bpy.context.view_layer.update()
     others = {'trim': owner_bvh(trim), 'controls': owner_bvh(src), 'layers': owner_bvh([o for o in new if o.type == 'MESH'])}
     mine = [o for o in COL.all_objects if o.type == 'MESH']
+    basis = {o: o.matrix_basis.copy() for o in mine}          # нейтраль: после обхода клипов детали возвращаются в неё
     seen = set()
     for clip, frames in ((FLAP_CLIP, FRAMES), (AIL['name'], AIL['frames']), (ELV['name'], ELV['frames'])):
         set_clip(clip)
@@ -1617,23 +1822,51 @@ def check():
                         print(f'OUTSIDE {clip[:8]} f{fr} {o.name}: {out}/{len(vs)} вершин снаружи обшивки')
     set_clip(None)
     bpy.context.scene.frame_set(FRAMES[0])
+    for o, m in basis.items():
+        o.matrix_basis = m
+    bpy.context.view_layer.update()
+
+
+import time  # noqa: E402
+_t0 = time.time()
+
+
+def _stage(name):
+    global _t0
+    print(f'STAGE {name}: {time.time() - _t0:.0f} с', flush=True)
+    _t0 = time.time()
 
 
 objs, frames = build()
+_stage('привод закрылков')
 bpy.context.scene.frame_set(FRAMES[0])
 push_clip(list(COL.all_objects), FLAP_CLIP)          # закрылки убраны — нейтраль
-pedal_adjusters()
-import rudder_cables  # noqa: E402  тросы кабины РН: кронштейны и пружины у перегородки, S-трубки салона (AMM 27-20 рис. 2, 3)
-rudder_cables.build(COL)
-elevator_rod_guides()
+WING_ONLY = bool(os.environ.get('WING_ONLY'))        # отладка проводки в крыле: без узлов кабины и хвоста
+if not WING_ONLY:
+    pedal_adjusters()
+    import rudder_cables  # noqa: E402  тросы кабины РН: кронштейны и пружины у перегородки, S-трубки салона (AMM 27-20 рис. 2, 3)
+    rudder_cables.build(COL)
+    elevator_rod_guides()
+_stage('узлы кабины')
 build_sticks_and_chains()
-trim_tail()
-trim_handwheel()
+_stage('ручки и проводка элеронов и руля высоты')
+if not WING_ONLY:
+    trim_tail()
+    trim_handwheel()
+    _stage('триммер')
 if os.environ.get('CHECK'):
     check()
 dup = [o.name for o in COL.all_objects if '.0' in o.name[-4:]]
 assert not dup, dup
-size = ref.export(COL, OUT, R.lift, anim=True, mode='NLA_TRACKS')
+if not os.environ.get('KEEP_SCENE'):
+    # в сцене исходника сотни объектов с драйверами: на каждом кадре экспорта анимации они пересчитываются
+    # (экспорт шёл 15 минут). Слою они больше не нужны — убираем всё, кроме его деталей.
+    _keep = set(COL.all_objects)
+    for _o in [o for o in bpy.data.objects if o not in _keep]:
+        bpy.data.objects.remove(_o, do_unlink=True)
+    _stage('очистка сцены')
+size = ref.export(COL, OUT, R.lift, anim=not os.environ.get('NO_ANIM'), mode='NLA_TRACKS')
+_stage('экспорт')
 with open(os.path.splitext(OUT)[0] + '.labels.json', 'w') as f:
     json.dump({'labels': lib.LABELS, 'materials': lib.MAT_RU}, f, ensure_ascii=False, indent=1)
 print(f'CONTROLS_OK {OUT} {size / 1e6:.2f} MB, parts {len(COL.all_objects) - 1}')

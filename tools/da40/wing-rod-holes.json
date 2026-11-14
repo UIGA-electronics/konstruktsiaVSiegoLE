@@ -2,77 +2,89 @@
  "+1.205": [
   {
    "rod": "Aileron long push rod in the LH wing",
-   "y": 0.6,
-   "z": -0.0679,
+   "y": 0.599,
+   "z": -0.0683,
    "r": 0.0141
   },
   {
    "rod": "Flap long push rod LH",
    "y": 0.625,
    "z": -0.155,
-   "r": 0.013
+   "r": 0.0131
   }
  ],
- "+2.800": [
+ "+2.366": [
   {
    "rod": "Aileron long push rod in the LH wing",
-   "y": 0.5532,
-   "z": 0.0516,
-   "r": 0.015
+   "y": 0.5513,
+   "z": 0.0136,
+   "r": 0.0148
+  },
+  {
+   "rod": "Flap long push rod LH",
+   "y": 0.5368,
+   "z": -0.0233,
+   "r": 0.0146
   }
  ],
- "+3.250": [
+ "+3.400": [
   {
    "rod": "Aileron long push rod in the LH wing",
-   "y": 0.54,
-   "z": 0.0853,
-   "r": 0.0153
+   "y": 0.5087,
+   "z": 0.0866,
+   "r": 0.0155
   }
  ],
- "+3.880": [
+ "+4.436": [
   {
    "rod": "Aileron long push rod in the LH wing",
-   "y": 0.5215,
-   "z": 0.1325,
+   "y": 0.466,
+   "z": 0.1597,
+   "r": 0.0161
+  }
+ ],
+ "-4.436": [
+  {
+   "rod": "Aileron long push rod in the RH wing",
+   "y": 0.4661,
+   "z": 0.1587,
    "r": 0.0157
   }
  ],
- "-3.880": [
+ "-3.400": [
   {
    "rod": "Aileron long push rod in the RH wing",
-   "y": 0.5215,
-   "z": 0.1325,
-   "r": 0.0157
+   "y": 0.5087,
+   "z": 0.086,
+   "r": 0.0152
   }
  ],
- "-3.250": [
+ "-2.366": [
   {
    "rod": "Aileron long push rod in the RH wing",
-   "y": 0.54,
-   "z": 0.0853,
-   "r": 0.0153
-  }
- ],
- "-2.800": [
+   "y": 0.5512,
+   "z": 0.0133,
+   "r": 0.0147
+  },
   {
-   "rod": "Aileron long push rod in the RH wing",
-   "y": 0.5532,
-   "z": 0.0516,
-   "r": 0.015
+   "rod": "Flap long push rod RH",
+   "y": 0.5368,
+   "z": -0.0241,
+   "r": 0.0146
   }
  ],
  "-1.205": [
   {
    "rod": "Aileron long push rod in the RH wing",
-   "y": 0.6,
-   "z": -0.0679,
+   "y": 0.599,
+   "z": -0.0683,
    "r": 0.0141
   },
   {
    "rod": "Flap long push rod RH",
    "y": 0.625,
    "z": -0.155,
-   "r": 0.013
+   "r": 0.0131
   }
  ]
 }

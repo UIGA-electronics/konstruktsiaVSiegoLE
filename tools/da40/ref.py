@@ -6,6 +6,7 @@ Z — вверх, нос в −Y) и экспортируются с тем же
 """
 import json
 import os
+import struct
 import bpy
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
@@ -58,6 +59,9 @@ def swept_bvh(objs, samples=9):
     for o in objs:
         add(o)
     anim = [o for o in objs if o.animation_data and o.animation_data.nla_tracks]
+    # поза деталей до обхода клипов: после него свойства остаются такими, как в последнем кадре последнего клипа,
+    # и экспорт записывал в узлы эту позу вместо нейтрали
+    basis = {o: o.matrix_basis.copy() for o in anim}
     names = sorted({t.name.split('.')[0] for o in anim for t in o.animation_data.nla_tracks})
     for nm in names:
         acts, rng = {}, None
@@ -81,6 +85,8 @@ def swept_bvh(objs, samples=9):
         for o, a in keep.items():
             o.animation_data.action = a
     sc.frame_set(f0)
+    for o, m in basis.items():
+        o.matrix_basis = m
     bpy.context.view_layer.update()
     return BVHTree.FromPolygons(verts, polys)
 
@@ -157,6 +163,9 @@ def export(col, path, lift, anim=False, mode='ACTIONS'):
     for o in col.all_objects:
         o.hide_set(False)
         o.select_set(True)
+    # нейтраль анимированных деталей — до экспорта: см. _rest_pose
+    rest = {o.name: o.matrix_basis.decompose() for o in col.all_objects
+            if o is not root and o.animation_data and (o.animation_data.nla_tracks or o.animation_data.action)} if anim else {}
     kw = dict(filepath=path, export_format='GLB', use_selection=True, export_apply=True,
               export_yup=True, export_materials='EXPORT', export_animations=anim,
               export_animation_mode=mode, export_force_sampling=True, export_frame_range=False,
@@ -164,7 +173,45 @@ def export(col, path, lift, anim=False, mode='ACTIONS'):
               export_cameras=False, export_lights=False, export_extras=False)
     valid = set(bpy.ops.export_scene.gltf.get_rna_type().properties.keys())
     bpy.ops.export_scene.gltf(**{k: v for k, v in kw.items() if k in valid})
+    if rest:
+        _rest_pose(path, rest)
     return os.path.getsize(path)
+
+
+def _rest_pose(path, rest):
+    """Вернуть анимированным узлам GLB нейтральную позу.
+
+    Экспортёр glTF перебирает дорожки NLA и записывает в узел то положение, в котором деталь осталась после
+    последнего кадра последнего клипа. Пока на сайте не запущен сценарий, деталь показывается в позе узла:
+    проводка закрылков стояла выпущенной при убранных закрылках, проводка элеронов и ручки — в крайнем
+    положении. Ключи клипов не меняются — правится только поза узла (translation / rotation / scale).
+    rest — {имя: (смещение, кватернион, масштаб)} в координатах Blender до экспорта."""
+    with open(path, 'rb') as f:
+        data = f.read()
+    magic, ver, _ = struct.unpack_from('<4sII', data, 0)
+    jlen, jtype = struct.unpack_from('<I4s', data, 12)
+    assert magic == b'glTF' and jtype == b'JSON', path
+    js = json.loads(data[20:20 + jlen].decode('utf-8'))
+    tail = data[20 + jlen:]
+    done = 0
+    for node in js.get('nodes', []):
+        r = rest.get(node.get('name'))
+        if r is None:
+            continue
+        loc, rot, scl = r
+        node.pop('matrix', None)
+        node['translation'] = [loc.x, loc.z, -loc.y]              # Blender (X, Y, Z) → glTF (X, Z, −Y)
+        node['rotation'] = [rot.x, rot.z, -rot.y, rot.w]
+        node['scale'] = [scl.x, scl.z, scl.y]
+        done += 1
+    out = json.dumps(js, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
+    out += b' ' * (-len(out) % 4)
+    with open(path, 'wb') as f:
+        f.write(struct.pack('<4sII', magic, ver, 20 + len(out) + len(tail)))
+        f.write(struct.pack('<I4s', len(out), b'JSON'))
+        f.write(out)
+        f.write(tail)
+    print(f'REST нейтральная поза записана в {done} узлов из {len(rest)}')
 
 
 def drop_collection(name):

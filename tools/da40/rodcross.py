@@ -16,12 +16,13 @@ import bpy  # noqa: E402
 from mathutils import Vector as V  # noqa: E402
 
 import ref  # noqa: E402
+import wingctl  # noqa: E402
 
-RIBS = [1.205, 2.80, 3.25, 3.88]                    # корневая нервюра и нервюры управления (wing.py)
+RIBS = [wingctl.X_ROOT] + list(wingctl.CONTROL_RIB_X)      # корневая нервюра и нервюры управления (wing.py)
 GAP = 0.004                                         # зазор вокруг сечения тяги
 
 ref.open_source()
-R = ref.Ref()
+R = ref.Ref(exclude=wingctl.WING_BUMPS)
 src = sys.argv[-1] if sys.argv[-1].endswith('.glb') else '/home/user/da40src/out4/da40-controls-addon-raw.glb'
 before = set(bpy.data.objects)
 bpy.ops.import_scene.gltf(filepath=src)

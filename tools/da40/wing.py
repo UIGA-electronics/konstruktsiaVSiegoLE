@@ -18,6 +18,7 @@ from mathutils import Matrix, Vector as V  # noqa: E402
 
 import lib  # noqa: E402
 import ref  # noqa: E402
+import wingctl  # noqa: E402
 from lib import Part, box, cyl, hexa, ring_tube, screw  # noqa: E402
 from sections import TANK_CLR, Sections, ellipse, loft, plate_with_hole, plate_with_holes, resample_closed  # noqa: E402
 import stub  # noqa: E402
@@ -25,7 +26,7 @@ import stub  # noqa: E402
 OUT = sys.argv[1] if len(sys.argv) > 1 else '/tmp/da40-wing-raw.glb'
 
 ref.open_source()
-R = ref.Ref()
+R = ref.Ref(exclude=wingctl.WING_BUMPS)        # обшивка без обтекателей выхода тяг и ниш балансиров
 S = Sections(R)
 OLD = 'Wing structure'
 COL = lib.collection('DA40 Wing structure (AMM 57-10)')
@@ -46,9 +47,13 @@ M = dict(
 ROOT_X = 1.205       # корневая нервюра
 END_X = 5.523        # концевая нервюра
 TANK_RIBS = [(1.385, 'inner 1'), (2.375, 'inner 2'), (2.62, 'outer 1'), (3.02, 'outer 2')]
-CONTROL_RIBS = [(2.80, 'Flap control rib', 'Нервюра крепления качалки закрылка: изгиб с жёсткой вставкой под качалку'),
-                (3.25, 'Flap control rib 2 (push rod guide)', 'Вторая нервюра закрылка: направляющая тяги элерона с роликами'),
-                (3.88, 'Aileron control rib', 'Нервюра крепления качалки элерона: изгиб с жёсткой вставкой')]
+# станции — wingctl.py: качалки стоят у наружных кабанчиков оболочки (AMM 57-10 рис. 1, 52-40 рис. 1)
+CONTROL_RIBS = [(wingctl.X_FLAP_RIB, 'Flap control rib', 'Нервюра крепления качалки закрылка: изгиб с жёсткой вставкой под качалку'),
+                (wingctl.X_GUIDE_RIB, 'Flap control rib 2 (push rod guide)', 'Вторая нервюра закрылка: направляющая тяги элерона с роликами'),
+                (wingctl.X_AIL_RIB, 'Aileron control rib', 'Нервюра крепления качалки элерона: изгиб с жёсткой вставкой')]
+# оси и плоскости качалок (controls.py → wing-bellcranks.json): под опорой качалки — жёсткая вставка нервюры
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wing-bellcranks.json')) as _f:
+    BELLCRANKS = json.load(_f)
 OUTER_RIBS = [4.49, 5.09]
 # вырезы под тяги управления в корневой нервюре и нервюрах управления: сечения тяг во всех клипах
 # слоя controls-addon (tools/da40/rodcross.py → wing-rod-holes.json)
@@ -198,18 +203,32 @@ def control_rib(s, x, name, ru):
     rods = rod_holes(X)
     p = P(f'{name} {tag}', f'{ru} ({SIDE_N[s]} крыло)' + ('; в вырезе проходит длинная тяга элерона' if rods else ''), 'gfrp', 'AMM 57-10 2.E')
     if rods:
-        # облегчающего выреза нет: через нервюру проходит тяга, вставка — впереди выреза под неё
+        # облегчающего выреза нет: через нервюру проходят тяги
         plate_with_holes(p, resample_closed(outer, 40), [stub.circle(q, r, 20) for q, r in rods], (1, 0, 0), 0.004, 0)
-        yr = min(q.y - r for q, r in rods) - 0.004
-        ins = V((X, (y0 + 0.004 + yr) / 2, c.z))
-        size = (0.024, max(0.008, yr - y0 - 0.004), hz * 0.55)
     else:
         hole = ellipse(c, (y1 - y0) * 0.22, hz * 0.22, 40)
         plate_with_hole(p, resample_closed(outer, 40), hole, (1, 0, 0), 0.004, 0)
-        ins = V((X, (y0 + y1) / 2 + 0.01, c.z))
-        size = (0.024, (y1 - y0) * 0.55, hz * 0.55)
-    # изгиб с жёсткой вставкой под кронштейн качалки
-    box(p, ins + V((s * 0.012, 0, 0)), size, Matrix.Identity(3), p.m(M['insert']), bevel=0.003)
+    bc = next((v for k, v in BELLCRANKS.items() if k.endswith(f'{s:+d}') and abs(v['x_rib'] - x) < 1e-6), None)
+    if bc:
+        # жёсткая вставка под опорой качалки: клин между наклонным основанием опоры и нижней обшивкой,
+        # от нервюры наружу до оси качалки (AMM 57-10 2.E: «a bend with a solid insert … where the control bellcrank attaches»)
+        pv, nu, e2 = V(bc['p']), V(bc['n']), V(bc['e2'])
+        top = pv - nu * 0.0187                              # под основанием опоры
+        slope = e2.z / e2.y
+        xm = (X + s * 0.002 + pv.x + s * 0.012) / 2
+        ya = max(top.y - 0.016 * abs(e2.y), rear_web_spar(X) + lin(x, ROOT_X, END_X, 0.078, 0.042) / 2 + 0.001)   # позади пояса лонжерона
+        yb = top.y + 0.008 * abs(e2.y)
+        pts, ys = [], [ya + (yb - ya) * k / 6 for k in range(7)]
+        zt = lambda y: top.z + (y - top.y) * slope          # noqa: E731
+        ys = [y for y in ys if zt(y) > S.lo_in(xm, y) + 0.0015]
+        if len(ys) >= 2:
+            sec = [V((xm, y, zt(y))) for y in ys] + [V((xm, y, S.lo_in(xm, y))) for y in reversed(ys)]
+            plate_with_hole(p, sec, None, (1, 0, 0), abs(pv.x + s * 0.012 - (X + s * 0.002)), p.m(M['insert']))
+    else:
+        # вторая нервюра закрылка: вставка под кронштейн роликов направляющей, впереди выреза под тягу
+        yr = (min(q.y - r for q, r in rods) - 0.004) if rods else (y0 + y1) / 2
+        ins = V((X, (y0 + 0.004 + yr) / 2, c.z))
+        box(p, ins + V((s * 0.012, 0, 0)), (0.024, max(0.008, yr - y0 - 0.004), hz * 0.55), Matrix.Identity(3), p.m(M['insert']), bevel=0.003)
     flanges(p, X, y0, y1, s, 0)
     p.done()
 
@@ -306,27 +325,20 @@ def end_rib(s):
     p.done()
 
 
-HORN_WINDOW = (3.972, 4.034, 0.098, 0.146)          # окно в задней стенке под короткую тягу элерона (controls.py)
-
-
 def rear_web(s):
-    """Задняя стенка; у кабанчика элерона — окно под короткую тягу от качалки к кабанчику."""
+    """Задняя стенка. Короткие тяги закрылка и элерона её не пересекают: они выходят из крыла впереди стенки,
+    через нижнюю обшивку под обтекателем на лючке качалки (AMM 12-30 рис. 1, 2)."""
     tag, gen = SIDE[s]
-    w0, w1, wz0, wz1 = HORN_WINDOW
-    xs = sorted(set([ROOT_X + (5.40 - ROOT_X) * i / 30 for i in range(31)] + [w0, w1]))
-    p = P(f'Rear web {tag}', f'Задняя стенка {gen} крыла: закрывает заднюю кромку перед закрылком и элероном; в местах навесок — анкерные гайки; '
-          'у кабанчика элерона — окно под короткую тягу', 'gfrp', 'AMM 57-10 2.F')
+    xs = [ROOT_X + (5.40 - ROOT_X) * i / 30 for i in range(31)]
+    p = P(f'Rear web {tag}', f'Задняя стенка {gen} крыла: закрывает заднюю кромку перед закрылком и элероном; в местах навесок — '
+          'анкерные гайки', 'gfrp', 'AMM 57-10 2.F')
 
-    def ring(x, zlo=None, zhi=None):
+    def ring(x):
         X = s * x
         y = rear_web_te(X)
         zt, zb = S.up_in(X, y), S.lo_in(X, y)
-        zb, zt = (zb if zlo is None else max(zb, zlo)), (zt if zhi is None else min(zt, zhi))
         return [V((X, y - 0.004, zb)), V((X, y + 0.004, zb)), V((X, y + 0.004, zt)), V((X, y - 0.004, zt))]
-    loft(p, [ring(x) for x in xs if x <= w0], 0)
-    loft(p, [ring(x) for x in xs if x >= w1], 0)
-    for zlo, zhi in ((None, wz0), (wz1, None)):
-        loft(p, [ring(x, zlo, zhi) for x in (w0, (w0 + w1) / 2, w1)], 0)
+    loft(p, [ring(x) for x in xs], 0)
     p.done()
 
 
@@ -406,15 +418,17 @@ def _on_axis(ax, X):
     return p0 + d * ((X - p0.x) / d.x)
 
 
-FLAP_HINGES = [1.33, 1.82, 2.32, 3.30, 3.80]        # пять навесок закрылка (57-50 2.E)
-AIL_HINGES = [4.48, 4.95, 5.34]                     # три навески элерона (57-60 2.D)
+FLAP_HINGES = list(wingctl.FLAP_HINGES)             # пять навесок закрылка (57-50 2.E); станции — по оболочке и 57-10 рис. 4
+AIL_HINGES = list(wingctl.AIL_HINGES)               # три навески элерона (57-60 2.D)
 
 
-def hinge_bracket(s, X, name, ru, ax, kind):
-    """Кронштейн на задней стенке: стойка двумя болтами к стенке, ухо с втулкой на оси
+def hinge_bracket(s, X, name, ru, ax, kind, to_horn=0.0):
+    """Кронштейн на задней стенке (AMM 57-10 рис. 4): стойка двумя болтами к стенке, ухо с втулкой на оси
     поверхности, на передней стороне стенки — анкерная пластина на заклёпках.
-    kind: 'hinge' — обычная навеска; 'flap horn' — у кронштейна закрылка, с лапкой на
-    нижнюю обшивку на трёх болтах; 'ail horn' — у кронштейна элерона, ось держит штифт."""
+    kind: 'hinge' — обычная навеска; 'flap horn' — у кабанчика закрылка: третий болт — снизу, сквозь лапку
+    и нижнюю обшивку; 'ail horn' — у кабанчика элерона: два болта, палец навески стопорит штифт. У навесок
+    кабанчиков вместо анкерной пластины — большие шайбы и самоконтрящиеся гайки изнутри крыла: к ним подходят
+    через лючок качалки (57-10 4.A). to_horn — куда по x продлить палец сквозь проушину кабанчика."""
     h = _on_axis(ax, X)
     yw = rear_web_te(X)
     zlo, zup = S.lo_in(X, yw), S.up_in(X, yw)
@@ -433,29 +447,33 @@ def hinge_bracket(s, X, name, ru, ax, kind):
     # втулка с буртиком и палец навески
     cyl(p, h - V((0.0070, 0, 0)), h + V((0.0070, 0, 0)), 0.0048, p.m(M['steel']), segs=14)
     ring_tube(p, h - V((s * 0.0065, 0, 0)), V((1, 0, 0)), 0.0075, 0.0045, 0.0012, p.m(M['steel']), segs=18)
-    cyl(p, h - V((0.018, 0, 0)), h + V((0.018, 0, 0)), 0.0025, p.m(M['steel']), segs=10)
+    cyl(p, h - V((0.018, 0, 0)) + V((min(to_horn, 0.0), 0, 0)), h + V((0.018, 0, 0)) + V((max(to_horn, 0.0), 0, 0)), 0.0025,
+        p.m(M['steel']), segs=10)
     # болты сквозь стойку и стенку: головки сзади, гайки спереди
     for dz in (-0.011, 0.011):
         q = V((X, yb + 0.003, zc + dz * min(1.0, (z1 - z0) / 0.034)))
         hexa(p, q, q + V((0, 0.004, 0)), 0.008, p.m(M['steel']))
         cyl(p, q, q - V((0, 0.020, 0)), 0.0024, p.m(M['steel']), segs=8)
+    if kind in ('flap horn', 'ail horn'):
+        # большие шайбы и самоконтрящиеся гайки болтов стойки — на передней стороне стенки, внутри крыла
+        for dz in (-0.011, 0.011):
+            q = V((X, yw - 0.004, zc + dz * min(1.0, (z1 - z0) / 0.034)))
+            cyl(p, q, q - V((0, 0.0012, 0)), 0.0075, p.m(M['steel']), segs=14)
+            hexa(p, q - V((0, 0.0012, 0)), q - V((0, 0.0055, 0)), 0.008, p.m(M['steel']))
     if kind == 'flap horn':
-        # лапка на нижнюю обшивку: три болта снизу (большие шайбы и самоконтрящиеся гайки изнутри)
-        # лапка смещена наружу от стойки: над ней по ходу закрылка проходит плечо качалки (controls.py: x 2,77 + 0,058)
-        fy = yw - 0.024
-        fx = X + s * 0.024
-        fz = S.lo_in(fx, fy) + 0.002
-        box(p, V((fx, fy, fz)), (0.030, 0.044, 0.003), Matrix.Identity(3), 0, bevel=0.0008)
-        for dx, dy in ((-0.009, -0.012), (0.009, -0.012), (0.0, 0.010)):
-            q = V((fx + dx, fy + dy, fz + 0.0015))
-            # головка болта снаружи под обшивкой, шайба и гайка на лапке внутри крыла
-            cyl(p, q + V((0, 0, 0.006)), q - V((0, 0, 0.011)), 0.0024, p.m(M['steel']), segs=8)
-            cyl(p, q - V((0, 0, 0.011)), q - V((0, 0, 0.013)), 0.0055, p.m(M['steel']), segs=12)
-            cyl(p, q, q + V((0, 0, 0.001)), 0.0065, p.m(M['steel']), segs=14)
-            hexa(p, q + V((0, 0, 0.001)), q + V((0, 0, 0.005)), 0.008, p.m(M['steel']))
+        # лапка под нижней обшивкой у стенки: третий болт — снизу вверх, большая шайба и гайка изнутри крыла
+        fy = yw - 0.016
+        fz = S.lo_in(X, fy)
+        # лапка сдвинута от кабанчика внутрь: рядом, под обтекателем, выходит из крыла короткая тяга закрылка
+        box(p, V((X - s * 0.003, fy + 0.010, fz - 0.010 - 0.0015)), (0.026, 0.052, 0.003), Matrix.Identity(3), 0, bevel=0.0008)
+        q = V((X, fy, fz))
+        cyl(p, q - V((0, 0, 0.0145)), q + V((0, 0, 0.007)), 0.0024, p.m(M['steel']), segs=8)
+        hexa(p, q - V((0, 0, 0.0165)), q - V((0, 0, 0.0130)), 0.008, p.m(M['steel']))
+        cyl(p, q, q + V((0, 0, 0.0012)), 0.0075, p.m(M['steel']), segs=14)
+        hexa(p, q + V((0, 0, 0.0012)), q + V((0, 0, 0.0055)), 0.008, p.m(M['steel']))
     elif kind == 'ail horn':
-        q = h + V((s * 0.012, 0, 0))
-        cyl(p, q - V((0, 0, 0.007)), q + V((0, 0, 0.007)), 0.0012, p.m(M['steel']), segs=8)   # штифт пальца
+        q = h + V((0.012 if to_horn <= 0 else -0.012, 0, 0))
+        cyl(p, q - V((0, 0, 0.007)), q + V((0, 0, 0.007)), 0.0012, p.m(M['steel']), segs=8)   # штифт пальца (roll pin)
     p.done()
     if kind == 'hinge':
         a = P(name + ' anchor-nut plate', 'Анкерная пластина на передней стороне задней стенки: две гайки под болты кронштейна, держится на заклёпках',
@@ -478,11 +496,14 @@ def hinges(s):
         hinge_bracket(s, s * x, f'Flap hinge bracket {k + 1} {tag}',
                       f'Кронштейн навески {gen} закрылка № {k + 1} на задней стенке: два болта, ухо с втулкой и пальцем',
                       fl, 'hinge')
-    hinge_bracket(s, s * 2.837, f'Flap control horn hinge bracket {tag}',
-                  f'Кронштейн навески у кабанчика {gen} закрылка: стойка на задней стенке и лапка на нижней обшивке на трёх болтах; '
-                  'гайки — через люк качалки', fl, 'flap horn')
-    hinge_bracket(s, s * 4.055, f'Aileron control horn hinge bracket {tag}',
-                  f'Кронштейн навески у кабанчика {gen} элерона: палец фиксирует штифт', ai, 'ail horn')
+    # навески у кабанчиков стоят с внутренней стороны, вплотную к проушине кабанчика (wingctl.HORN_BRACKET_OFF)
+    off = wingctl.HORN_BRACKET_OFF
+    hinge_bracket(s, s * (wingctl.X_FLAP_HORN - off), f'Flap control horn hinge bracket {tag}',
+                  f'Кронштейн навески у кабанчика {gen} закрылка: три болта — два сквозь заднюю стенку и один снизу, сквозь лапку и '
+                  'нижнюю обшивку; большие шайбы и гайки — изнутри крыла, через лючок качалки', fl, 'flap horn', to_horn=s * 0.020)
+    hinge_bracket(s, s * (wingctl.X_AIL_HORN - off), f'Aileron control horn hinge bracket {tag}',
+                  f'Кронштейн навески у кабанчика {gen} элерона: два болта сквозь заднюю стенку, гайки — изнутри крыла, через лючок '
+                  'качалки; палец навески стопорит штифт', ai, 'ail horn', to_horn=s * 0.020)
     for k, x in enumerate(AIL_HINGES):
         nm = 'inner' if k == 0 else f'outer {k}'
         hinge_bracket(s, s * x, f'Aileron {nm} hinge bracket {tag}',
