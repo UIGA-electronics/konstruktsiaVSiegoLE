@@ -350,6 +350,32 @@
     }).join('') + '</nav>';
   }
 
+  /* Практикум: вместо полосок спектра — вкладки с картинкой системы и подписью.
+     Полоски без подписей не говорили, куда ведёт касание (на телефоне подсказки
+     title нет вовсе). Лента листается вбок, текущая вкладка — в середине. */
+  var TABS_V = 1;
+  function sysTabs(topic, curId) {
+    var nav = el('nav', 'sys-tabs');
+    nav.setAttribute('aria-label', 'Разделы практикума');
+    nav.innerHTML = '<ol>' + topic.screens.map(function (s, i) {
+      var cur = s.id === curId;
+      var pic = s.img
+        ? '<img src="' + esc(s.img) + '?v=' + TABS_V + '" alt="" width="160" height="100" loading="lazy" decoding="async">'
+        : '<b aria-hidden="true">?</b>';
+      return '<li><a href="#' + s.id + '" data-tone="' + s.id + '"' + (cur ? ' class="is-cur" aria-current="page"' : '') +
+        (s.note ? ' title="' + esc(s.note) + '"' : '') + '><span class="st-pic">' + pic + '</span>' +
+        '<span class="st-t"><i>' + (i + 1) + '</i><span>' + esc(shy(s.short || s.title)) + '</span></span></a></li>';
+    }).join('') + '</ol>';
+    /* после монтирования страницы: текущую вкладку — в середину ленты */
+    setTimeout(function () {
+      var ol = nav.firstChild, a = nav.querySelector('.is-cur');
+      if (!a || !ol.isConnected) return;
+      var li = a.parentNode;
+      ol.scrollLeft = li.offsetLeft - (ol.clientWidth - li.offsetWidth) / 2;
+    }, 0);
+    return nav;
+  }
+
   function doneBar(data) {
     var bar = el('div', 'done-bar');
     var on = isRead(data.id);
@@ -718,7 +744,8 @@
     band.appendChild(bin);
     page.appendChild(band);
     /* язычки разделов главы свисают из-под листа; текущий — его продолжение */
-    if (topic) page.appendChild(el('div', 'doc-strip', spectrum(topic, data.id)));
+    if (topic && isLab(topic)) page.appendChild(el('div', 'doc-strip doc-tabs')).appendChild(sysTabs(topic, data.id));
+    else if (topic) page.appendChild(el('div', 'doc-strip', spectrum(topic, data.id)));
     var wrap = el('div', 'page');
     var cols = el('div', 'cols');
     var m = el('div', 'col-main');
@@ -811,8 +838,8 @@
     text.appendChild(head(data, [
       ['Время чтения', s && s.min ? 'около ' + s.min + ' мин' : '']
     ]));
-    /* под листом системы — язычки всего практикума: где она среди остальных */
-    text.insertAdjacentHTML('beforeend', spectrum(topic, data.id));
+    /* под листом системы — вкладки всего практикума: где она среди остальных */
+    text.appendChild(sysTabs(topic, data.id));
     /* обзор: перечень систем с планом вместо состава */
     if (data.id === 'model-da40') {
       var sec = el('div', 'legend');

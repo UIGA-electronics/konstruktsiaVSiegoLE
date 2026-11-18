@@ -963,6 +963,19 @@ var Figures = (function () {
           .then(addDict).catch(function (e) { console.warn('подписи:', e); })
         : Promise.resolve();
 
+      /* Разборка узлов (opts.explode): узел, к которому подвели камеру,
+         раскладывается на детали, как на рисунке AMM в разнесённом виде.
+         Смещения деталей считает сборщик модели (tools/da40/gear.py):
+         { groups: [{ id, title, near, far, parts: { имя узла: [dx, dy, dz] } }] }
+         в осях glTF, метры. На странице — { src, chips: [{ title, groups, view }] }:
+         кнопки, которые подводят камеру к узлу и раскладывают его. */
+      var exOpts = !opts.explode ? null : typeof opts.explode === 'string' ? { src: opts.explode } : opts.explode;
+      var exData = null, exTick = null, exIso = null;
+      var exReady = exOpts
+        ? fetch(withV(exOpts.src)).then(function (r) { return r.json(); })
+          .then(function (d) { exData = d; }).catch(function (e) { console.warn('разборка:', e); })
+        : Promise.resolve();
+
       /* Хвосты, которые к детали отношения не имеют: _1 у одноимённых узлов,
          «.001» от Blender (после чистки имени — просто «001» в конце слова)
          и служебные пометки из словаря. */
@@ -1230,7 +1243,7 @@ var Figures = (function () {
       }
 
       var first = files.filter(function (f) { return f.on; });
-      Promise.all(first.map(loadFile).concat([dictReady])).then(function () {
+      Promise.all(first.map(loadFile).concat([dictReady, exReady])).then(function () {
         box.textContent = '';
         box.appendChild(renderer.domElement);
         build();
@@ -1308,15 +1321,21 @@ var Figures = (function () {
         return !def.re || def.re.test(nameOf(o));
       }
       function applyParts() {
+        var iso = exIso ? exIso() : null;
         parts.forEach(function (o) {
           var f = o.__file || {};
           if ((f.role === 'context' || f.role === 'system') && f.match && !f.match.test(nameOf(o))) {
             o.visible = false; o.__dim = true; return;
           }
           var on = !(elDef && f.role === 'system') || inElement(elDef, o);
+          /* узел, разложенный кнопкой с isolate (крепления рессоры внутри
+             центроплана): соседние системы и перегородки — призраком */
+          if (on && iso && f.role !== 'base' && !(o.__exg && o.__exg.want) && !(iso.keep && iso.keep.test(nameOf(o)))) on = false;
           o.__dim = !on;
           if (!o.material) return;
-          var lit = f.role === 'system' && !f.plain && on && (glow || !!elDef);
+          /* разложенный узел — в своих материалах: в одном цвете подсветки
+             сталь, резина и полиамид неотличимы */
+          var lit = f.role === 'system' && !f.plain && on && (glow || !!elDef) && !(o.__exg && o.__exg.want);
           if (on && f.role === 'context' && f.opacity != null) {
             /* соседние детали, которые иначе закрывают систему (перегородка) */
             o.material.transparent = true;
@@ -1646,7 +1665,9 @@ var Figures = (function () {
         /* Запоминаем исходный вид, чтобы из любого положения вернуться */
         var home = { pos: camera.position.clone(), tgt: ctrl.target.clone() };
         var rb = iconBtn('M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4.5v4h4', 'Сброс вида');
+        var exApi = null;
         rb.addEventListener('click', function () {
+          if (exApi) exApi.unpin();
           camera.position.copy(home.pos);
           ctrl.target.copy(home.tgt);
           ctrl.update();
@@ -1659,6 +1680,20 @@ var Figures = (function () {
            габарита (как opts.focus), направление и удаление — как opts.view и
            opts.zoom; +z — нос, +x — правое крыло, +y — вверх. Полёт камеры
            плавный, чтобы было видно, откуда и куда она переместилась. */
+        var flight = null;
+        function flyTo(pos, tgt) {
+          var p0 = camera.position.clone(), t0 = ctrl.target.clone(), st = performance.now(), D = reduced ? 0 : 650;
+          if (flight) cancelAnimationFrame(flight);
+          (function step() {
+            var k = D ? Math.min(1, (performance.now() - st) / D) : 1, e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+            camera.position.lerpVectors(p0, pos, e);
+            ctrl.target.lerpVectors(t0, tgt, e);
+            ctrl.update();
+            render();
+            flight = k < 1 ? requestAnimationFrame(step) : null;
+          })();
+        }
+        var camRow = null;
         if (apron && opts.cams !== false) {
           var paneK = zm / (opts.zoom || 1);
           var CAMS = [
@@ -1673,29 +1708,17 @@ var Figures = (function () {
             ['Оперение', [0, 0.22, -0.4], [0.8, 0.35, -0.75], 0.5],
             ['Сверху', [0, 0, 0], [0.001, 1.25, 0.02], 0.85]
           ];
-          var camRow = document.createElement('div');
+          camRow = document.createElement('div');
           camRow.className = 'fig-cams';
           camRow.setAttribute('role', 'group');
           camRow.setAttribute('aria-label', 'Ракурсы камеры');
-          var flight = null;
-          function flyTo(pos, tgt) {
-            var p0 = camera.position.clone(), t0 = ctrl.target.clone(), st = performance.now(), D = reduced ? 0 : 650;
-            if (flight) cancelAnimationFrame(flight);
-            (function step() {
-              var k = D ? Math.min(1, (performance.now() - st) / D) : 1, e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
-              camera.position.lerpVectors(p0, pos, e);
-              ctrl.target.lerpVectors(t0, tgt, e);
-              ctrl.update();
-              render();
-              flight = k < 1 ? requestAnimationFrame(step) : null;
-            })();
-          }
           CAMS.forEach(function (c, i) {
             var b = document.createElement('button');
             b.type = 'button';
             b.className = 'fig-cam' + (i === 0 ? ' is-on' : '');
             b.textContent = c[0];
             b.addEventListener('click', function () {
+              if (exApi) exApi.unpin();
               [].forEach.call(camRow.children, function (x) { x.classList.toggle('is-on', x === b); });
               if (!c[1]) { flyTo(home.pos.clone(), home.tgt.clone()); return; }
               var t = new THREE.Vector3(size.x * c[1][0], size.y * c[1][1], size.z * c[1][2]);
@@ -1860,6 +1883,9 @@ var Figures = (function () {
         function frameOn(el) {
           var bb = new THREE.Box3().setFromObject(el);
           if (bb.isEmpty()) return;
+          /* деталь разбираемого узла: камера летит туда, где деталь окажется
+             после разборки, а не туда, где она стоит в сборе */
+          if (exApi) exApi.aim(el, bb);
           var c = bb.getCenter(new THREE.Vector3());
           var d = Math.max(bb.getSize(new THREE.Vector3()).length() * 1.6, ctrl.minDistance * 4);
           var from = { p: camera.position.clone(), t: ctrl.target.clone() };
@@ -2014,8 +2040,244 @@ var Figures = (function () {
         listen(document, 'fullscreenchange', hideTip);
 
         info.textContent = opts.hint || M3_HINT;
+        if (exData && exData.groups && exData.groups.length) exApi = setupExplode();
+
+        /* ── Разборка узлов ──────────────────────────────────────
+           Режим «авто»: узел раскладывается, когда камера подошла к нему
+           ближе near и он в кадре; собирается, когда камера отошла дальше far
+           (разные пороги — чтобы узел не мигал на границе). «Все узлы» —
+           разложено всё, «выкл.» — всё в сборе. Кнопки узлов подводят камеру
+           и держат узел разложенным, пока не выбран другой ракурс. */
+        function setupExplode() {
+          root.updateMatrixWorld(true);
+          var idx = {};
+          root.traverse(function (o) {
+            if (!o.name) return;
+            var k = norm(o.name);
+            (idx[k] = idx[k] || []).push(o);
+          });
+          var groups = [], byId = {}, all = [], missing = [];
+          var m3 = new THREE.Matrix3(), bx = new THREE.Box3(), v = new THREE.Vector3();
+          exData.groups.forEach(function (gd) {
+            var g = { id: gd.id, title: gd.title, parts: [], p: 0, want: 0, pin: false, pinD: 0, pinT: 0,
+              lo: new THREE.Box3(), hi: new THREE.Box3() };
+            Object.keys(gd.parts || {}).forEach(function (name) {
+              var list = idx[norm(name)], d = gd.parts[name];
+              if (!list) { missing.push(name); return; }
+              list.forEach(function (o) {
+                /* одноимённые узлы: меш внутри группы с тем же именем — двигаем группу */
+                for (var a = o.parent; a; a = a.parent) if (list.indexOf(a) >= 0) return;
+                if (o.__ex) return;
+                var q = { o: o, g: g, w: new THREE.Vector3(d[0], d[1], d[2]), rest: o.position.clone(), off: new THREE.Vector3() };
+                o.__ex = q;
+                o.traverse(function (x) { if (x.isMesh) x.__exg = g; });
+                g.parts.push(q);
+                all.push(q);
+                bx.setFromObject(o);
+                g.lo.union(bx);
+                g.hi.union(bx.translate(q.w));
+              });
+            });
+            if (!g.parts.length) return;
+            g.hi.union(g.lo);
+            g.c = g.lo.getCenter(new THREE.Vector3());
+            g.R = g.lo.getSize(new THREE.Vector3()).length() / 2;
+            g.near = gd.near || clamp(2.4 * g.R + 0.25, 0.4, 1.6);
+            g.far = gd.far || g.near * 2.4 + 0.4;
+            groups.push(g);
+            byId[g.id] = g;
+          });
+          if (missing.length) console.warn('разборка: в модели нет', missing.join(', '));
+          if (!groups.length) return null;
+          /* Смещение записано в осях модели, а позиция детали — в осях её
+             родителя: колёса MSFS висят под повёрнутыми пустышками. Если
+             родитель сам едет при разборке, его ход из смещения вычитаем. */
+          all.forEach(function (q) {
+            var up = null;
+            for (var a = q.o.parent; a && a !== root && !up; a = a.parent) up = a.__ex || null;
+            v.copy(q.w);
+            if (up) v.sub(up.w);
+            q.off.copy(v).applyMatrix3(m3.setFromMatrix4(q.o.parent.matrixWorld).invert());
+          });
+
+          var MODES = [
+            ['авто', 'Узел раскладывается на детали, когда к нему подводят камеру'],
+            ['все узлы', 'Все узлы разложены на детали'],
+            ['выкл.', 'Все узлы в сборе']
+          ];
+          var mode = 0, pinsMoved = false, said = false;
+          var row = document.createElement('div');
+          row.className = 'fig-ex';
+          row.setAttribute('role', 'group');
+          row.setAttribute('aria-label', 'Разборка узлов');
+          var mb = document.createElement('button');
+          mb.type = 'button';
+          mb.className = 'fig-btn fig-ex-mode';
+          function modeLabel() {
+            mb.innerHTML = '<span>Разборка</span><i>' + MODES[mode][0] + '</i>';
+            mb.title = MODES[mode][1] + ' (нажмите, чтобы сменить режим)';
+            mb.classList.toggle('is-on', mode === 1);
+          }
+          modeLabel();
+          mb.addEventListener('click', function () {
+            mode = (mode + 1) % MODES.length;
+            groups.forEach(function (g) { g.pin = false; });
+            active = null;
+            modeLabel();
+            pinsMoved = true;
+            applyParts();
+            kick();
+          });
+          row.appendChild(mb);
+
+          var chips = (exOpts.chips || []).map(function (cd) {
+            var gs = (cd.groups || []).map(function (id) { return byId[id]; }).filter(Boolean);
+            if (!gs.length) return null;
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'fig-btn fig-ex-chip';
+            b.textContent = cd.title;
+            if (cd.hint) b.title = cd.hint;
+            b.setAttribute('aria-pressed', 'false');
+            var ch = { b: b, groups: gs, view: cd.view, iso: !!cd.isolate,
+              keep: cd.keep ? new RegExp(cd.keep, 'i') : null };
+            b.addEventListener('click', function () { fly(ch); });
+            row.appendChild(b);
+            return ch;
+          }).filter(Boolean);
+          bar.insertBefore(row, camRow ? camRow.nextSibling : bar.firstChild);
+
+          /* Камера к узлу: вид задан направлением, удаление — чтобы влез
+             разложенный узел целиком. */
+          var active = null;
+          exIso = function () {
+            return active && active.iso && active.groups.some(function (g) { return g.want; }) ? active : null;
+          };
+          function fly(ch) {
+            var on = !ch.groups.every(function (g) { return g.pin; });
+            groups.forEach(function (g) { g.pin = false; });
+            active = on ? ch : null;
+            pinsMoved = true;
+            if (camRow) [].forEach.call(camRow.children, function (x) { x.classList.remove('is-on'); });
+            if (on) {
+              if (mode === 2) { mode = 0; modeLabel(); }
+              var hb = new THREE.Box3();
+              ch.groups.forEach(function (g) { hb.union(g.hi); });
+              var c = hb.getCenter(new THREE.Vector3());
+              var R = Math.max(hb.getSize(new THREE.Vector3()).length() / 2, 0.1);
+              /* на практикуме панель кнопок лежит поверх нижней части кадра:
+                 узел ставим в середину открытой части */
+              var cr = renderer.domElement.getBoundingClientRect(), br = bar.getBoundingClientRect();
+              var ov = cr.height ? clamp((cr.bottom - br.top) / cr.height, 0, 0.45) : 0;
+              var tv = Math.tan(camera.fov * Math.PI / 360);
+              var vf = 2 * Math.atan(tv * (1 - ov)), hf = 2 * Math.atan(tv * camera.aspect);
+              var d = R / Math.sin(Math.min(vf, hf) / 2);
+              var dir = ch.view ? new THREE.Vector3().fromArray(ch.view).normalize()
+                : camera.position.clone().sub(ctrl.target).normalize();
+              var up = new THREE.Vector3(0, 1, 0).addScaledVector(dir, -dir.y).normalize();
+              var t = c.clone().addScaledVector(up, -ov * d * tv);
+              ch.groups.forEach(function (g) { g.pin = true; g.pinD = d + c.distanceTo(g.c); g.pinT = performance.now(); });
+              flyTo(t.clone().add(dir.multiplyScalar(d)), t);
+            }
+            applyParts();
+            kick();
+          }
+
+          function want(g) {
+            if (mode === 2) return 0;
+            if (mode === 1) return 1;
+            var d = camera.position.distanceTo(g.c);
+            if (g.pin) {
+              /* закреплённый узел отпускаем, только когда камеру увели далеко;
+                 пока она ещё летит к узлу (первые полторы секунды) — не трогаем */
+              if (d < Math.max(g.far, g.pinD) * 1.6 || performance.now() - g.pinT < 1500) return 1;
+              g.pin = false;
+              pinsMoved = true;
+            }
+            /* узел выбран кнопкой или двойным щелчком — соседние не раскрываем */
+            if (focus) return 0;
+            if (d > (g.want ? g.far : g.near)) return 0;
+            if (d < g.R * 1.5) return 1;
+            v.copy(g.c).project(camera);
+            var m = g.want ? 1.3 : 0.9;
+            return v.z < 1 && Math.abs(v.x) < m && Math.abs(v.y) < m ? 1 : 0;
+          }
+          function ease(p) { return p * p * (3 - 2 * p); }
+          var focus = false;
+          function tick(dt) {
+            var moved = false, changed = false;
+            focus = groups.some(function (g) { return g.pin; });
+            for (var i = 0; i < groups.length; i++) {
+              var g = groups[i], w = want(g);
+              if (w !== g.want) { g.want = w; changed = true; }
+              if (g.p === g.want) continue;
+              var sp = reduced ? 1 : dt / 0.9;
+              if (!(sp > 0)) continue;
+              g.p = g.want ? Math.min(1, g.p + sp) : Math.max(0, g.p - sp);
+              var e = ease(g.p);
+              for (var j = 0; j < g.parts.length; j++) {
+                g.parts[j].o.position.copy(g.parts[j].rest).addScaledVector(g.parts[j].off, e);
+              }
+              moved = true;
+            }
+            if (moved) reshadow();
+            if (changed) applyParts();
+            if (changed || pinsMoved) { pinsMoved = false; status(); }
+            return moved;
+          }
+          /* Без постоянного цикла (prefers-reduced-motion) — сразу, без анимации. */
+          function kick() { if (reduced) { tick(1); render(); } }
+          ctrl.addEventListener('change', function () { if (reduced && tick(1)) render(); });
+
+          function status() {
+            chips.forEach(function (ch) {
+              var on = ch.groups.every(function (g) { return g.want; });
+              ch.b.classList.toggle('is-on', on);
+              ch.b.setAttribute('aria-pressed', on ? 'true' : 'false');
+            });
+            if (selEl) return;
+            var open = groups.filter(function (g) { return g.want; });
+            if (open.length) {
+              info.innerHTML = '<b class="m3-sel">Разобрано:</b> ' +
+                Render.esc(open.length === groups.length ? 'все узлы' : open.length > 2 ? 'узлов — ' + open.length
+                  : open.map(function (g) { return g.title; }).join('; ')) +
+                ' <i class="m3-how">— ' + (TOUCH ? 'коснитесь детали' : 'щёлкните по детали') + ': её название по AMM</i>';
+              said = true;
+            } else if (said) {
+              info.textContent = opts.hint || M3_HINT;
+              said = false;
+            }
+          }
+
+          exTick = tick;
+          return {
+            groups: groups,
+            tick: tick,
+            unpin: function () {
+              groups.forEach(function (g) { g.pin = false; });
+              if (active) { active = null; applyParts(); }
+              pinsMoved = true;
+              kick();
+            },
+            /* двойной щелчок по детали: узел держим разложенным и целимся
+               в положение детали после разборки */
+            aim: function (el, bb) {
+              var q = null;
+              for (var a = el; a && a !== root && !q; a = a.parent) q = a.__ex || null;
+              if (!q || mode === 2) return;
+              var g = q.g;
+              if (active && active.groups.indexOf(g) < 0) { active = null; applyParts(); }
+              g.pin = true;
+              g.pinD = Math.max(g.pinD, g.near);
+              g.pinT = performance.now();
+              pinsMoved = true;
+              bb.translate(v.copy(q.w).multiplyScalar(1 - ease(g.p)));
+              kick();
+            }
+          };
+        }
         /* Для проверки из консоли и автотестов: камера, управление, сцена. */
-        frame.__m3 = { THREE: THREE, camera: camera, ctrl: ctrl, root: root, render: render };
+        frame.__m3 = { THREE: THREE, camera: camera, ctrl: ctrl, root: root, render: render, explode: exApi };
         render();
       }
 
@@ -2080,6 +2342,7 @@ var Figures = (function () {
         files.forEach(function (f) { if (f.mixer) f.mixer.update(dt); });
         if (current) reshadow();
         if (ctrl) ctrl.update();
+        if (exTick) exTick(Math.min(dt, 0.1));
         render();
       });
 

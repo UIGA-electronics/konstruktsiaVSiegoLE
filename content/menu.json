@@ -179,6 +179,7 @@
           "screens": [
             {
               "id": "model-da40",
+              "img": "assets/img/tabs/model-da40.webp",
               "min": 6,
               "title": "Самолёт DA 40 NG",
               "short": "Самолёт целиком",
@@ -187,6 +188,7 @@
             },
             {
               "id": "da40-fuselage",
+              "img": "assets/img/tabs/da40-fuselage.webp",
               "min": 7,
               "title": "Фюзеляж и оперение",
               "short": "Фюзеляж и оперение",
@@ -195,6 +197,7 @@
             },
             {
               "id": "da40-cabin",
+              "img": "assets/img/tabs/da40-cabin.webp",
               "min": 7,
               "title": "Кабина: фонарь, дверь, кресла",
               "short": "Кабина",
@@ -203,6 +206,7 @@
             },
             {
               "id": "da40-controls",
+              "img": "assets/img/tabs/da40-controls.webp",
               "min": 9,
               "title": "Управление",
               "short": "Управление",
@@ -211,6 +215,7 @@
             },
             {
               "id": "da40-wing",
+              "img": "assets/img/tabs/da40-wing.webp",
               "min": 6,
               "title": "Крыло: силовой набор",
               "short": "Крыло",
@@ -219,6 +224,7 @@
             },
             {
               "id": "da40-fuel",
+              "img": "assets/img/tabs/da40-fuel.webp",
               "min": 10,
               "title": "Топливная система",
               "short": "Топливо",
@@ -227,6 +233,7 @@
             },
             {
               "id": "da40-powerplant",
+              "img": "assets/img/tabs/da40-powerplant.webp",
               "min": 10,
               "title": "Силовая установка",
               "short": "Силовая установка",
@@ -235,6 +242,7 @@
             },
             {
               "id": "da40-electrical",
+              "img": "assets/img/tabs/da40-electrical.webp",
               "min": 8,
               "title": "Электросистема",
               "short": "Электросистема",
@@ -243,6 +251,7 @@
             },
             {
               "id": "da40-instruments",
+              "img": "assets/img/tabs/da40-instruments.webp",
               "min": 9,
               "title": "Приборное оборудование",
               "short": "Приборное оборудование",
@@ -251,6 +260,7 @@
             },
             {
               "id": "da40-radio",
+              "img": "assets/img/tabs/da40-radio.webp",
               "min": 8,
               "title": "Радиооборудование",
               "short": "Радиооборудование",
@@ -259,6 +269,7 @@
             },
             {
               "id": "da40-gear",
+              "img": "assets/img/tabs/da40-gear.webp",
               "min": 7,
               "title": "Шасси и тормоза",
               "short": "Шасси и тормоза",
@@ -267,6 +278,7 @@
             },
             {
               "id": "da40-air",
+              "img": "assets/img/tabs/da40-air.webp",
               "min": 6,
               "title": "Обогрев и вентиляция",
               "short": "Обогрев и вентиляция",

@@ -78,7 +78,12 @@ const REBUILT = new Set(['da40-fuel.glb', 'da40-wing-structure.glb', 'da40-pitot
    Клипы дополнения — ключи отдельных объектов с тем же именем клипа (Blender
    дописывает .001, .002…); их каналы уходят в клип части с тем же именем. */
 const LAYERS = process.env.LAYERS || '/home/user/da40src/out2';
-const ADDONS = { 'da40-controls.glb': 'da40-controls-addon-raw.glb' };
+const ADDONS = {
+  'da40-controls.glb': 'da40-controls-addon-raw.glb',
+  /* колёса, полуоси и тормоза по AMM 32-10, 32-40 (tools/da40/gear.py → <выход>.wheels.glb); колёса и
+     колпаки Beringer из слоя вырезаны (replaced.json) */
+  'da40-wheels.glb': 'da40-wheels-addon-raw.glb'
+};
 
 async function mergeAddon(io, doc, file) {
   const add = await io.read(file);

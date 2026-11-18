@@ -229,6 +229,34 @@ p{ margin:0 0 18px; }
 .spectrum a{ flex:var(--w,1) 1 0; height:8px; background:var(--acc); transition:height .2s var(--ease); }
 .spectrum a:hover{ height:14px; }
 .spectrum a.is-cur{ height:20px; }
+/* практикум: вкладки систем — картинка и подпись, лента листается вбок;
+   у каждой вкладки полоса цвета её системы, текущая — в рамке этого цвета */
+.sys-tabs ol{ position:relative; display:flex; gap:8px; margin:0; padding:14px 0 12px; list-style:none; overflow-x:auto;
+  scroll-snap-type:x proximity; scrollbar-width:thin; -webkit-overflow-scrolling:touch; }
+.sys-tabs li{ flex:none; display:flex; scroll-snap-align:center; }
+.sys-tabs a{ display:flex; flex-direction:column; width:136px; border:1px solid var(--line); background:var(--surface); color:var(--ink); text-decoration:none;
+  box-shadow:inset 0 -3px 0 var(--acc); transition:border-color .15s, transform .15s var(--ease); }
+.sys-tabs a:hover{ border-color:var(--ink-3); transform:translateY(-2px); }
+.sys-tabs a:focus-visible{ outline:2px solid var(--acc); outline-offset:2px; }
+.sys-tabs .st-pic{ display:grid; place-items:center; aspect-ratio:16/10; background:#eef1f5; overflow:hidden; }
+.sys-tabs img{ display:block; width:100%; height:100%; object-fit:cover; }
+.sys-tabs .st-pic b{ font-size:40px; font-weight:500; line-height:1; color:var(--acc); }
+.sys-tabs .st-t{ flex:1 0 auto; display:flex; gap:6px; min-height:2.7em; padding:6px 8px 9px; font-size:13px; line-height:1.25; }
+.sys-tabs .st-t i{ flex:none; font-style:normal; color:var(--ink-3); font-variant-numeric:tabular-nums; }
+.sys-tabs .st-t span{ min-width:0; overflow-wrap:anywhere; }
+.sys-tabs a.is-cur{ border-color:var(--acc); box-shadow:inset 0 0 0 2px var(--acc); background:var(--tint); }
+.sys-tabs a.is-cur .st-t{ font-weight:500; }
+.sys-tabs a.is-cur .st-t i{ color:var(--ink); }
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .sys-tabs img{ filter:brightness(.88); } }
+:root[data-theme="dark"] .sys-tabs img{ filter:brightness(.88); }
+/* в колонке практикума лента во всю ширину колонки, первая вкладка — по краю текста */
+.ws-text .sys-tabs{ margin:0 -44px 4px; }
+.ws-text .sys-tabs ol{ padding-left:44px; padding-right:44px; scroll-padding:0 44px; }
+@media (max-width:1020px){
+  .ws-text .sys-tabs{ margin:0 calc(-1 * var(--gut)) 4px; }
+  .ws-text .sys-tabs ol{ padding-left:var(--gut); padding-right:var(--gut); scroll-padding:0 var(--gut); }
+  .sys-tabs a{ width:124px; }
+}
 
 /* ── Кнопки ─────────────────────────────────────────────── */
 .btn{ display:inline-flex; align-items:center; justify-content:center; gap:10px; min-height:48px; padding:0 20px; border:1px solid var(--ink); border-radius:0;
@@ -625,6 +653,12 @@ tbody th{ font-weight:500; }
   font:inherit; font-size:14px; letter-spacing:-.01em; cursor:pointer; white-space:nowrap; transition:color .15s, border-color .15s; }
 .fig-cam:hover{ color:var(--ink); }
 .fig-cam.is-on{ color:var(--ink); border-bottom-color:var(--acc); }
+/* разборка узлов: режим и кнопки узлов, к которым подводит камера; не листаются,
+   а переносятся — на телефоне так видно все узлы сразу */
+.fig-ex{ flex:1 1 100%; order:-2; display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:0 0 2px; }
+.fig-ex .fig-btn{ flex:none; min-height:32px; padding:0 11px; font-size:13.5px; white-space:nowrap; }
+.fig-ex-mode i{ font-style:normal; opacity:.7; }
+.fig-ex-mode.is-on i{ opacity:.85; }
 .m3-info{ flex:1 1 100%; order:-1; min-height:1.4em; font-size:14px; line-height:1.45; color:var(--ink-2); }
 .m3-info .m3-sel{ color:var(--ink); font-weight:500; }
 .m3-info i{ font-style:normal; }

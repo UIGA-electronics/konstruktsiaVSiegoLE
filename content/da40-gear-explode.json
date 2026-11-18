@@ -1,0 +1,742 @@
+{
+ "about": "Разборка шасси на сайте (figures.js, opts.explode): смещение детали в осях сайта, м. tools/da40/gear.py",
+ "groups": [
+  {
+   "id": "main-lh-inner",
+   "title": "Внутренний узел крепления левой рессоры (AMM 32-10 рис. 1)",
+   "parts": {
+    "Main gear inner mount block LH": [
+     0.0,
+     0.075,
+     -0.0
+    ],
+    "Main gear inner mount block bolts LH": [
+     0.11,
+     0.075,
+     -0.0
+    ],
+    "Main gear inner mount block nuts LH": [
+     -0.06,
+     0.0,
+     -0.0
+    ],
+    "Main gear inner bolt LH": [
+     0.0,
+     0.17,
+     -0.0
+    ],
+    "Main gear inner mount spring washer lower LH": [
+     0.0,
+     0.032,
+     -0.0
+    ],
+    "Main gear inner mount spring washer upper LH": [
+     0.0,
+     0.054,
+     -0.0
+    ],
+    "Main gear inner mount convex washer LH": [
+     0.0,
+     -0.035,
+     -0.0
+    ],
+    "Main gear inner mount concave washer LH": [
+     0.0,
+     -0.062,
+     -0.0
+    ],
+    "Main gear inner mount castle nut LH": [
+     0.0,
+     -0.092,
+     -0.0
+    ],
+    "Main gear inner mount cotter pin LH": [
+     0.0,
+     -0.115,
+     0.035
+    ],
+    "Main gear inner mount bonding strap LH": [
+     0.0,
+     0.03,
+     0.04
+    ]
+   }
+  },
+  {
+   "id": "main-lh-outer",
+   "title": "Наружный узел крепления левой рессоры (AMM 32-10 рис. 1)",
+   "parts": {
+    "Main gear outer mount upper part LH": [
+     0.0,
+     0.11,
+     -0.0
+    ],
+    "Main gear outer mount polyamide insert LH": [
+     0.0,
+     0.055,
+     -0.0
+    ],
+    "Main gear outer mount flexible insert LH": [
+     0.0,
+     -0.045,
+     -0.0
+    ],
+    "Main gear outer mount retaining bar LH": [
+     0.0,
+     -0.085,
+     -0.0
+    ],
+    "Main gear outer mount bolts LH": [
+     0.0,
+     0.21,
+     -0.0
+    ],
+    "Main gear outer mount nuts LH": [
+     0.0,
+     -0.13,
+     -0.0
+    ],
+    "Main gear outer mount rib bolts LH": [
+     0.0,
+     0.11,
+     0.15
+    ]
+   }
+  },
+  {
+   "id": "main-lh-wheel",
+   "title": "Колесо, тормоз и полуось левой основной опоры (AMM 32-10 рис. 2, 4; 32-40 рис. 1, 4)",
+   "parts": {
+    "Tundra tyre L": [
+     0.45,
+     0.0,
+     -0.0
+    ],
+    "Tundra tyre L lettering": [
+     0.45,
+     0.0,
+     -0.0
+    ],
+    "Main wheel inner tube LH": [
+     0.69,
+     0.0,
+     -0.0
+    ],
+    "Main wheel hub inner half LH": [
+     0.26,
+     0.0,
+     -0.0
+    ],
+    "Main wheel hub outer half LH": [
+     0.82,
+     0.0,
+     -0.0
+    ],
+    "Main wheel bolts LH": [
+     0.15,
+     0.15,
+     -0.0
+    ],
+    "Main wheel bolt nuts LH": [
+     0.91,
+     0.0,
+     -0.0
+    ],
+    "Main wheel brake disc LH": [
+     0.02,
+     0.0,
+     -0.0
+    ],
+    "Main wheel distance washer LH": [
+     0.12,
+     0.0,
+     -0.0
+    ],
+    "Main wheel bearing inner LH": [
+     0.16,
+     0.0,
+     -0.0
+    ],
+    "Main wheel grease seal inner LH": [
+     0.12,
+     0.0,
+     -0.0
+    ],
+    "Main wheel snap ring inner LH": [
+     0.09,
+     0.0,
+     -0.0
+    ],
+    "Main wheel bearing outer LH": [
+     0.95,
+     0.0,
+     -0.0
+    ],
+    "Main wheel grease seal outer LH": [
+     0.985,
+     0.0,
+     -0.0
+    ],
+    "Main wheel snap ring outer LH": [
+     1.01,
+     0.0,
+     -0.0
+    ],
+    "Main gear axle nut LH": [
+     1.04,
+     0.0,
+     -0.0
+    ],
+    "Main gear axle nut split pin LH": [
+     1.1,
+     0.03,
+     -0.0
+    ],
+    "Main gear brake cylinder LH": [
+     -0.01,
+     -0.0569,
+     -0.0942
+    ],
+    "Brake caliper L inlet fitting and bleeder": [
+     -0.01,
+     -0.0569,
+     -0.0942
+    ],
+    "Main gear brake pressure plate LH": [
+     0.01,
+     -0.0388,
+     -0.0642
+    ],
+    "Main gear brake back plate LH": [
+     0.06,
+     -0.0388,
+     -0.0642
+    ],
+    "Main gear brake back plate bolts LH": [
+     0.13,
+     -0.0388,
+     -0.0642
+    ],
+    "Main gear axle bolts LH": [
+     0.06,
+     0.0,
+     -0.0
+    ],
+    "Main gear axle bolt nuts LH": [
+     -0.05,
+     0.0,
+     -0.0
+    ]
+   },
+   "near": 1.9,
+   "far": 3.6
+  },
+  {
+   "id": "main-rh-inner",
+   "title": "Внутренний узел крепления правой рессоры (AMM 32-10 рис. 1)",
+   "parts": {
+    "Main gear inner mount block RH": [
+     0.0,
+     0.075,
+     -0.0
+    ],
+    "Main gear inner mount block bolts RH": [
+     -0.11,
+     0.075,
+     -0.0
+    ],
+    "Main gear inner mount block nuts RH": [
+     0.06,
+     0.0,
+     -0.0
+    ],
+    "Main gear inner bolt RH": [
+     0.0,
+     0.17,
+     -0.0
+    ],
+    "Main gear inner mount spring washer lower RH": [
+     0.0,
+     0.032,
+     -0.0
+    ],
+    "Main gear inner mount spring washer upper RH": [
+     0.0,
+     0.054,
+     -0.0
+    ],
+    "Main gear inner mount convex washer RH": [
+     0.0,
+     -0.035,
+     -0.0
+    ],
+    "Main gear inner mount concave washer RH": [
+     0.0,
+     -0.062,
+     -0.0
+    ],
+    "Main gear inner mount castle nut RH": [
+     0.0,
+     -0.092,
+     -0.0
+    ],
+    "Main gear inner mount cotter pin RH": [
+     0.0,
+     -0.115,
+     0.035
+    ],
+    "Main gear inner mount bonding strap RH": [
+     0.0,
+     0.03,
+     0.04
+    ]
+   }
+  },
+  {
+   "id": "main-rh-outer",
+   "title": "Наружный узел крепления правой рессоры (AMM 32-10 рис. 1)",
+   "parts": {
+    "Main gear outer mount upper part RH": [
+     0.0,
+     0.11,
+     -0.0
+    ],
+    "Main gear outer mount polyamide insert RH": [
+     0.0,
+     0.055,
+     -0.0
+    ],
+    "Main gear outer mount flexible insert RH": [
+     0.0,
+     -0.045,
+     -0.0
+    ],
+    "Main gear outer mount retaining bar RH": [
+     0.0,
+     -0.085,
+     -0.0
+    ],
+    "Main gear outer mount bolts RH": [
+     0.0,
+     0.21,
+     -0.0
+    ],
+    "Main gear outer mount nuts RH": [
+     0.0,
+     -0.13,
+     -0.0
+    ],
+    "Main gear outer mount rib bolts RH": [
+     0.0,
+     0.11,
+     0.15
+    ]
+   }
+  },
+  {
+   "id": "main-rh-wheel",
+   "title": "Колесо, тормоз и полуось правой основной опоры (AMM 32-10 рис. 2, 4; 32-40 рис. 1, 4)",
+   "parts": {
+    "Tundra tyre R": [
+     -0.45,
+     0.0,
+     -0.0
+    ],
+    "Tundra tyre R lettering": [
+     -0.45,
+     0.0,
+     -0.0
+    ],
+    "Main wheel inner tube RH": [
+     -0.69,
+     0.0,
+     -0.0
+    ],
+    "Main wheel hub inner half RH": [
+     -0.26,
+     0.0,
+     -0.0
+    ],
+    "Main wheel hub outer half RH": [
+     -0.82,
+     0.0,
+     -0.0
+    ],
+    "Main wheel bolts RH": [
+     -0.15,
+     0.15,
+     -0.0
+    ],
+    "Main wheel bolt nuts RH": [
+     -0.91,
+     0.0,
+     -0.0
+    ],
+    "Main wheel brake disc RH": [
+     -0.02,
+     0.0,
+     -0.0
+    ],
+    "Main wheel distance washer RH": [
+     -0.12,
+     0.0,
+     -0.0
+    ],
+    "Main wheel bearing inner RH": [
+     -0.16,
+     0.0,
+     -0.0
+    ],
+    "Main wheel grease seal inner RH": [
+     -0.12,
+     0.0,
+     -0.0
+    ],
+    "Main wheel snap ring inner RH": [
+     -0.09,
+     0.0,
+     -0.0
+    ],
+    "Main wheel bearing outer RH": [
+     -0.95,
+     0.0,
+     -0.0
+    ],
+    "Main wheel grease seal outer RH": [
+     -0.985,
+     0.0,
+     -0.0
+    ],
+    "Main wheel snap ring outer RH": [
+     -1.01,
+     0.0,
+     -0.0
+    ],
+    "Main gear axle nut RH": [
+     -1.04,
+     0.0,
+     -0.0
+    ],
+    "Main gear axle nut split pin RH": [
+     -1.1,
+     0.03,
+     -0.0
+    ],
+    "Main gear brake cylinder RH": [
+     0.01,
+     -0.0569,
+     -0.0942
+    ],
+    "Brake caliper R inlet fitting and bleeder": [
+     0.01,
+     -0.0569,
+     -0.0942
+    ],
+    "Main gear brake pressure plate RH": [
+     -0.01,
+     -0.0388,
+     -0.0642
+    ],
+    "Main gear brake back plate RH": [
+     -0.06,
+     -0.0388,
+     -0.0642
+    ],
+    "Main gear brake back plate bolts RH": [
+     -0.13,
+     -0.0388,
+     -0.0642
+    ],
+    "Main gear axle bolts RH": [
+     -0.06,
+     0.0,
+     -0.0
+    ],
+    "Main gear axle bolt nuts RH": [
+     0.05,
+     0.0,
+     -0.0
+    ]
+   },
+   "near": 1.9,
+   "far": 3.6
+  },
+  {
+   "id": "nose-journal",
+   "title": "Цапфы носовой стойки (AMM 32-20 рис. 1, 4)",
+   "parts": {
+    "Nose gear journal bearing RH": [
+     -0.05,
+     0.0,
+     -0.0
+    ],
+    "Nose gear journal mounting plate RH": [
+     -0.09,
+     0.0,
+     -0.0
+    ],
+    "Nose gear journal bolts RH": [
+     -0.14,
+     0.0,
+     -0.0
+    ],
+    "Nose gear journal bearing LH": [
+     0.05,
+     0.0,
+     -0.0
+    ],
+    "Nose gear journal mounting plate LH": [
+     0.09,
+     0.0,
+     -0.0
+    ],
+    "Nose gear journal bolts LH": [
+     0.14,
+     0.0,
+     -0.0
+    ],
+    "Nose gear lock bolt": [
+     0.0,
+     0.0,
+     0.07
+    ]
+   }
+  },
+  {
+   "id": "nose-pack",
+   "title": "Эластомерный пружинный пакет носовой стойки (AMM 32-20 рис. 2)",
+   "parts": {
+    "Nose gear elastomer pack adjusting nut": [
+     0.0,
+     -0.1,
+     -0.0
+    ],
+    "Nose gear elastomer pack large washer": [
+     0.0,
+     -0.075,
+     -0.0
+    ],
+    "Nose gear elastomer pack small element": [
+     0.0,
+     -0.052,
+     -0.0
+    ],
+    "Nose gear elastomer pack flanged washer": [
+     0.0,
+     -0.028,
+     -0.0
+    ],
+    "Nose gear elastomer pack trunnion ring": [
+     0.0,
+     0.0,
+     -0.0
+    ],
+    "Nose gear elastomer pack lower end cap": [
+     0.0,
+     0.016,
+     -0.0
+    ],
+    "Nose gear elastomer pack bearing": [
+     0.0,
+     0.032,
+     -0.0
+    ],
+    "Nose gear elastomer pack lower stud": [
+     0.0,
+     0.045,
+     0.055
+    ],
+    "Nose gear elastomer element 1": [
+     0.0,
+     0.055,
+     -0.0
+    ],
+    "Nose gear elastomer pack separator plate 1": [
+     0.0,
+     0.07,
+     -0.0
+    ],
+    "Nose gear elastomer element 2": [
+     0.0,
+     0.085,
+     -0.0
+    ],
+    "Nose gear elastomer pack separator plate 2": [
+     0.0,
+     0.1,
+     -0.0
+    ],
+    "Nose gear elastomer element 3": [
+     0.0,
+     0.115,
+     -0.0
+    ],
+    "Nose gear elastomer pack separator plate 3": [
+     0.0,
+     0.13,
+     -0.0
+    ],
+    "Nose gear elastomer element 4": [
+     0.0,
+     0.145,
+     -0.0
+    ],
+    "Nose gear elastomer pack separator plate 4": [
+     0.0,
+     0.16,
+     -0.0
+    ],
+    "Nose gear elastomer element 5": [
+     0.0,
+     0.175,
+     -0.0
+    ],
+    "Nose gear elastomer pack separator plate 5": [
+     0.0,
+     0.19,
+     -0.0
+    ],
+    "Nose gear elastomer pack tube": [
+     0.0,
+     0.1,
+     0.075
+    ],
+    "Nose gear elastomer pack upper end cap": [
+     0.0,
+     0.215,
+     -0.0
+    ],
+    "Nose gear elastomer pack upper stud": [
+     0.0,
+     0.22,
+     0.06
+    ],
+    "Nose gear elastomer pack washer": [
+     0.0,
+     0.235,
+     -0.0
+    ],
+    "Nose gear elastomer pack rod end": [
+     0.0,
+     0.26,
+     -0.0
+    ]
+   },
+   "near": 1.0,
+   "far": 2.2
+  },
+  {
+   "id": "nose-wheel",
+   "title": "Колесо и вилка носовой опоры (AMM 32-20 рис. 1; 32-40 рис. 1, 7)",
+   "parts": {
+    "Nose wheel spacer RH": [
+     -0.035,
+     -0.08,
+     -0.0
+    ],
+    "Nose wheel flanged bush RH": [
+     -0.11,
+     -0.08,
+     -0.0
+    ],
+    "Nose wheel spacer LH": [
+     0.035,
+     -0.08,
+     -0.0
+    ],
+    "Nose wheel flanged bush LH": [
+     0.11,
+     -0.08,
+     -0.0
+    ],
+    "Nose wheel axle": [
+     0.0,
+     -0.08,
+     -0.0
+    ],
+    "Nose wheel axle bolt": [
+     -0.3,
+     -0.08,
+     -0.0
+    ],
+    "Nose wheel axle nut and washer": [
+     0.3,
+     -0.08,
+     -0.0
+    ],
+    "Plane.039": [
+     0.0,
+     -0.08,
+     -0.0
+    ],
+    "Cylinder.037": [
+     0.0,
+     -0.08,
+     -0.0
+    ],
+    "Cylinder.027": [
+     0.0,
+     -0.08,
+     -0.0
+    ],
+    "Cylinder.053": [
+     0.0,
+     -0.08,
+     -0.0
+    ],
+    "Cylinder.033": [
+     0.0,
+     -0.08,
+     -0.0
+    ],
+    "Nose wheel hub half RH": [
+     -0.09,
+     -0.08,
+     -0.34
+    ],
+    "Nose wheel bearing RH": [
+     -0.2,
+     -0.08,
+     -0.34
+    ],
+    "Nose wheel hub half LH": [
+     0.26,
+     -0.08,
+     -0.34
+    ],
+    "Nose wheel bearing LH": [
+     0.33,
+     -0.08,
+     -0.34
+    ],
+    "Nose wheel bolts": [
+     -0.27,
+     -0.08,
+     -0.34
+    ],
+    "Nose wheel bolt nuts": [
+     0.38,
+     -0.08,
+     -0.34
+    ],
+    "Nose wheel inner tube": [
+     0.17,
+     -0.08,
+     -0.34
+    ],
+    "Tundra tyre N": [
+     0.0,
+     -0.08,
+     -0.34
+    ],
+    "Tundra tyre N lettering": [
+     0.0,
+     -0.08,
+     -0.34
+    ]
+   },
+   "near": 1.6,
+   "far": 3.2
+  }
+ ]
+}

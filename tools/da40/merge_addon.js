@@ -12,6 +12,24 @@ const { ALL_EXTENSIONS } = require('@gltf-transform/extensions');
 const { dedup, meshopt, prune, weld, mergeDocuments, unpartition } = require('@gltf-transform/functions');
 const { MeshoptEncoder, MeshoptDecoder } = require('meshoptimizer');
 
+/* Матрицы 4×4 по столбцам (как в glTF). Корни слоёв сдвинуты по-разному (у колёс — не на подъём 0,939, как у
+   сборщиков Blender), поэтому деталь дополнения переводим из системы своего корня в систему корня слоя. */
+function mul(a, b) {
+  const o = new Array(16).fill(0);
+  for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) o[c * 4 + r] += a[k * 4 + r] * b[c * 4 + k];
+  return o;
+}
+function invertAffine(m) {
+  const [a, b, c, d, e, f, g, h, i] = [m[0], m[4], m[8], m[1], m[5], m[9], m[2], m[6], m[10]];
+  const A = e * i - f * h, B = -(d * i - f * g), C = d * h - e * g, det = a * A + b * B + c * C;
+  const r = [A / det, -(b * i - c * h) / det, (b * f - c * e) / det,
+             B / det, (a * i - c * g) / det, -(a * f - c * d) / det,
+             C / det, -(a * h - b * g) / det, (a * e - b * d) / det];
+  const t = [m[12], m[13], m[14]];
+  return [r[0], r[3], r[6], 0, r[1], r[4], r[7], 0, r[2], r[5], r[8], 0,
+          -(r[0] * t[0] + r[1] * t[1] + r[2] * t[2]), -(r[3] * t[0] + r[4] * t[1] + r[5] * t[2]), -(r[6] * t[0] + r[7] * t[1] + r[8] * t[2]), 1];
+}
+
 function mergeLabels(labelsPath, addons) {
   const dict = JSON.parse(fs.readFileSync(labelsPath, 'utf8'));
   let n = 0;
@@ -47,8 +65,10 @@ function mergeLabels(labelsPath, addons) {
     const srcScene0 = src.getRoot().listScenes()[0];
     const map = mergeDocuments(doc, src);
     const srcScene = map.get(srcScene0);
+    const back = invertAffine(target.getWorldMatrix());
     for (const r of srcScene.listChildren()) {
-      for (const c of r.listChildren()) { target.addChild(c); added++; }
+      const off = mul(back, r.getWorldMatrix());
+      for (const c of r.listChildren()) { c.setMatrix(mul(off, c.getMatrix())); target.addChild(c); added++; }
       r.dispose();
     }
     srcScene.dispose();
