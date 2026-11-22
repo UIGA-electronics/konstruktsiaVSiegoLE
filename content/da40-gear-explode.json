@@ -508,23 +508,23 @@
    "parts": {
     "Nose gear elastomer pack adjusting nut": [
      0.0,
-     -0.1,
-     -0.0
+     -0.02,
+     0.15
     ],
     "Nose gear elastomer pack large washer": [
      0.0,
-     -0.075,
-     -0.0
+     -0.015,
+     0.12
     ],
     "Nose gear elastomer pack small element": [
      0.0,
-     -0.052,
-     -0.0
+     -0.01,
+     0.09
     ],
     "Nose gear elastomer pack flanged washer": [
      0.0,
-     -0.028,
-     -0.0
+     -0.005,
+     0.06
     ],
     "Nose gear elastomer pack trunnion ring": [
      0.0,
@@ -553,47 +553,57 @@
     ],
     "Nose gear elastomer pack separator plate 1": [
      0.0,
-     0.07,
+     0.071,
      -0.0
     ],
     "Nose gear elastomer element 2": [
      0.0,
-     0.085,
+     0.087,
      -0.0
     ],
     "Nose gear elastomer pack separator plate 2": [
      0.0,
-     0.1,
+     0.103,
      -0.0
     ],
     "Nose gear elastomer element 3": [
      0.0,
-     0.115,
+     0.119,
      -0.0
     ],
     "Nose gear elastomer pack separator plate 3": [
      0.0,
-     0.13,
+     0.135,
      -0.0
     ],
     "Nose gear elastomer element 4": [
      0.0,
-     0.145,
+     0.151,
      -0.0
     ],
     "Nose gear elastomer pack separator plate 4": [
      0.0,
-     0.16,
+     0.167,
      -0.0
     ],
     "Nose gear elastomer element 5": [
      0.0,
-     0.175,
+     0.183,
      -0.0
     ],
     "Nose gear elastomer pack separator plate 5": [
      0.0,
-     0.19,
+     0.199,
+     -0.0
+    ],
+    "Nose gear elastomer element 6": [
+     0.0,
+     0.215,
+     -0.0
+    ],
+    "Nose gear elastomer pack separator plate 6": [
+     0.0,
+     0.231,
      -0.0
     ],
     "Nose gear elastomer pack tube": [
@@ -603,22 +613,22 @@
     ],
     "Nose gear elastomer pack upper end cap": [
      0.0,
-     0.215,
+     0.267,
      -0.0
     ],
     "Nose gear elastomer pack upper stud": [
      0.0,
-     0.22,
+     0.272,
      0.06
     ],
     "Nose gear elastomer pack washer": [
      0.0,
-     0.235,
+     0.287,
      -0.0
     ],
     "Nose gear elastomer pack rod end": [
      0.0,
-     0.26,
+     0.307,
      -0.0
     ]
    },
@@ -629,109 +639,94 @@
    "id": "nose-wheel",
    "title": "Колесо и вилка носовой опоры (AMM 32-20 рис. 1; 32-40 рис. 1, 7)",
    "parts": {
+    "Nose wheel fork pivot bolt": [
+     0.0,
+     0.16,
+     -0.0
+    ],
+    "Nose wheel fork pivot nut": [
+     0.0,
+     -0.07,
+     -0.0
+    ],
     "Nose wheel spacer RH": [
      -0.035,
-     -0.08,
+     0.0,
      -0.0
     ],
     "Nose wheel flanged bush RH": [
      -0.11,
-     -0.08,
+     0.0,
      -0.0
     ],
     "Nose wheel spacer LH": [
      0.035,
-     -0.08,
+     0.0,
      -0.0
     ],
     "Nose wheel flanged bush LH": [
      0.11,
-     -0.08,
+     0.0,
      -0.0
     ],
     "Nose wheel axle": [
      0.0,
-     -0.08,
-     -0.0
+     0.01,
+     -0.17
     ],
     "Nose wheel axle bolt": [
      -0.3,
-     -0.08,
+     0.0,
      -0.0
     ],
     "Nose wheel axle nut and washer": [
      0.3,
-     -0.08,
-     -0.0
-    ],
-    "Plane.039": [
      0.0,
-     -0.08,
-     -0.0
-    ],
-    "Cylinder.037": [
-     0.0,
-     -0.08,
-     -0.0
-    ],
-    "Cylinder.027": [
-     0.0,
-     -0.08,
-     -0.0
-    ],
-    "Cylinder.053": [
-     0.0,
-     -0.08,
-     -0.0
-    ],
-    "Cylinder.033": [
-     0.0,
-     -0.08,
      -0.0
     ],
     "Nose wheel hub half RH": [
      -0.09,
-     -0.08,
+     0.02,
      -0.34
     ],
     "Nose wheel bearing RH": [
      -0.2,
-     -0.08,
+     0.02,
      -0.34
     ],
     "Nose wheel hub half LH": [
      0.26,
-     -0.08,
+     0.02,
      -0.34
     ],
     "Nose wheel bearing LH": [
      0.33,
-     -0.08,
+     0.02,
      -0.34
     ],
     "Nose wheel bolts": [
      -0.27,
-     -0.08,
+     0.02,
      -0.34
     ],
     "Nose wheel bolt nuts": [
      0.38,
-     -0.08,
+     0.02,
      -0.34
     ],
     "Nose wheel inner tube": [
      0.17,
-     -0.08,
+     0.02,
      -0.34
     ],
     "Tundra tyre N": [
      0.0,
-     -0.08,
+     0.02,
      -0.34
     ],
     "Tundra tyre N lettering": [
      0.0,
-     -0.08,
+     0.02,
      -0.34
     ]
    },

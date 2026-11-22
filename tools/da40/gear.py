@@ -55,6 +55,8 @@ M = dict(
     gfrp=lib.mat('DA40 gear rib (GFRP)', (0.80, 0.80, 0.72), 0.0, 0.6, ru='стеклопластик'),
     elast=lib.mat('DA40 nose gear elastomer element', (0.10, 0.10, 0.11), 0.0, 0.8, ru='эластомер'),
     tube=lib.mat('DA40 nose gear tube (steel, painted)', (0.84, 0.84, 0.82), 0.3, 0.45, ru='стальная труба, окраска'),
+    glassy=lib.mat('DA40 nose gear bracket plate (steel, shown translucent)', (0.80, 0.81, 0.80), 0.3, 0.45, alpha=0.30,
+                   ru='стальной лист кронштейна — показан полупрозрачным, чтобы был виден пакет внутри'),
     copper=lib.mat('DA40 bonding braid (tinned copper)', (0.70, 0.66, 0.58), 1.0, 0.45, ru='лужёная медная плетёнка'),
     disc=lib.mat('DA40 gear spring washer (spring steel)', (0.40, 0.41, 0.43), 1.0, 0.35, ru='пружинная сталь'),
     bush=lib.mat('DA40 gear bearing bush (bronze)', (0.72, 0.55, 0.32), 1.0, 0.35, ru='бронза'),
@@ -548,7 +550,68 @@ PACK_X, PACK_Y = NG_X, -1.300               # ось эластомерного 
 LUG = V((NG_X, -1.215, -0.1025))            # нижняя поперечина моторамы (powerplant.py: fw_lo — fw_c)
 PIVOT = V((NG_X, -1.760, -0.505))           # верх оси вилки
 NW = V((0.078, -1.524, -0.713))             # ось носового колеса (шина MSFS Tundra tyre N), вдоль X
-FORK_MSFS = ('Plane.039', 'Cylinder.037', 'Cylinder.027', 'Cylinder.053', 'Cylinder.033')   # щёки, траверса, болт, упор
+# Детали MSFS у носовой опоры теперь — свои детали слоя (подписи, подсветка, разборка; replaced.json):
+# стойка Cylinder.180 — без сплошного треугольного «листа» (на его месте — полый кронштейн пакета), вилка и упор
+LEG_MSFS = 'Cylinder.180'
+FORK_PARTS = (('Plane.039', 'Nose wheel fork', 'Вилка колеса носовой опоры: две щеки, ось колеса — между ними', 'tube'),
+              ('Cylinder.037', 'Nose wheel fork crown (pivot boss)', 'Траверса вилки с бобышкой оси поворота: '
+               'охватывает нижний конец корпуса оси на стойке, вилка поворачивается вокруг почти вертикальной оси', 'tube'),
+              ('Cylinder.027', 'Nose wheel fork clamp bolts', 'Стяжные болты щёк вилки на траверсе', 'steel'),
+              ('Cylinder.053', 'Nose wheel castor stop plate bolts', 'Болты крепления упорной пластины', 'steel'),
+              ('Cylinder.033', 'Nose wheel castor stop plate', 'Упорная пластина ограничения разворота вилки: ±30°', 'tube'))
+PIVOT_C = V((NG_X, -1.757))                 # ось поворота вилки (корпус MSFS: y −1,794…−1,72)
+PIVOT_TOP, PIVOT_LOW = -0.499, -0.701       # верх корпуса оси на стойке, низ упорной пластины
+# эластомерный пакет у шасси Tundra (OÄM 40-334) — 6 элементов (AMM 32-20 рис. 4); цапфенное кольцо — внутри
+# кронштейна, низ пакета (регулировочная гайка) — выше трубы стойки: у оси пакета её верх на z −0,357
+PACK_N = 6
+TRUNNION_Z = -0.305
+EYE_Z = -0.128                              # ушко пакета — на кронштейне нижней поперечины моторамы
+
+
+def tube_top(y):
+    """Верх трубы стойки MSFS на участке от корпуса оси вилки до колена (y −1,72…−1,14)."""
+    return -0.514 + 0.374 * (y + 1.72)
+
+
+def msfs_copy(p, name, keep=None):
+    """Геометрия детали MSFS в мировых координатах в деталь p; keep(вершины острова) — какие острова брать."""
+    src = bpy.data.objects[name]
+    bm = bmesh.new()
+    bm.from_mesh(src.data)
+    bm.transform(src.matrix_world)
+    if keep:
+        bm.verts.ensure_lookup_table()
+        seen, drop = set(), []
+        for v in bm.verts:
+            if v.index in seen:
+                continue
+            stack, isl = [v], []
+            while stack:
+                u = stack.pop()
+                if u.index in seen:
+                    continue
+                seen.add(u.index)
+                isl.append(u)
+                stack += [e.other_vert(u) for e in u.link_edges if e.other_vert(u).index not in seen]
+            if not keep(isl):
+                drop += isl
+        bmesh.ops.delete(bm, geom=drop, context='VERTS')
+    lib._merge(p, bm, lambda co: co, 0)
+    bm.free()
+
+
+def prism_x(p, pts, x0, x1, mi=0):
+    """Плоская пластина: многоугольник pts [(y, z), …] от x0 до x1."""
+    tmp = bmesh.new()
+    a = [tmp.verts.new(V((x0, y, z))) for y, z in pts]
+    b = [tmp.verts.new(V((x1, y, z))) for y, z in pts]
+    tmp.faces.new(a)
+    tmp.faces.new(list(reversed(b)))
+    n = len(pts)
+    for k in range(n):
+        tmp.faces.new([a[k], a[(k + 1) % n], b[(k + 1) % n], b[k]])
+    lib._merge(p, tmp, lambda co: co, mi)
+    tmp.free()
 
 
 def nose_gear():
@@ -586,63 +649,109 @@ def nose_gear():
     fin(lb)
     ex(gj, lb.name, (0, -0.07, 0))
 
-    # ── эластомерный пружинный пакет (32-20 рис. 2), снизу вверх
+    # ── стойка: труба, поперечная труба и корпус оси вилки MSFS — без сплошного треугольного «листа» (на его месте —
+    # полый кронштейн пакета ниже)
+    leg = P('Nose gear leg (welded steel tube)', 'Стойка носовой опоры — сварная стальная труба: вверху сзади поперечная труба '
+            'в подшипниках цапф, впереди внизу — почти вертикальный корпус оси поворота вилки', 'tube', 'AMM 32-20 2., рис. 1, 2')
+
+    def not_sheet(isl):
+        ys, zs = [v.co.y for v in isl], [v.co.z for v in isl]
+        return not (min(ys) > -1.34 and max(ys) < -1.10 and min(zs) > -0.41 and max(zs) < -0.12)
+    msfs_copy(leg, LEG_MSFS, not_sheet)
+    fin(leg)
+
+    # ── кронштейн пакета (32-20 2.: впереди и ниже подшипников цапф — сварной кронштейн, в нём низ пакета): два боковых
+    # листа и задняя стенка на трубе стойки; листы полупрозрачные — пакет между ними виден; внизу — опорная планка
+    HW = 0.0345                                    # полуширина по наружным граням листов (пакет — радиус 0,0255…0,029)
+    yf, yr_t, yr_b, z_top = -1.336, -1.188, -1.110, EYE_Z - 0.016
+    outline = [(yf, tube_top(yf) + 0.004), (yf, z_top), (yr_t, z_top), (yr_b, -0.322)]
+    br = P('Nose gear elastomer pack bracket', 'Сварной кронштейн стойки: эластомерный пакет стоит между его боковыми листами, '
+           'цапфы низа пакета — в отверстиях листов над трубой стойки (листы показаны полупрозрачными)', 'glassy', 'AMM 32-20 2., рис. 4')
+    for sx in (-1, 1):
+        prism_x(br, outline, PACK_X + sx * (HW - 0.003), PACK_X + sx * HW)
+    ra, rb = V((PACK_X, yr_t, z_top)), V((PACK_X, yr_b, -0.322))
+    ez = (rb - ra).normalized()
+    ey = ez.cross(V((1, 0, 0))).normalized()
+    box(br, (ra + rb) / 2 + ey * 0.0015, (2 * HW, 0.003, (rb - ra).length), Matrix((V((1, 0, 0)), ey, ez)).transposed(), 0)
+    fin(br)
+    sd = P('Nose gear elastomer pack bracket saddle', 'Опорная планка кронштейна на трубе стойки: в её щеках — цапфы нижнего '
+           'конца эластомерного пакета', 'tube', 'AMM 32-20 рис. 4')
+    td = V((0, 1, 0.374)).normalized()
+    nz = td.cross(V((1, 0, 0))).normalized()
+    nz = nz if nz.z > 0 else -nz
+    yc = (yf + PACK_Y + 0.045) / 2
+    box(sd, V((PACK_X, yc, tube_top(yc) + 0.002)), (2 * HW, 0.004, (PACK_Y + 0.045 - yf) / td.y),
+        Matrix((V((1, 0, 0)), nz, td)).transposed(), 0, bevel=0.001)
+    for sx in (-1, 1):                              # щёки с отверстиями под цапфы
+        q = V((PACK_X + sx * (HW - 0.006), PACK_Y, TRUNNION_Z))
+        box(sd, (q + V((q.x, q.y, tube_top(PACK_Y)))) / 2, (0.006, 0.030, TRUNNION_Z - tube_top(PACK_Y) + 0.012),
+            Matrix.Identity(3), 0, bevel=0.001)
+    fin(sd)
+
+    # ── эластомерный пружинный пакет (32-20 рис. 4), снизу вверх: у Tundra 6 элементов; цапфенное кольцо — в щеках
+    # кронштейна, регулировочная гайка — выше трубы стойки. При разборке низ пакета уходит вперёд из открытой передней
+    # стороны кронштейна (вниз — сквозь трубу стойки)
     def at(z):
         return V((PACK_X, PACK_Y, z))
-
-    parts = []                                                  # (имя, русская подпись, z0, z1, построение, смещение)
+    zt = TRUNNION_Z
 
     def piece(name, ru, mat, build, dz, side=(0, 0, 0)):
-        p = P(name, ru, mat, 'AMM 32-20 рис. 2')
+        p = P(name, ru, mat, 'AMM 32-20 рис. 4')
         build(p)
         fin(p)
         ex(gp, p.name, (0, 0, dz), side)
 
-    piece('Nose gear elastomer pack adjusting nut', 'Регулировочная гайка эластомерного пакета', 'steel',
-          lambda p: hexa(p, at(-0.424), at(-0.413), 0.026, 0), -0.10)
+    piece('Nose gear elastomer pack adjusting nut', 'Регулировочная гайка эластомерного пакета: ею выставляют расстояние от оси '
+          'ушка до оси цапф (у 6 элементов — 349 ± 1 мм по AMM)', 'steel',
+          lambda p: hexa(p, at(zt - 0.043), at(zt - 0.032), 0.026, 0), -0.02, (0, -0.15, 0))
     piece('Nose gear elastomer pack large washer', 'Большая шайба', 'steel',
-          lambda p: ring_tube(p, at(-0.4115), up, 0.020, 0.0062, 0.003, 0, segs=24), -0.075)
+          lambda p: ring_tube(p, at(zt - 0.0305), up, 0.020, 0.0062, 0.003, 0, segs=24), -0.015, (0, -0.12, 0))
     piece('Nose gear elastomer pack small element', 'Малый эластомерный элемент', 'elast',
-          lambda p: revolve(p, at(-0.410), up, [(0, 0.0065), (0, 0.014), (0.007, 0.0158), (0.014, 0.014), (0.014, 0.0065)], 0, segs=24), -0.052)
+          lambda p: revolve(p, at(zt - 0.029), up, [(0, 0.0065), (0, 0.014), (0.007, 0.0158), (0.014, 0.014), (0.014, 0.0065)], 0, segs=24), -0.010, (0, -0.09, 0))
     piece('Nose gear elastomer pack flanged washer', 'Большая шайба с буртиком', 'steel',
-          lambda p: revolve(p, at(-0.396), up, [(0, 0.0065), (0, 0.021), (0.003, 0.021), (0.003, 0.012), (0.011, 0.012), (0.011, 0.0065)], 0, segs=24), -0.028)
+          lambda p: revolve(p, at(zt - 0.015), up, [(0, 0.0065), (0, 0.021), (0.003, 0.021), (0.003, 0.012), (0.011, 0.012), (0.011, 0.0065)], 0, segs=24), -0.005, (0, -0.06, 0))
 
     def trunnion(p):
-        ring_tube(p, at(-0.381), up, 0.022, 0.0090, 0.018, 0, segs=28)
-        cyl(p, at(-0.381) + X * 0.020, at(-0.381) + X * 0.034, 0.0065, 0, segs=12)
-        cyl(p, at(-0.381) - X * 0.020, at(-0.381) - X * 0.034, 0.0065, 0, segs=12)
-    piece('Nose gear elastomer pack trunnion ring', 'Цапфенное кольцо: низ пакета — в кронштейне стойки', 'steel', trunnion, 0.0)
+        ring_tube(p, at(zt), up, 0.022, 0.0090, 0.018, 0, segs=28)
+        for sx in (-1, 1):
+            cyl(p, at(zt) + X * sx * 0.020, at(zt) + X * sx * (HW - 0.001), 0.0065, 0, segs=12)
+    piece('Nose gear elastomer pack trunnion ring', 'Цапфенное кольцо: низ пакета — цапфами в щеках кронштейна стойки', 'steel', trunnion, 0.0)
     piece('Nose gear elastomer pack lower end cap', 'Нижняя торцевая крышка', 'block',
-          lambda p: revolve(p, at(-0.372), up, [(0, 0.0090), (0, 0.030), (0.004, 0.030), (0.006, 0.024), (0.006, 0.0090)], 0, segs=32), 0.016)
+          lambda p: revolve(p, at(zt + 0.009), up, [(0, 0.0090), (0, 0.030), (0.004, 0.030), (0.006, 0.024), (0.006, 0.0090)], 0, segs=32), 0.016)
     piece('Nose gear elastomer pack bearing', 'Подшипник', 'bush',
-          lambda p: ring_tube(p, at(-0.363), up, 0.0135, 0.0088, 0.006, 0, segs=20), 0.032)
+          lambda p: ring_tube(p, at(zt + 0.018), up, 0.0135, 0.0088, 0.006, 0, segs=20), 0.032)
     piece('Nose gear elastomer pack lower stud', 'Резьбовая шпилька (нижняя)', 'steel',
-          lambda p: cyl(p, at(-0.432), at(-0.360), 0.0055, 0, segs=10), 0.045, (0, -0.055, 0))
-    z = -0.366
-    for k in range(5):
+          lambda p: cyl(p, at(zt - 0.051), at(zt + 0.021), 0.0055, 0, segs=10), 0.045, (0, -0.055, 0))
+    z0 = zt + 0.015
+    pitch = (EYE_Z - 0.031 - z0) / PACK_N           # элементы с пластинами — от нижней крышки до верхней
+    he = pitch - 0.0045
+    sc = he / 0.030
+    z = z0
+    for k in range(PACK_N):
         piece(f'Nose gear elastomer element {k + 1}', 'Эластомерный элемент: сжимается при росте нагрузки на стойку', 'elast',
-              (lambda z0: lambda p: revolve(p, at(z0), up, [(0, 0.0092), (0, 0.022), (0.015, 0.0255), (0.030, 0.022), (0.030, 0.0092)],
-                                            0, segs=32))(z), 0.055 + k * 0.030)
+              (lambda z_: lambda p: revolve(p, at(z_), up, [(0, 0.0092), (0, 0.022), (0.015 * sc, 0.0255), (0.030 * sc, 0.022), (0.030 * sc, 0.0092)],
+                                            0, segs=32))(z), 0.055 + k * 0.032)
         piece(f'Nose gear elastomer pack separator plate {k + 1}', 'Разделительная пластина между эластомерными элементами', 'block',
-              (lambda z0: lambda p: ring_tube(p, at(z0 + 0.03225), up, 0.0290, 0.0092, 0.0045, 0, segs=32))(z), 0.070 + k * 0.030)
-        z += 0.0345
+              (lambda z_: lambda p: ring_tube(p, at(z_ + he + 0.00225), up, 0.0290, 0.0092, 0.0045, 0, segs=32))(z), 0.071 + k * 0.032)
+        z += pitch
+    dtop = 0.055 + PACK_N * 0.032
     piece('Nose gear elastomer pack tube', 'Трубка: центральная ось пакета', 'steel',
-          lambda p: ring_tube(p, at((-0.372 + z) / 2), up, 0.0090, 0.0060, z + 0.372, 0, segs=16), 0.10, (0, -0.075, 0))
+          lambda p: ring_tube(p, at((zt + 0.009 + z) / 2), up, 0.0090, 0.0060, z - zt - 0.009, 0, segs=16), 0.10, (0, -0.075, 0))
     piece('Nose gear elastomer pack upper end cap', 'Верхняя торцевая крышка', 'block',
-          lambda p: revolve(p, at(z), up, [(0, 0.0060), (0, 0.024), (0.002, 0.030), (0.006, 0.030), (0.006, 0.0060)], 0, segs=32), 0.215)
+          lambda p: revolve(p, at(z), up, [(0, 0.0060), (0, 0.024), (0.002, 0.030), (0.006, 0.030), (0.006, 0.0060)], 0, segs=32), dtop + 0.02)
     piece('Nose gear elastomer pack upper stud', 'Резьбовая шпилька (верхняя)', 'steel',
-          lambda p: cyl(p, at(z - 0.020), at(-0.148), 0.0055, 0, segs=10), 0.22, (0, -0.060, 0))
+          lambda p: cyl(p, at(z - 0.020), at(EYE_Z - 0.020), 0.0055, 0, segs=10), dtop + 0.025, (0, -0.060, 0))
     piece('Nose gear elastomer pack washer', 'Шайба', 'steel',
-          lambda p: ring_tube(p, at(z + 0.0075), up, 0.014, 0.0058, 0.003, 0, segs=20), 0.235)
+          lambda p: ring_tube(p, at(z + 0.0075), up, 0.014, 0.0058, 0.003, 0, segs=20), dtop + 0.04)
 
     def rod_end(p):
-        cyl(p, at(z + 0.009), at(-0.140), 0.0075, 0, segs=14)
-        ring_tube(p, at(-0.128), X, 0.014, 0.006, 0.012, 0, segs=24)
-    piece('Nose gear elastomer pack rod end', 'Ушковый наконечник: верх пакета — к кронштейну на мотораме', 'steel', rod_end, 0.26)
+        cyl(p, at(z + 0.009), at(EYE_Z - 0.012), 0.0075, 0, segs=14)
+        ring_tube(p, at(EYE_Z), X, 0.014, 0.006, 0.012, 0, segs=24)
+    piece('Nose gear elastomer pack rod end', 'Ушковый наконечник: верх пакета — к кронштейну на мотораме', 'steel', rod_end, dtop + 0.06)
 
     g = P('Nose gear elastomer pack attachment (engine mount lug)',
           'Крепление верхней проушины упругого пакета к кронштейну на нижней поперечине моторамы', 'steel', 'AMM 32-20')
-    eye = at(-0.128)
+    eye = at(EYE_Z)
     lug_a = LUG + V((0, -0.004, -0.008))
     d = eye - lug_a
     for dx in (-0.0105, 0.0105):
@@ -651,13 +760,29 @@ def nose_gear():
     hexa(g, eye + V((0.016, 0, 0)), eye + V((0.022, 0, 0)), 0.012, 0)
     fin(g)
 
-    c = P('Nose wheel fork castor stops', 'Упоры поворота вилки носового колеса: ±30°', 'steel', 'AMM 32-20 рис. 1')
-    for a in (math.radians(30), math.radians(-30)):
-        dd = V((math.sin(a), -math.cos(a), 0))
-        q = PIVOT + dd * 0.040 + V((0, 0, 0.004))
-        box(c, q, (0.010, 0.012, 0.014), basis(dd), 0, bevel=0.0015)
-    box(c, PIVOT + V((0, 0.028, 0.006)), (0.03, 0.012, 0.012), Matrix.Identity(3), 0, bevel=0.002)
-    fin(c)
+    # ── вилка, траверса и упорная пластина MSFS — детали слоя; ось поворота вилки (32-20 2., рис. 6): болт сквозь
+    # корпус оси на стойке, траверсу и упорную пластину; гайка снизу — её затяжкой задают трение поворота
+    for msfs, name, ru, mat in FORK_PARTS:
+        fp = P(name, ru, mat, 'AMM 32-20 рис. 1, 2')
+        msfs_copy(fp, msfs)
+        fin(fp)
+    top = V((PIVOT_C.x, PIVOT_C.y, PIVOT_TOP))
+    low = V((PIVOT_C.x, PIVOT_C.y, PIVOT_LOW))
+    pv = P('Nose wheel fork pivot bolt', 'Болт оси поворота вилки (крепёжный болт вилки): сквозь корпус оси на стойке, траверсу вилки '
+           'и упорную пластину; головка с шайбой — сверху', 'steel', 'AMM 32-20 2., рис. 6')
+    ring_tube(pv, top + up * 0.0015, up, 0.017, 0.0068, 0.003, 0, segs=20)
+    hexa(pv, top + up * 0.003, top + up * 0.012, 0.019, 0)
+    cyl(pv, top + up * 0.003, low - up * 0.030, 0.0065, 0, segs=12)
+    fin(pv)
+    ex(gn, pv.name, (0, 0, 0.16))
+    pn = P('Nose wheel fork pivot nut', 'Гайка оси поворота вилки с шайбами и шплинтом: её затяжкой задают трение поворота — колесо '
+           'должно начинать поворачиваться от силы 30–50 Н вдоль оси колеса; это предотвращает шимми', 'steel', 'AMM 32-20 6., рис. 6')
+    ring_tube(pn, low - up * 0.0015, up, 0.017, 0.0068, 0.003, 0, segs=20)
+    ring_tube(pn, low - up * 0.0045, up, 0.016, 0.0068, 0.003, 0, segs=20)
+    castle_nut(pn, low - up * 0.006, -up, 0.019, 0.012, 0)
+    cyl(pn, low - up * 0.0205 - X * 0.012, low - up * 0.0205 + X * 0.012, 0.0012, 0, segs=6)
+    fin(pn)
+    ex(gn, pn.name, (0, 0, -0.07))
 
     # ── колесо носовой опоры (32-40 рис. 1, 7): ось-трубка, болт, распорные втулки, втулки с буртиком в щеках вилки
     def nw(x):
@@ -682,17 +807,15 @@ def nose_gear():
         xf = -0.020 if sgn < 0 else 0.180
         revolve(fb, nw(xf), X * sgn, [(0, 0.0128), (0, 0.0175), (0.0025, 0.0175), (0.0025, 0.0155), (0.022, 0.0155), (0.022, 0.0128)], 0, segs=24)
         fin(fb)
-        ex(gn, sp.name, (0, 0, -0.08), X * (sgn * 0.035))
-        ex(gn, fb.name, (0, 0, -0.08), X * (sgn * 0.11))
-    ex(gn, xa.name, (0, 0, -0.08))
-    ex(gn, xb.name, (0, 0, -0.08), X * -0.30)
-    ex(gn, xn.name, (0, 0, -0.08), X * 0.30)
-    for nm in FORK_MSFS:
-        ex(gn, nm, (0, 0, -0.08))
+        ex(gn, sp.name, X * (sgn * 0.035))
+        ex(gn, fb.name, X * (sgn * 0.11))
+    ex(gn, xa.name, (0, 0.17, 0.01))
+    ex(gn, xb.name, X * -0.30)
+    ex(gn, xn.name, X * 0.30)
     # барабан из двух магниевых половин на трёх болтах, камера, конические подшипники
     halfn = [(0.026, 0.0262), (NW.x, 0.0262), (NW.x, 0.0762), (NW.x - 0.0508, 0.0762), (NW.x - 0.0508, 0.087),
              (NW.x - 0.0578, 0.087), (NW.x - 0.0578, 0.070), (NW.x - 0.040, 0.070), (NW.x - 0.040, 0.036), (0.026, 0.036)]
-    Wn = V((0, 0.34, -0.08))                                    # колесо вынимается из вилки назад
+    Wn = V((0, 0.34, 0.02))                                     # колесо вынимается из вилки назад; вниз нельзя — там земля
     for tag, prof, sgn in (('RH', halfn, -1), ('LH', [(2 * NW.x - t, r) for t, r in halfn][::-1], 1)):
         hh = P(f'Nose wheel hub half {tag}', 'Половина барабана носового колеса (магниевый сплав)' + (', с отверстием под вентиль' if sgn > 0 else ''),
                'hub_mg', 'AMM 32-40 2.B, рис. 1', COL_W)

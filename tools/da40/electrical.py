@@ -42,7 +42,7 @@ import lib  # noqa: E402
 import ref  # noqa: E402
 import cabin  # noqa: E402
 import stub  # noqa: E402
-from lib import Part, basis, box, cyl, fillet, hexa, ring_tube, screw, sweep  # noqa: E402
+from lib import Part, basis, box, cyl, fillet, hexa, p_clamp, ring_tube, screw, sweep  # noqa: E402
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else '/tmp/da40-electrical-raw.glb'
 
@@ -81,6 +81,8 @@ M = dict(
     braid=lib.mat('DA40 tinned copper braid', (0.70, 0.71, 0.72), 1.0, 0.45, ru='лужёная медная плетёнка'),
     ecu=lib.mat('DA40 EECU housing', (0.18, 0.19, 0.20), 0.3, 0.5, ru='корпус блока EECU'),
     conn=lib.mat('DA40 circular connector', (0.55, 0.52, 0.30), 0.8, 0.4, ru='круглый разъём'),
+    cush=lib.mat('DA40 clamp cushion (rubber)', (0.06, 0.06, 0.065), 0.0, 0.7, ru='резиновая подушка хомута'),
+    glow=lib.mat('DA40 glow plug supply cable (orange sleeve)', (0.78, 0.36, 0.06), 0.0, 0.55, ru='силовой кабель свечей накаливания'),
 )
 
 # места — по AMM и по свободному месту (см. docstring)
@@ -118,6 +120,12 @@ CB_BACK = V((-0.385, -0.735, 0.455))            # за панелью автом
 WING_CONN = {1: V((0.45, -0.10, -0.085)), -1: V((-0.45, -0.10, -0.085))}   # P2400 / P2401 под креслами, над поперечным воздуховодом
 CB_PANEL = (V((-0.47, -0.70, 0.373)), V((-0.30, -0.70, 0.544)))
 CABIN_LIGHT = V((-0.525, -0.79, 0.253))         # разъём освещения кабины у петли фонаря (MSFS)
+GLOW_END = V((-0.135, -1.372, 0.452))           # задний конец жгута свечей накаливания на двигателе (powerplant.py: Glow plug harness)
+# общий ствол кабелей от релейной коробки (AMM 24-00 2.B(4): у шины коробки три выхода — шина батареи в доске, свечи
+# накаливания, стартер; резервная батарея EECU — тоже в хвосте): под полом вперёд до развилки под приборной доской,
+# дальше каждый — к своему потребителю. Ствол прокладывается радиусом всего пучка, кабели в нём — со сдвигом
+TRUNK_R = 0.019
+TRUNK_FORK = V((0.06, -0.93, 0.07))             # развилка под приборной доской, над «шляпой» слева от консоли
 LIGHTS = {'LDG': V((4.73, -0.07, 0.195)), 'TAXI': V((4.90, -0.08, 0.208)),
           'NAV_L': V((5.78, 0.34, 0.289)), 'NAV_R': V((-5.78, 0.34, 0.289))}
 
@@ -159,6 +167,50 @@ def route(a, da, b, db, r, lo, hi, stub=0.02, relax=(), step=None, hidden=True, 
     finally:
         RT.step = old
     raise SystemExit(f'нет трассы {tuple(round(v, 3) for v in a)} → {tuple(round(v, 3) for v in b)}')
+
+
+def offset_path(pts, d_side, d_up=0.0):
+    """Параллельная трасса: сдвиг вбок (перпендикулярно трассе в горизонтали) и вверх."""
+    out = []
+    n = len(pts)
+    for k, q in enumerate(pts):
+        t = (pts[min(k + 1, n - 1)] - pts[max(k - 1, 0)]).normalized()
+        side = t.cross(V((0, 0, 1)))
+        if side.length < 0.3:
+            side = t.cross(V((1, 0, 0)))
+        side.normalize()
+        up = side.cross(t).normalized()
+        out.append(q + side * d_side + up * d_up)
+    return out
+
+
+def trunk_clamps(name, path, r, every=0.28):
+    """Хомуты-петли с резиновой подушкой на стволе через every м: лапка — к ближайшей поверхности (отделка, обшивка, силовой набор),
+    до которой не дальше 6 см; где опоры рядом нет — хомута нет."""
+    c = P(name, 'Хомуты-петли с резиновой подушкой на стволе кабелей (MS21919): держат пучок у стенок и пола через 25–30 см',
+          'steel', 'AMM 20-00 (стандартные практики), 24-60')
+    L = lib.path_len(path)
+    n = 0
+    for k in range(1, int(L / every)):
+        q, t = lib.along(path, k * every)
+        best = None
+        for bvh in (TRIM, R.shell):
+            h = bvh.find_nearest(q, 0.06 + r)
+            if h[0] is not None and (best is None or h[3] < best[3]):
+                best = h
+        if best is None or best[3] < r + 0.004:
+            continue
+        tab = (best[0] - q)
+        p_clamp(c, q, t, r, tab, 0, c.m(M['cush']), c.m(M['steel']))
+        a = q + tab.normalized() * (r + 0.015)
+        if (best[0] - a).dot(tab) > 0.004:                         # стойка до стенки
+            box(c, (a + best[0]) / 2, (0.010, 0.003, (best[0] - a).length), basis(tab, up=t), 0)
+        n += 1
+    if n:
+        c.done()
+    else:
+        c.bm.free()
+    return n
 
 
 def batteries():
@@ -378,19 +430,45 @@ def build():
     # от точки над батареей к клемме — тоже планировщиком: здесь же проходит кабель грозопеленгатора (avionics.py)
     pts = pts + route(wp, (0, 0, 1), p_ext + V((0, 0.026, 0)), (0, -1, 0), 0.005, *rear, stub=0.012, relax=[(p_ext, 0.03)], step=0.006)[1:] + [p_ext]
     cable('External power cable to external power relay', 'Кабель от разъёма наземного питания к реле внешнего питания', pts, 0.005, 'power', 'AMM 24-40')
-    # к двигателю: стартер
+    # ── общий ствол от релейной коробки до развилки под доской (радиусом всего пучка), кабели в нём — со сдвигом
     fwd = ((-0.50, -1.19, -0.27), (0.50, 2.40, 0.70))
-    g = STARTER_GROMMET
-    pts = route(ports[2], (0, 1, 0), g + V((0, 0.03, 0)), (0, -1, 0), 0.007, *fwd, step=0.02, relax=[(ports[2], 0.03)])
     eng = ((-0.45, -1.80, -0.25), (0.45, -1.20, 0.60))
+    trunk = route(ports[3], (0, 1, 0), TRUNK_FORK, (0, -1, 0.2), TRUNK_R, *fwd, step=0.02, relax=[(ports[3], 0.05), (TRUNK_FORK, 0.04)])
+    body = trunk[1:-1]                                     # без концов: у коробки и у развилки кабели расходятся
+    lanes = {'main': (0.0, 0.0), 'starter': (0.0140, 0.0), 'glow': (-0.0130, 0.0), 'ecu': (0.0, 0.0120)}
+
+    def lane(key):
+        return offset_path(body, *lanes[key])
+    # основной жгут: коробка → ствол → панель автоматов
+    tail = route(trunk[-1], (0, -1, 0.2), CB_BACK, (0, 1, 0), 0.010, *fwd, step=0.015, relax=[(trunk[-1], 0.05), (CB_BACK, 0.04)])
+    cable('Main wiring harness (relay junction box → circuit-breaker panel)', 'Основной жгут: шина релейной коробки — в общем стволе под полом — '
+          'шина батареи и автоматы защиты справа на приборной доске', [ports[3]] + lane('main') + tail[1:], 0.010, 'harness', 'AMM 24-00 2.B(4), 24-60')
+    # стартер: коробка → ствол → проход в перегородке → тяговое реле стартера
+    g = STARTER_GROMMET
+    st = lane('starter')
+    pts = route(st[-1], (0, -1, -0.3), g + V((0, 0.03, 0)), (0, -1, 0), 0.007, *fwd, step=0.015, relax=[(st[-1], 0.05)])
     pts2 = route(g - V((0, 0.03, 0)), (0, -1, 0), STARTER_TERM, (0, -1, 0), 0.007, *eng, step=0.012, hidden=False,
                  relax=[(STARTER_TERM, 0.03)])
-    cable('Starter cable (relay junction box → starter relay)', 'Кабель стартера: шина релейной коробки — под полом — проход в перегородке — тяговое реле стартера',
-          pts + pts2, 0.007, 'power', 'AMM 24-00 2.B(4), 80-10')
-    # основной жгут: релейная коробка → шина батареи за панелью автоматов
-    pts = route(ports[3], (0, 1, 0), CB_BACK, (0, 1, 0), 0.010, *fwd, step=0.02, relax=[(ports[3], 0.04), (CB_BACK, 0.04)])
-    cable('Main wiring harness (relay junction box → circuit-breaker panel)', 'Основной жгут: релейная коробка — шина батареи и автоматы защиты справа на приборной доске',
-          pts, 0.010, 'harness', 'AMM 24-60')
+    cable('Starter cable (relay junction box → starter relay)', 'Кабель стартера: от реле стартера в релейной коробке — в общем стволе под '
+          'полом — огнестойкий проход в перегородке — тяговое реле стартера', [ports[2]] + st + pts[1:] + pts2, 0.007, 'power', 'AMM 24-00 2.B(4), 80-10')
+    # свечи накаливания: третий выход шины коробки (AMM 24-00 2.B(4)) — рядом со стартером, сквозь тот же проход
+    gl = lane('glow')
+    pts = route(gl[-1], (0, -1, -0.3), g + V((-0.012, 0.03, 0.012)), (0, -1, 0), 0.005, *fwd, step=0.015, relax=[(gl[-1], 0.05), (g, 0.05)])
+    pts2 = route(g - V((-0.012, 0.03, -0.012)), (0, -1, 0), GLOW_END, (0, -1, 0), 0.005, *eng, step=0.012, hidden=False,
+                 relax=[(GLOW_END, 0.04), (g, 0.05)])
+    cable('Glow plug supply cable (relay junction box → glow plugs)', 'Кабель свечей накаливания: от шины релейной коробки — в общем стволе со стартерным '
+          'кабелем — сквозь проход в перегородке к жгуту свечей на двигателе (GLOW ON — свечи греются перед запуском)',
+          [ports[1]] + gl + pts[1:] + pts2, 0.005, 'glow', 'AMM 24-00 2.B(4), 80-00')
+    # резервная батарея EECU → ствол → реле на полке доски
+    ec = lane('ecu')
+    head = route(ecu_p, (0, 0, 1), ec[0], (0, -1, 0), 0.004, (-0.10, 1.70, -0.14), (0.45, 2.50, 0.40), step=0.008,
+                 relax=[(ecu_p, 0.04), (ec[0], 0.04)])
+    pts = route(ec[-1], (0, -1, 0.3), ECU_RELAY + V((0, 0.02, 0)), (0, -1, 0), 0.004, (-0.45, -1.19, -0.10), (0.45, -0.70, 0.62), step=0.012,
+                relax=[(ec[-1], 0.05), (ECU_RELAY, 0.05)])
+    cable('ECU backup battery cable → ECU backup relay', 'Кабель резервной батареи EECU: в общем стволе под полом — к реле на полке приборной доски',
+          head[:-1] + ec + pts[1:], 0.004, 'power', 'AMM 24-31 3.')
+    nclamp = trunk_clamps('Main cable trunk clamps', fillet(body, 0.05), 0.0215)
+    print('TRUNK', len(body), 'points', round(lib.path_len(body), 2), 'm, clamps', nclamp)
     # генератор → предохранитель 100 А → проход → шина EECU
     gL = GROMMET[1]
     pts = route(ALT_TERM, (0, -1, 0), FUSE100 + V((-0.045, 0, 0)), (1, 0, 0), 0.005, *eng, step=0.012, hidden=False,
@@ -410,10 +488,6 @@ def build():
     pts = route(REGULATOR + V((0.05, 0, 0)), (1, 0, 0), CB_BACK + V((0.04, 0, 0.02)), (0, 1, 0), 0.0025, *fwd, step=0.015,
                 relax=[(REGULATOR, 0.06), (CB_BACK, 0.05)])
     cable('Alternator regulator control wires (ENGINE MASTER)', 'Провода регулятора к выключателю ENGINE MASTER и предохранителю 10 А', pts, 0.0025, 'thin', 'AMM 24-30, 24-31 3.', lugs=False)
-    # резервная батарея EECU → реле на полке доски → EECU
-    pts = route(ecu_p, (0, 0, 1), ECU_RELAY + V((0, 0.02, 0)), (0, -1, 0), 0.004, (-0.45, -1.19, -0.27), (0.45, 3.40, 0.70), step=0.02,
-                relax=[(ecu_p, 0.04), (ECU_RELAY, 0.05)])
-    cable('ECU backup battery cable → ECU backup relay', 'Кабель резервной батареи EECU к реле на полке приборной доски', pts, 0.004, 'power', 'AMM 24-31 3.')
     pts = route(ecu_n, (0, 0, 1), ECU_GROUND, (0, -1, 0), 0.004, (-0.1, 2.25, -0.06), (0.3, 2.6, 0.25), step=0.008,
                 relax=[(ecu_n, 0.04), (ECU_GROUND, 0.02)])
     cable('ECU backup battery ground', 'Масса резервной батареи EECU на кольцевой шпангоут 1', pts, 0.004, 'ground', 'AMM 24-31 3.')

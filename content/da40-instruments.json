@@ -58,13 +58,11 @@
           {
             "src": "models/da40/da40-pitot-static.glb",
             "title": "ПВД и статика"
-          }
-        ],
-        "context": [
+          },
           {
             "src": "models/da40/da40-instruments.glb",
-            "title": "Приборное оборудование",
-            "match": "gdc 74a air data|gdu 1040"
+            "title": "Вычислитель воздушных сигналов GDC 74A",
+            "match": "gdc 74a"
           }
         ],
         "elements": [
@@ -100,7 +98,15 @@
           0,
           -0.02
         ],
-        "shellDrop": "^(Cube0(28|32|34|36|38|40|51|99)|Cube100|Cylinder0(17|18|23)|Cylinder173|Plane0(11|17|18|22|25|26)|BezierCurve)$"
+        "shellDrop": "^(Cube0(28|32|34|36|38|40|51|99)|Cube100|Cylinder0(17|18|23)|Cylinder173|Plane0(11|17|18|22|25|26)|BezierCurve)$",
+        "extras": [
+          {
+            "src": "models/da40/da40-cabin.glb",
+            "title": "Салон",
+            "hint": "Салон: резервные указатель скорости и высотомер, рамка PFD и кран альтернативной статики подсвечены вместе с системой",
+            "system": "^instrument (needle airspeed|.*altimeter)|^plane(109|200|024|199)\\b|^as1000 pfd decals 1\\b|^alt static switch"
+          }
+        ]
       }
     },
     {
@@ -313,7 +319,8 @@
           {
             "src": "models/da40/da40-cabin.glb",
             "title": "Салон",
-            "hint": "Салон: кресла, приборная доска, педали — чтобы видеть, где система относительно кабины"
+            "hint": "Салон: рамки PFD и MFD с ручками и клавишами, клавиши автопилота и резервные приборы подсвечены вместе с системой",
+            "system": "^as1000 pfd (?!screen)|^autopilot |^instrument |^plane(109|200|024|199|031|197|168|169|170|171|172|173|174|175|176)\\b|^cylinder190\\b"
           }
         ],
         "elements": [

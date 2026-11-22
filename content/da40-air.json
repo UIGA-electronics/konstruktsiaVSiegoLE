@@ -68,28 +68,29 @@
           },
           {
             "src": "models/da40/da40-structure.glb",
-            "title": "Перегородка, внешняя нервюра коллектора, прямоугольный профиль («шляпа»)",
-            "match": "^firewall|^front outer rib lh|^top hat profile",
-            "opacity": 0.35
+            "title": "Перегородка, короб-коллектор (передний лонжерон центроплана и внешняя нервюра), «шляпа», дуга безопасности, шпангоут багажного отсека",
+            "match": "^firewall|^front outer rib lh|^top hat profile|^(front main bulkhead|baggage compartment frame|roll bar)( carbon caps| carbon tape)?( \\||$)",
+            "opacity": 0.3
           }
         ],
         "extras": [
           {
             "src": "models/da40/da40-cabin.glb",
             "title": "Салон",
-            "hint": "Салон: кресла, приборная доска, педали — чтобы видеть, где система относительно кабины"
+            "hint": "Салон: кресла, приборная доска, педали — чтобы видеть, где система относительно кабины",
+            "skip": "^vent pilot"
           }
         ],
         "elements": [
           {
             "title": "Вентиляция",
-            "match": "naca|air duct|air outlet|crossover|exit slots|stub wing",
-            "hint": "NACA-заборники, воздуховоды к соплам на доске и в дуге"
+            "match": "naca|air duct|air outlet|air nozzle|crossover|exit slots|stub wing",
+            "hint": "NACA-заборники, воздуховоды к соплам на доске и в дуге, короб-коллектор в левом центроплане, прорези выхода в шпангоуте багажного отсека"
           },
           {
             "title": "Обогрев",
             "match": "heat|warm air|defrost|distributor|floor",
-            "hint": "Теплообменник, кран обогрева, распределительный кран, обдув фонаря и пол"
+            "hint": "Заборник в капоте, теплообменник, кран обогрева, распределительный кран, обдув фонаря и пол"
           }
         ],
         "view": [

@@ -1130,7 +1130,14 @@ var Figures = (function () {
       layerDefs.forEach(function (d) {
         var on = !!d.on && !(LITE && d.lite === false), members = [];
         [].concat(d.src).forEach(function (src, k) {
-          var f = { src: src, role: 'extra', layer: !k, on: on, title: d.title, hint: d.hint, plain: true };
+          /* system — детали слоя, которые входят в систему раздела (экраны и резервные приборы
+             салона на странице приборов, автоматы защиты — на электросистеме): с салоном
+             они подсвечиваются вместе с системой и гаснут вместе с ней в элементах */
+          var f = { src: src, role: 'extra', layer: !k, on: on, title: d.title, hint: d.hint, plain: true,
+            sys: d.system ? new RegExp(d.system, 'i') : null,
+            /* skip — детали слоя, которые на этой странице даёт сама система (сопла вентиляции салона
+               в слое обогрева и вентиляции): копии из салона не показываем, чтобы не двоились */
+            skip: d.skip ? new RegExp(d.skip, 'i') : null };
           members.push(f); files.push(f);
         });
         members[0].members = members;
@@ -1175,7 +1182,7 @@ var Figures = (function () {
           /* Из слоя, взятого частично (match), лишние детали не входят ни в систему,
              ни в обшивку: воздуховоды с материалом «Fuselage» иначе считались бы
              обшивкой и просвечивали вместе с ней. */
-          if (f.match && !f.match.test(nameOf(o))) { o.visible = false; o.__dim = true; return; }
+          if ((f.match && !f.match.test(nameOf(o))) || (f.skip && f.skip.test(nameOf(o)))) { o.visible = false; o.__dim = true; return; }
           dequantize(o.geometry);
           if (o.material && !Array.isArray(o.material)) {
             var base = o.material;
@@ -1183,6 +1190,7 @@ var Figures = (function () {
             o.material.__baseName = base.name;
           }
           o.__file = f;
+          o.__sysx = !!(f.sys && f.sys.test(nameOf(o)));
           o.__quiet = !!(quietRe && o.material && !Array.isArray(o.material) &&
             quietRe.test(o.material.__baseName || o.material.name || ''));
           o.__op = o.material && o.material.opacity != null ? o.material.opacity : 1;
@@ -1327,7 +1335,8 @@ var Figures = (function () {
           if ((f.role === 'context' || f.role === 'system') && f.match && !f.match.test(nameOf(o))) {
             o.visible = false; o.__dim = true; return;
           }
-          var on = !(elDef && f.role === 'system') || inElement(elDef, o);
+          var isSys = f.role === 'system' || !!o.__sysx;
+          var on = !(elDef && isSys) || inElement(elDef, o);
           /* узел, разложенный кнопкой с isolate (крепления рессоры внутри
              центроплана): соседние системы и перегородки — призраком */
           if (on && iso && f.role !== 'base' && !(o.__exg && o.__exg.want) && !(iso.keep && iso.keep.test(nameOf(o)))) on = false;
@@ -1335,7 +1344,7 @@ var Figures = (function () {
           if (!o.material) return;
           /* разложенный узел — в своих материалах: в одном цвете подсветки
              сталь, резина и полиамид неотличимы */
-          var lit = f.role === 'system' && !f.plain && on && (glow || !!elDef) && !(o.__exg && o.__exg.want);
+          var lit = ((f.role === 'system' && !f.plain) || o.__sysx) && on && (glow || !!elDef) && !(o.__exg && o.__exg.want);
           if (on && f.role === 'context' && f.opacity != null) {
             /* соседние детали, которые иначе закрывают систему (перегородка) */
             o.material.transparent = true;
