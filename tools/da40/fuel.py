@@ -49,6 +49,7 @@ M = dict(
     paint=lib.mat('DA40 white paint', (0.93, 0.93, 0.93), 0.0, 0.35, ru='окрашенная деталь'),
     lockwire=lib.mat('DA40 lock wire', (0.70, 0.70, 0.72), 1.0, 0.3, ru='контровочная проволока'),
     cooler=lib.mat('DA40 heat exchanger (aluminium fins)', (0.60, 0.62, 0.64), 0.9, 0.5, ru='алюминиевый теплообменник'),
+    loom=lib.mat('DA40 fuel system wiring (black sleeve)', (0.045, 0.045, 0.05), 0.0, 0.6, ru='провода в чёрной оплётке'),
 )
 
 SIDE = {+1: ('MAIN', 'LH', 'левого', 'левом'), -1: ('AUX', 'RH', 'правого', 'правом')}
@@ -886,6 +887,99 @@ def build_firewall_forward(fw_sup, fw_ret):
     rt.set_extra(ref._bvh([o for o in COL.all_objects if o.type == 'MESH']))
     hose('Fire-sleeved hose engine return to firewall', 'Шланг обратной магистрали в огнезащитном рукаве: двигатель — перегородка',
          lead(FUEL_RET, (1, 0, 0), fw_ret, (0, 1, 0), 0.011), 0.0068, 0.04, 'AMM 28-20 2', fire=True)
+    return rt, _trim
+
+
+# GEA 71 на полке за приборной доской (avionics.py: GEA, GEA_C): правая грань блока x −0,065, середина y −0,895, низ z 0,302
+GEA_FACE = (-0.065, -0.895, 0.302)
+
+
+def panel_back(name, dz=0.0):
+    """Точка за приборной доской против органа салона MSFS (автомат, выключатель): центр его габарита, y — за лицевой панелью."""
+    o = bpy.data.objects[name]
+    vs = [o.matrix_world @ V(c) for c in o.bound_box]
+    c = sum(vs, V()) / 8
+    return V((c.x, -0.735, c.z + dz))
+
+
+def build_wiring(rt, trim):
+    """Проводка топливной системы. AMM 28-40 2.A: кабели соединяют датчики количества (и датчик низкого уровня) с системой
+    индикации двигателя — в G1000 это GEA 71; 28-20 3.E: насос перекачки — от основной шины через автомат 5 А и выключатель
+    FUEL TRANS (XFER) внизу слева на доске; 3.F, РЛЭ 7.9.4: насосы A и B — через свои автоматы FUEL PUMP A / B. Раньше
+    разъёмы датчиков на корневых нервюрах и насосы стояли без проводов."""
+    rt.set_extra(ref._bvh([o for o in COL.all_objects if o.type == 'MESH']))
+    cab = ((-1.26, -1.19, -0.27), (1.26, 0.60, 0.60))
+
+    def path(a, da, b, db, r, lo=cab[0], hi=cab[1], step=0.015):
+        a, b, da, db = V(a), V(b), V(da).normalized(), V(db).normalized()
+        a0, b0 = a + da * 0.02, b - db * 0.02
+        old = rt.step
+        rt.step = step
+        try:
+            for hid in (True, False):
+                mid = rt.route(a0, b0, r, lo, hi, hidden=hid, relax=[(a, 0.05), (b, 0.05)], max_nodes=900000)
+                if mid:
+                    if not hid:
+                        print('WIRE visible', tuple(round(v, 3) for v in a))
+                    return [a] + mid + [b]
+        finally:
+            rt.step = old
+        raise SystemExit(f'нет трассы провода {tuple(round(v, 3) for v in a)} → {tuple(round(v, 3) for v in b)}')
+
+    def clamps(p, pts, r, every=0.30):
+        # хомуты-петли к ближайшей поверхности (отделка, обшивка) не дальше 5 см
+        L = lib.path_len(pts)
+        n = 0
+        for k in range(1, int(L / every)):
+            q, t = lib.along(pts, k * every)
+            best = None
+            for bvh in (trim, R.shell):
+                h = bvh.find_nearest(q, 0.05 + r)
+                if h[0] is not None and (best is None or h[3] < best[3]):
+                    best = h
+            if best is None or best[3] < r + 0.004:
+                continue
+            p_clamp(p, q, t, r, best[0] - q, p.m(M['steel']), p.m(M['rubber']))
+            n += 1
+        return n
+
+    def cable(name, ru, pts, r, doc, plug=None):
+        c = P(name, ru, 'loom', doc)
+        path_ = fillet(pts, 0.03)
+        sweep(c, path_, r, 0, segs=10)
+        nc = clamps(c, path_, r)
+        if plug:
+            q, d = plug
+            box(c, q + d * 0.006, (0.012, 0.030, 0.016), basis(d, up=V((0, 0, 1))), c.m(M['plastic']), bevel=0.001)
+        c.done()
+        rt.set_extra(ref._bvh([o for o in COL.all_objects if o.type == 'MESH']))
+        print('WIRE', name, round(lib.path_len(path_), 2), 'm, clamps', nc)
+
+    # датчики баков → GEA 71 (вход в торец блока снизу, у разъёма жгута GEA)
+    for s, dz in ((+1, 0.026), (-1, 0.046)):
+        tag = SIDE[s][0]
+        a = PLUG[s] - V((s * 0.039, 0, 0))                 # конец хвостовика разъёма на корневой нервюре
+        b = V((GEA_FACE[0] + 0.012, GEA_FACE[1] + (0.012 if s > 0 else -0.012), GEA_FACE[2] + dz))
+        pts = path(a, (-s, 0, 0), b, (-1, 0, 0), 0.0035)
+        cable(f'{tag} tank sensors cable (root rib connector → GEA 71)',
+              f'Кабель датчиков бака {tag}: количество топлива, температура, низкий уровень' + (' и верхний уровень' if s > 0 else '') +
+              ' — от разъёма на корневой нервюре через центроплан и под полом к блоку GEA 71 на полке за приборной доской',
+              pts, 0.0035, 'AMM 28-40 2.A, 31-40', plug=(b - V((0.012, 0, 0)), V((1, 0, 0))))
+    # насосы A и B → автоматы FUEL PUMP A / B (в салоне MSFS — CB_FUELA / CB_FUELB)
+    for k, sx, cb in (('A', 0.035, 'CB_FUELA'), ('B', -0.035, 'CB_FUELB')):
+        a = V((sx, -0.646, -0.134))                         # передняя грань разъёма питания на насосе
+        b = panel_back(cb)
+        pts = path(a, (0, -1, 0), b, (0, -1, 0), 0.0025, lo=(-0.56, -1.19, -0.27), hi=(0.56, -0.30, 0.60))
+        cable(f'Electric fuel pump {k} cable (→ FUEL PUMP {k} circuit breaker)',
+              f'Кабель питания электрического топливного насоса {k}: от разъёма на насосе под полом к автомату защиты FUEL PUMP {k} '
+              f'на панели автоматов', pts, 0.0025, 'AMM 28-20 3.F, AFM 7.9.4')
+    # насос перекачки → выключатель FUEL TRANS (в салоне MSFS — FUEL_TRANSFER1)
+    a = V((0.80 - 0.006, 0.27, -0.058))
+    b = panel_back('FUEL_TRANSFER1')
+    pts = path(a, (-1, 0, 0), b, (0, -1, 0), 0.0025)
+    cable('Fuel transfer pump cable (→ FUEL TRANS switch)', 'Кабель насоса перекачки: от разъёма на насосе в левом центроплане через '
+          'центроплан и под полом к выключателю FUEL TRANS внизу слева на приборной доске (автомат 5 А — на панели автоматов)',
+          pts, 0.0025, 'AMM 28-20 3.E')
 
 
 def high_fuel_sensor():
@@ -922,7 +1016,8 @@ for s in (+1, -1):
 high_fuel_sensor()
 fus = build_fuselage()
 fw_sup, fw_ret = build_lines(fit, fus)
-build_firewall_forward(fw_sup, fw_ret)
+RT_FWD, TRIM = build_firewall_forward(fw_sup, fw_ret)
+build_wiring(RT_FWD, TRIM)
 
 dup = [o.name for o in COL.all_objects if '.0' in o.name[-4:]]
 assert not dup, dup

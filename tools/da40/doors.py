@@ -169,7 +169,11 @@ def canopy():
     p.done()
     f = P('Canopy hinge frame', 'Рама навески фонаря: стальная трубчатая рама; спереди к ней на двух накладках крепится рама фонаря, сзади она поворачивается на петлях перегородки — фонарь открывается вверх-вперёд',
           'steel', 'AMM 52-10 2.B, рис. 1')
-    tube(f, [hinge[1], hinge[-1]], 0.009, bend=0.02)
+    tube(f, [hinge[1] + V((0.040, 0, 0)), hinge[-1]], 0.009, bend=0.02)
+    # рис. 1: газовый упор — на шпильке у левого конца поперечной трубы; рычаг вниз от оси, чтобы упор работал
+    lev_a = hinge[1] + V((0.034, 0.0, 0.0))
+    lev_b = lev_a + V((0.0, 0.006, -0.034))
+    box(f, (lev_a + lev_b) / 2, (0.006, 0.020, (lev_b - lev_a).length + 0.016), basis(lev_b - lev_a, up=V((1, 0, 0))), 0, bevel=0.002)
     for s in (1, -1):
         a = ATTACH[0 if s > 0 else 1]
         h = hinge[s]
@@ -180,9 +184,9 @@ def canopy():
             hexa(f, a + V((dx, 0, 0.0025)), a + V((dx, 0, 0.0075)), 0.008, f.m(M['bolt']))
             cyl(f, a + V((dx, 0, 0.0)), a + V((dx, 0, -0.016)), 0.0025, f.m(M['bolt']), segs=8)
     f.done()
-    # газовый упор: от поперечины рамы навески к низу перегородки
-    top = V((0.205, FW_REAR + 0.030, HINGE_Z - 0.004))
-    bot = V((0.345, FW_REAR + 0.022, 0.06))
+    # газовый упор: от рычага на конце поперечной трубы рамы навески (рис. 1) к кронштейну внизу перегородки
+    top = lev_b + V((0.010, 0.0, 0.0))
+    bot = V((top.x, FW_REAR + 0.022, 0.06))
     d = (bot - top).normalized()
     g = P('Canopy gas spring strut', 'Газовый упор фонаря: держит фонарь открытым; верх — на раме навески, низ — на кронштейне внизу перегородки',
           'gas', 'AMM 52-10 2.B, рис. 1')
@@ -191,7 +195,14 @@ def canopy():
     cyl(g, top + d * (L * 0.45), bot - d * 0.02, 0.0105, 0, segs=18)
     for q in (top, bot):
         lib.sphere(g, q, 0.007, g.m(M['bolt']), segs=10, rings=5)
-    box(g, bot + V((0, -0.012, -0.006)), (0.03, 0.008, 0.03), Matrix.Identity(3), g.m(M['alu']), bevel=0.001)
+    cyl(g, top - V((0.012, 0, 0)), top + V((0.004, 0, 0)), 0.0035, g.m(M['bolt']), segs=10)          # шпилька на рычаге
+    hexa(g, top + V((0.004, 0, 0)), top + V((0.009, 0, 0)), 0.009, g.m(M['bolt']))                  # гайка с шайбой
+    # кронштейн на перегородке: пластина на двух болтах и проушина под шаровую опору
+    box(g, V((bot.x, FW_REAR + 0.004, bot.z - 0.004)), (0.032, 0.008, 0.040), Matrix.Identity(3), g.m(M['alu']), bevel=0.0015)
+    box(g, V((bot.x, FW_REAR + 0.014, bot.z)), (0.016, 0.016, 0.010), Matrix.Identity(3), g.m(M['alu']), bevel=0.001)
+    for dz in (-0.016, 0.010):
+        q = V((bot.x - 0.010 if dz > 0 else bot.x + 0.010, FW_REAR + 0.008, bot.z + dz))
+        hexa(g, q, q + V((0, 0.004, 0)), 0.007, g.m(M['bolt']))
     g.done()
 
     # механизм замка: ручка слева, двойной рычаг, тяга к левому стопорному болту, тросик к правому
@@ -256,31 +267,101 @@ def canopy():
 D_PIVOT = bpy.data.objects['CanopyR'].matrix_world.translation.copy()   # ось петель двери (исходная модель)
 
 
+DOOR_PTS = [m.matrix_world @ v.co for m in DOOR for v in m.data.vertices]
+DOOR_BVH = ref._bvh(DOOR)
+TRIM_BVH = ref._bvh([o for o in bpy.data.collections['DA40 Interior'].all_objects
+                     if o.type == 'MESH' and not o.hide_render and not any(m and 'Glass' in m.name for m in o.data.materials)])
+
+
+def door_top_edge(y, band=0.012):
+    """Верхняя (внутренняя у оси фюзеляжа) кромка рамы задней двери на станции y — по вершинам рамы MSFS."""
+    pts = [q for q in DOOR_PTS if abs(q.y - y) < band and q.z > 0.6]
+    return min(pts, key=lambda q: q.x)
+
+
+def roof_point(x, y):
+    """Точка и наружная нормаль обшивки (крыша или дверь) сверху над (x, y)."""
+    loc, nor = R.hit((x, y, 2.0), (0, 0, -1))
+    if nor.z < 0:
+        nor = -nor
+    return loc, nor
+
+
+def leaf(p, a, b, n, d, width=0.042, t=0.003, mi=0, screws=2):
+    """Лист петли от a к b по обшивке с нормалью n; ширина — вдоль оси петли d."""
+    u = (b - a)
+    u = (u - n * u.dot(n)).normalized()
+    L = (b - a).length
+    dd = (d - n * d.dot(n) - u * d.dot(u)).normalized()
+    c = (a + b) / 2 + n * (t / 2 + 0.0004)
+    box(p, c, (L, width, t), Matrix((u, dd, n)).transposed(), mi, bevel=0.0008)
+    for k in range(screws):
+        q = a + (b - a) * ((k + 1) / (screws + 1)) + n * (t + 0.0004)
+        cyl(p, q, q + n * 0.0016, 0.0035, p.m(M['bolt']), segs=10)
+
+
 def door():
-    p = P('Passenger door hinges', 'Петли задней двери сверху у оси фюзеляжа; переднюю можно снять изнутри — тогда дверь выдавливают вверх как аварийный выход',
-          'alu', 'AMM 52-10 3.A, рис. 4')
-    for y in (D_PIVOT.y - 0.18, D_PIVOT.y + 0.50):
-        c = V((D_PIVOT.x, y, D_PIVOT.z - 0.012))
-        box(p, c + V((-0.02, 0, 0.004)), (0.04, 0.04, 0.006), Matrix.Identity(3), 0, bevel=0.002)       # лист на фюзеляже
-        box(p, c + V((0.03, 0, -0.004)), (0.05, 0.03, 0.005), Matrix.Identity(3), 0, bevel=0.002)       # лист на двери
-        cyl(p, c - V((0, 0.025, 0)), c + V((0, 0.025, 0)), 0.005, p.m(M['bolt']), segs=12)                 # ось
-        for dx in (-0.03, 0.04):
-            hexa(p, c + V((dx, 0, 0.005)), c + V((dx, 0, 0.010)), 0.007, p.m(M['bolt']))
+    # петли (AMM 52-10 рис. 4–5): плоские, снаружи на верхней кромке двери; лист на крыше, лист на двери, шарнир по
+    # линии зазора. Линия зазора идёт вдоль крыши и к хвосту опускается (у передней петли z 0,96, у задней 0,85) —
+    # ось петель наклонная, а не горизонтальная, как была
+    ys = (D_PIVOT.y - 0.18, D_PIVOT.y + 0.50)
+    edges = [door_top_edge(y) for y in ys]
+    axis = (edges[1] - edges[0]).normalized()
+    p = P('Passenger door hinges', 'Петли задней двери: две плоские петли на верхней кромке двери у оси фюзеляжа — лист на крыше, '
+          'лист на двери, шарнир по линии зазора; переднюю можно снять изнутри — тогда дверь выдавливают вверх как аварийный выход',
+          'alu', 'AMM 52-10 3.A, рис. 4, 5')
+    def surf_near(x, y, step):
+        # прямо по линии зазора луч сверху проходит в щель и падает на днище — шагаем от зазора, пока не попадём в крышу/дверь
+        for k in range(15):
+            loc, nor = roof_point(x + step * k, y)
+            if loc is not None and loc.z > 0.6:
+                return loc, nor
+        raise SystemExit(f'нет обшивки у петли x {x:.3f} y {y:.3f}')
+    for e in edges:
+        ka, na = surf_near(e.x - 0.006, e.y, -0.002)                                                      # край крыши
+        kb, nb = surf_near(e.x + 0.006, e.y, 0.002)                                                       # край двери
+        n0 = (na + nb).normalized()
+        knuckle = (ka + kb) / 2 + n0 * 0.0045
+        cyl(p, knuckle - axis * 0.024, knuckle + axis * 0.024, 0.0045, 0, segs=14)
+        cyl(p, knuckle - axis * 0.027, knuckle + axis * 0.027, 0.0018, p.m(M['bolt']), segs=8)          # ось
+        a_in, n_in = surf_near(ka.x - 0.040, e.y, -0.002)
+        a_out, n_out = surf_near(kb.x + 0.042, e.y, 0.002)
+        leaf(p, ka - (kb - ka) * 0.5, a_in, (na + n_in).normalized(), axis)                               # на крыше
+        leaf(p, kb - (ka - kb) * 0.5, a_out, (nb + n_out).normalized(), axis)                             # на двери
+        print('HINGE', tuple(round(c, 3) for c in ka), tuple(round(c, 3) for c in kb), tuple(round(c, 3) for c in a_in), tuple(round(c, 3) for c in a_out))
     p.done()
-    # газовый упор: кронштейн у заднего края двери — фюзеляж. Крыша к хвосту опускается: у заднего края
-    # двери (y ≈ 1,35) она на z ≈ 0,82 при x 0,17, борт на z 0,63 — на x ≈ 0,46; оба конца — под обшивкой
-    fu = V((0.17, D_PIVOT.y + 0.655, 0.79))
-    dr = V((0.42, D_PIVOT.y + 0.665, 0.62))
+    # газовый упор (рис. 4–5): вдоль задней кромки двери — верх на кронштейне у крыши за задней петлей, низ на задней
+    # раме двери; оба кронштейна прижаты к поверхностям (крыша и рама двери MSFS)
+    # задняя рама двери — за стеклом (стекло до y 1,384, рама до 1,449): ищем станцию, где луч изнутри упирается в раму
+    for ys_ in (1.415, 1.405, 1.425, 1.395):
+        hd = DOOR_BVH.ray_cast(V((0.25, ys_, 0.615)), V((1, 0, 0)), 0.5)
+        if hd[0] is not None:
+            break
+    e = door_top_edge(ys_)
+    top0 = V((e.x - 0.040, ys_ - 0.01, 0.62))
+    hits = [h for h in (TRIM_BVH.ray_cast(top0, V((0, 0, 1)), 0.5), R.shell.ray_cast(top0, V((0, 0, 1)), 0.5)) if h[0] is not None]
+    hu = min(hits, key=lambda h: h[3])
+    nu = hu[1] if hu[1].z < 0 else -hu[1]                                                                 # внутрь кабины
+    nd = hd[1] if hd[1].x < 0 else -hd[1]
+    fu = hu[0] + nu * 0.016
+    dr = hd[0] + nd * 0.016
     d = (dr - fu).normalized()
     L = (dr - fu).length
-    g = P('Passenger door gas spring strut', 'Газовый упор задней двери: от кронштейна у заднего края двери к фюзеляжу; держит дверь открытой, при сильном ветре дверь надо придерживать (РЛЭ 7.8.2)',
-          'gas', 'AMM 52-10 3.A, рис. 4; РЛЭ 7.8.2')
+    g = P('Passenger door gas spring strut', 'Газовый упор задней двери вдоль её задней кромки: верх — на кронштейне у крыши за задней петлей, '
+          'низ — на задней раме двери; держит дверь открытой, при сильном ветре дверь надо придерживать (РЛЭ 7.8.2)',
+          'gas', 'AMM 52-10 3.A, рис. 4, 5; РЛЭ 7.8.2')
     cyl(g, fu + d * 0.02, fu + d * (L * 0.5), 0.0105, 0, segs=18)
     cyl(g, fu + d * (L * 0.5), dr - d * 0.02, 0.004, g.m(M['rod']), segs=12)
-    for q in (fu, dr):
+    for q, base, nn in ((fu, hu[0], nu), (dr, hd[0], nd)):
         lib.sphere(g, q, 0.007, g.m(M['bolt']), segs=10, rings=5)
-        box(g, q + V((0, 0.012, 0)), (0.02, 0.008, 0.024), Matrix.Identity(3), g.m(M['alu']), bevel=0.001)
+        cyl(g, base + nn * 0.002, q, 0.0032, g.m(M['bolt']), segs=10)                                     # шаровой палец
+        side = nn.cross(V((0, 1, 0)))
+        if side.length < 0.2:
+            side = nn.cross(V((1, 0, 0)))
+        box(g, base + nn * 0.002, (0.024, 0.034, 0.004), Matrix((side.normalized(), nn.cross(side).normalized(), nn)).transposed(),
+            g.m(M['alu']), bevel=0.001)                                                                    # кронштейн-пластина
     g.done()
+    print('DOOR hinges', [tuple(round(c, 3) for c in q) for q in edges], 'strut', tuple(round(c, 3) for c in fu), tuple(round(c, 3) for c in dr))
     # механизм замка
     hp = inside(min(D_EDGE, key=lambda q: abs(q.y - 0.47)), 1)
     k = P('Passenger door handle double lever', 'Двойной рычаг внутренней ручки задней двери: назад — длинная тяга к заднему стопорному болту, вперёд — короткая к переднему',

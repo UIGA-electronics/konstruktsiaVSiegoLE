@@ -435,7 +435,8 @@ def build():
     eng = ((-0.45, -1.80, -0.25), (0.45, -1.20, 0.60))
     trunk = route(ports[3], (0, 1, 0), TRUNK_FORK, (0, -1, 0.2), TRUNK_R, *fwd, step=0.02, relax=[(ports[3], 0.05), (TRUNK_FORK, 0.04)])
     body = trunk[1:-1]                                     # без концов: у коробки и у развилки кабели расходятся
-    lanes = {'main': (0.0, 0.0), 'starter': (0.0140, 0.0), 'glow': (-0.0130, 0.0), 'ecu': (0.0, 0.0120)}
+    lanes = {'main': (0.0, 0.0), 'starter': (0.0140, 0.0), 'glow': (-0.0130, 0.0), 'ecu': (0.0, 0.0120),
+             'reg_ctl': (0.0085, -0.0105), 'reg_fld': (-0.0085, -0.0105)}
 
     def lane(key):
         return offset_path(body, *lanes[key])
@@ -471,23 +472,49 @@ def build():
     print('TRUNK', len(body), 'points', round(lib.path_len(body), 2), 'm, clamps', nclamp)
     # генератор → предохранитель 100 А → проход → шина EECU
     gL = GROMMET[1]
-    pts = route(ALT_TERM, (0, -1, 0), FUSE100 + V((-0.045, 0, 0)), (1, 0, 0), 0.005, *eng, step=0.012, hidden=False,
-                relax=[(ALT_TERM, 0.03), (FUSE100, 0.06)])
-    cable('Alternator output cable → 100 A fuse', 'Кабель генератора к предохранителю 100 А', pts, 0.005, 'power', 'AMM 24-30')
-    pts = route(FUSE100 + V((0.065, 0, 0)), (1, 0, 0), gL - V((0, 0.03, 0)), (0, 1, 0), 0.005, *eng, step=0.012, hidden=False,
-                relax=[(FUSE100, 0.07), (gL, 0.04)])
+    alt1 = route(ALT_TERM, (0, -1, 0), FUSE100 + V((-0.045, 0, 0)), (1, 0, 0), 0.005, *eng, step=0.012, hidden=False,
+                 relax=[(ALT_TERM, 0.03), (FUSE100, 0.06)])
+    cable('Alternator output cable → 100 A fuse', 'Кабель генератора к предохранителю 100 А', alt1, 0.005, 'power', 'AMM 24-30')
+    alt2 = route(FUSE100 + V((0.065, 0, 0)), (1, 0, 0), gL - V((0, 0.03, 0)), (0, 1, 0), 0.005, *eng, step=0.012, hidden=False,
+                 relax=[(FUSE100, 0.07), (gL, 0.04)])
     pts2 = route(gL + V((0, 0.03, 0)), (0, 1, 0), CB_BACK + V((0.02, 0, -0.02)), (0, 1, 0), 0.005, *fwd, step=0.015,
                  relax=[(CB_BACK, 0.05)])
-    cable('Alternator cable → ECU bus (instrument panel)', 'Кабель от предохранителя 100 А сквозь перегородку к шине EECU за панелью автоматов', pts + pts2, 0.005, 'power', 'AMM 24-00, 24-30')
-    # регулятор: возбуждение генератора и управление
-    pts = route(REGULATOR + V((0, -0.04, 0)), (0, -1, 0), gL + V((0.012, 0.03, 0.01)), (0, -1, 0), 0.0025, *fwd, step=0.015,
-                relax=[(REGULATOR, 0.06), (gL, 0.04)])
-    pts2 = route(gL - V((-0.012, 0.03, -0.01)), (0, -1, 0), ALT_TERM + V((0, 0.0, 0.04)), (0, -1, 0), 0.0025, *eng, step=0.012, hidden=False,
-                 relax=[(ALT_TERM, 0.05)])
-    cable('Alternator field and sense wires (regulator)', 'Провода регулятора: возбуждение генератора и контроль напряжения, через проход в перегородке', pts + pts2, 0.0025, 'thin', 'AMM 24-30 2.E', lugs=False)
-    pts = route(REGULATOR + V((0.05, 0, 0)), (1, 0, 0), CB_BACK + V((0.04, 0, 0.02)), (0, 1, 0), 0.0025, *fwd, step=0.015,
-                relax=[(REGULATOR, 0.06), (CB_BACK, 0.05)])
-    cable('Alternator regulator control wires (ENGINE MASTER)', 'Провода регулятора к выключателю ENGINE MASTER и предохранителю 10 А', pts, 0.0025, 'thin', 'AMM 24-30, 24-31 3.', lugs=False)
+    cable('Alternator cable → ECU bus (instrument panel)', 'Кабель от предохранителя 100 А сквозь перегородку к шине EECU за панелью автоматов', alt2 + pts2, 0.005, 'power', 'AMM 24-00, 24-30')
+    # регулятор под креслом пилота: обе пары проводов — в общий ствол под полом (у ствола ближайшая к регулятору точка), к
+    # развилке под доской; провода управления — к панели автоматов (ENGINE MASTER, предохранитель 10 А), провода
+    # возбуждения и контроля — к проходу генератора в перегородке и дальше вдоль силового кабеля генератора одним пучком
+    k0 = min(range(len(body)), key=lambda k: (body[k] - REGULATOR).length)
+    k0 = min(max(k0, 1), len(body) - 4)
+
+    def reg_lane(key):
+        return offset_path(body, *lanes[key])[k0:]
+    rc = reg_lane('reg_ctl')
+    head = route(REGULATOR + V((0.05, 0, 0)), (1, 0, 0), rc[0], (body[k0 + 1] - body[k0]).normalized(), 0.0025, *fwd, step=0.010,
+                 relax=[(REGULATOR, 0.06), (rc[0], 0.05)])
+    tail = route(rc[-1], (0, -1, 0.2), CB_BACK + V((0.04, 0, 0.02)), (0, 1, 0), 0.0025, *fwd, step=0.015,
+                 relax=[(rc[-1], 0.05), (CB_BACK, 0.05)])
+    cable('Alternator regulator control wires (ENGINE MASTER)', 'Провода регулятора к выключателю ENGINE MASTER и предохранителю 10 А: '
+          'от регулятора под креслом пилота — в общем стволе под полом — к панели автоматов', head[:-1] + rc + tail[1:], 0.0025, 'thin',
+          'AMM 24-30, 24-31 3.', lugs=False)
+    rf = reg_lane('reg_fld')
+    head = route(REGULATOR + V((0, -0.04, 0)), (0, -1, 0), rf[0], (body[k0 + 1] - body[k0]).normalized(), 0.0025, *fwd, step=0.010,
+                 relax=[(REGULATOR, 0.06), (rf[0], 0.05)])
+    tail = route(rf[-1], (0, -1, -0.3), gL + V((0.012, 0.03, 0.01)), (0, -1, 0), 0.0025, *fwd, step=0.015,
+                 relax=[(rf[-1], 0.05), (gL, 0.05)])
+    # в моторном отсеке — вдоль кабеля генератора (проход → предохранитель → клемма), сбоку от него в одном пучке
+    bay = list(reversed(alt2)) + list(reversed(alt1))
+    along_alt = offset_path(fillet(bay, 0.02), 0.0085, 0.0)[2:-2]
+    end = ALT_TERM + V((0, 0.0, 0.04))
+    cable('Alternator field and sense wires (regulator)', 'Провода регулятора: возбуждение генератора и контроль напряжения — в общем '
+          'стволе под полом, сквозь проход в перегородке и вдоль силового кабеля генератора к генератору', head[:-1] + rf + tail[1:] +
+          [gL - V((-0.012, 0.03, -0.01))] + along_alt + [end], 0.0025, 'thin', 'AMM 24-30 2.E', lugs=False)
+    # стяжки пучка в моторном отсеке: силовой кабель и провода регулятора
+    tie = P('Alternator cable bundle ties', 'Стяжки пучка в моторном отсеке: силовой кабель генератора и провода регулятора', 'steel', 'AMM 20-00, 24-30')
+    Lb = lib.path_len(fillet(bay, 0.02))
+    for f in (0.25, 0.5, 0.75):
+        q, t = lib.along(fillet(bay, 0.02), f * Lb)
+        ring_tube(tie, q + offset_path([q - t * 0.01, q, q + t * 0.01], 0.0042, 0.0)[1] - q, t, 0.011, 0.0095, 0.006, 0, segs=18)
+    tie.done()
     pts = route(ecu_n, (0, 0, 1), ECU_GROUND, (0, -1, 0), 0.004, (-0.1, 2.25, -0.06), (0.3, 2.6, 0.25), step=0.008,
                 relax=[(ecu_n, 0.04), (ECU_GROUND, 0.02)])
     cable('ECU backup battery ground', 'Масса резервной батареи EECU на кольцевой шпангоут 1', pts, 0.004, 'ground', 'AMM 24-31 3.')

@@ -3,7 +3,7 @@
     blender -b --factory-startup --python run.py -- tools/da40/gear.py out-gear-raw.glb
 
 Выход:
-  out-gear-raw.glb (+ .labels.json) — слой da40-gear: крепления рессор (32-10 рис. 1), цапфы носовой стойки
+  out-gear-raw.glb (+ .labels.json) — слой da40-gear: крепления рессор (32-10 рис. 2 — Tundra, OÄM 40-334), цапфы носовой стойки
       (32-20 рис. 1, 4), эластомерный пружинный пакет (32-20 рис. 2), упоры вилки;
   out-gear-raw.wheels.glb (+ .labels.json) — дополнение слоя da40-wheels (вливается merge_addon.js; в
       split-da40.js — ADDONS): полуоси с опорной пластиной тормоза и болтами (32-10 рис. 2, 4), тормоза
@@ -214,8 +214,8 @@ def main_gear(s):
     side_ru2 = 'левого' if s > 0 else 'правого'
     X = V((s, 0, 0))
     gi, go, gw = f'main-{tag.lower()}-inner', f'main-{tag.lower()}-outer', f'main-{tag.lower()}-wheel'
-    group(gi, f'Внутренний узел крепления {side_ru} рессоры (AMM 32-10 рис. 1)')
-    group(go, f'Наружный узел крепления {side_ru} рессоры (AMM 32-10 рис. 1)')
+    group(gi, f'Внутренний узел крепления {side_ru} рессоры (AMM 32-10 рис. 2)')
+    group(go, f'Наружный узел крепления {side_ru} рессоры (AMM 32-10 рис. 2)')
     group(gw, f'Колесо, тормоз и полуось {side_ru} основной опоры (AMM 32-10 рис. 2, 4; 32-40 рис. 1, 4)', near=1.9, far=3.6)
 
     p = P(f'Main gear leaf spring inboard part {tag}',
@@ -232,7 +232,7 @@ def main_gear(s):
     box(rb, V((s * (X_RIB_C - 0.004), SPRING_Y, -0.20)), (0.008, 0.16, 0.12), Matrix.Identity(3), 0, bevel=0.002)
     fin(rb)
 
-    # ── внутренний узел (32-10 рис. 1): болт сверху сквозь блок, пружинные шайбы, проушину рессоры,
+    # ── внутренний узел (32-10 рис. 2): болт сверху сквозь блок, пружинные шайбы, проушину рессоры,
     #    выпуклую и вогнутую шайбы; снизу корончатая гайка со шплинтом
     top_s = zc + SPRING_T / 2
     bot_s = zc - SPRING_T / 2
@@ -244,14 +244,14 @@ def main_gear(s):
 
     b = P(f'Main gear inner mount block {tag}',
           f'Монтажный блок внутреннего узла крепления {side_ru} рессоры: крепится болтами к центральной замыкающей '
-          'нервюре центроплана; сквозь него проходит внутренний болт', 'block', 'AMM 32-10 2., рис. 1')
+          'нервюре центроплана; сквозь него проходит внутренний болт', 'block', 'AMM 32-10 2., рис. 2')
     box(b, blk, (0.10, 0.07, BLK_H), Matrix.Identity(3), 0, bevel=0.003)
     fin(b)
     ex(gi, b.name, (0, 0, 0.075))
 
-    bb = P(f'Main gear inner mount block bolts {tag}', 'Болты крепления монтажного блока к стенке нервюры', 'steel', 'AMM 32-10 рис. 1')
+    bb = P(f'Main gear inner mount block bolts {tag}', 'Болты крепления монтажного блока к стенке нервюры', 'steel', 'AMM 32-10 рис. 2')
     bn = P(f'Main gear inner mount block nuts {tag}', 'Шайбы и гайки болтов крепления монтажного блока (с другой стороны стенки)',
-           'steel', 'AMM 32-10 рис. 1')
+           'steel', 'AMM 32-10 рис. 2')
     for dy in (-0.022, 0.022):
         head = V((s * (X_RIB_C + 0.10), SPRING_Y + dy, blk.z))
         bolt_head(bb, head + X * 0.006, -X, 0.006, 0.118, 0, af=0.010)
@@ -263,10 +263,10 @@ def main_gear(s):
 
     ib = P(f'Main gear inner bolt {tag}',
            'Внутренний болт: вертикальный, сквозь монтажный блок, пружинные шайбы и проушину рессоры; снизу — '
-           'корончатая гайка', 'steel', 'AMM 32-10 2., рис. 1')
+           'корончатая гайка', 'steel', 'AMM 32-10 2., рис. 2')
     head = V((axis.x, axis.y, blk.z + BLK_H / 2))
     hexa(ib, head, head + up * 0.008, 0.030, 0)
-    nut_top = bot_s - 0.010
+    nut_top = bot_s - 0.013                   # рис. 2: под корончатой гайкой ещё плоская шайба (3 мм)
     cyl(ib, head, V((axis.x, axis.y, nut_top - 0.02)), 0.0095, 0, segs=14)
     fin(ib)
     ex(gi, ib.name, (0, 0, 0.17))
@@ -274,43 +274,48 @@ def main_gear(s):
     for k, (nm, ru) in enumerate((('lower', 'нижняя, на рессоре'), ('upper', 'верхняя, под блоком'))):
         w = P(f'Main gear inner mount spring washer {nm} {tag}',
               f'Пружинная (тарельчатая) шайба, {ru}: между верхней гранью рессоры и монтажным блоком; корончатая '
-              'гайка поджимает пружинные шайбы', 'disc', 'AMM 32-10 2., рис. 1')
+              'гайка поджимает пружинные шайбы', 'disc', 'AMM 32-10 2., рис. 2')
         z = top_s + 0.0005 + k * 0.006
         revolve(w, V((axis.x, axis.y, z)), up, [(0, 0.0105), (0, 0.022 - k * 0.002), (0.0018, 0.022 - k * 0.002),
                                                 (0.0055, 0.0125), (0.0055, 0.0105)], 0, segs=32)
         fin(w)
         ex(gi, w.name, (0, 0, 0.032 + 0.022 * k))
 
-    cw = P(f'Main gear inner mount convex washer {tag}', 'Выпуклая шайба под нижней гранью рессоры', 'steel', 'AMM 32-10 2., рис. 1')
+    cw = P(f'Main gear inner mount convex washer {tag}', 'Выпуклая шайба под нижней гранью рессоры', 'steel', 'AMM 32-10 2., рис. 2')
     revolve(cw, V((axis.x, axis.y, bot_s)), dn, [(0, 0.0102), (0, 0.020), (0.003, 0.020), (0.005, 0.014), (0.005, 0.0102)], 0, segs=32)
     fin(cw)
     ex(gi, cw.name, (0, 0, -0.035))
     vw = P(f'Main gear inner mount concave washer {tag}', 'Вогнутая шайба между выпуклой шайбой и корончатой гайкой', 'steel',
-           'AMM 32-10 2., рис. 1')
+           'AMM 32-10 2., рис. 2')
     revolve(vw, V((axis.x, axis.y, bot_s - 0.005)), dn, [(0, 0.0102), (0, 0.014), (0, 0.020), (0.005, 0.020), (0.005, 0.0102)], 0, segs=32)
     fin(vw)
     ex(gi, vw.name, (0, 0, -0.062))
+    fw = P(f'Main gear inner mount washer {tag}', 'Плоская шайба между вогнутой шайбой и корончатой гайкой — у шасси Tundra '
+           '(рис. 2 действует при OÄM 40-334)', 'steel', 'AMM 32-10 2., рис. 2')
+    revolve(fw, V((axis.x, axis.y, bot_s - 0.010)), dn, [(0, 0.0102), (0, 0.021), (0.003, 0.021), (0.003, 0.0102)], 0, segs=32)
+    fin(fw)
+    ex(gi, fw.name, (0, 0, -0.080))
     cn = P(f'Main gear inner mount castle nut {tag}', 'Корончатая гайка внутреннего болта: поджимает пружинные шайбы',
-           'steel', 'AMM 32-10 2., рис. 1')
+           'steel', 'AMM 32-10 2., рис. 2')
     castle_nut(cn, V((axis.x, axis.y, nut_top)), dn, 0.030, 0.012, 0)
     fin(cn)
-    ex(gi, cn.name, (0, 0, -0.092))
-    cp = P(f'Main gear inner mount cotter pin {tag}', 'Шплинт корончатой гайки', 'steel', 'AMM 32-10 рис. 1')
+    ex(gi, cn.name, (0, 0, -0.100))
+    cp = P(f'Main gear inner mount cotter pin {tag}', 'Шплинт корончатой гайки', 'steel', 'AMM 32-10 рис. 2')
     zp = nut_top - 0.0165
     sweep(cp, fillet([V((axis.x - 0.020, axis.y + 0.002, zp)), V((axis.x + 0.016, axis.y + 0.002, zp)),
                       V((axis.x + 0.020, axis.y + 0.002, zp - 0.006))], 0.003), 0.0014, 0, segs=6)
     sweep(cp, [V((axis.x - 0.020, axis.y - 0.002, zp)), V((axis.x + 0.012, axis.y - 0.002, zp))], 0.0014, 0, segs=6)
     fin(cp)
-    ex(gi, cp.name, (0, -0.035, -0.115))
+    ex(gi, cp.name, (0, -0.035, -0.123))
 
-    m = P(f'Main gear inner mount bonding strap {tag}', 'Перемычка металлизации: монтажный блок — рессора', 'copper', 'AMM 32-10 рис. 1')
+    m = P(f'Main gear inner mount bonding strap {tag}', 'Перемычка металлизации: монтажный блок — рессора', 'copper', 'AMM 32-10 рис. 2')
     a0 = V((s * (X_RIB_C + 0.095), SPRING_Y - 0.036, blk.z - 0.012))
     a1 = V((s * (X_INNER + 0.06), SPRING_Y - 0.030, z_spring(X_INNER + 0.06) - 0.004))
     sweep(m, fillet([a0, a0 + V((0, -0.012, -0.012)), a1 + V((0, -0.008, 0)), a1], 0.01), 0.002, 0, segs=6)
     fin(m)
     ex(gi, m.name, (0, -0.04, 0.03))
 
-    # ── нервюры основного шасси и наружный узел (32-10 рис. 1)
+    # ── нервюры основного шасси и наружный узел (32-10 рис. 2)
     x0, x1 = OUTER
     xm = (x0 + x1) / 2
     zm = z_spring(xm)
@@ -326,39 +331,42 @@ def main_gear(s):
 
     o = P(f'Main gear outer mount upper part {tag}',
           f'Наружный узел крепления {side_ru} рессоры, верхняя часть: ложится на рессору сверху, двумя болтами '
-          'крепится к нервюрам основного шасси', 'saddle', 'AMM 32-10 2., рис. 1')
+          'крепится к нервюрам основного шасси', 'saddle', 'AMM 32-10 2., рис. 2')
     box(o, V((s * xm, SPRING_Y, top_s + 0.036)), (x1 - x0, 0.118, 0.054), Matrix.Identity(3), 0, bevel=0.006)        # верх
     for dy in (-1, 1):                                                                                               # щёки до планки
         box(o, V((s * xm, SPRING_Y + dy * 0.047, zm + 0.004)), (x1 - x0, 0.024, SPRING_T + 0.012), Matrix.Identity(3), 0, bevel=0.003)
     fin(o)
     ex(go, o.name, (0, 0, 0.11))
     pi = P(f'Main gear outer mount polyamide insert {tag}', 'Полиамидный вкладыш между рессорой и верхней частью наружного узла',
-           'poly', 'AMM 32-10 рис. 1')
+           'poly', 'AMM 32-10 рис. 2')
     box(pi, V((s * xm, SPRING_Y, top_s + 0.003)), (x1 - x0 - 0.01, SPRING_W, 0.006), Matrix.Identity(3), 0)
     fin(pi)
     ex(go, pi.name, (0, 0, 0.055))
     fl = P(f'Main gear outer mount flexible insert {tag}',
            'Эластичный вкладыш из армированной резины между рессорой и фиксирующей планкой: защищает рессору от истирания '
-           'и даёт ей поворачиваться в узле', 'rubber', 'AMM 32-10 2., рис. 1')
+           'и даёт ей поворачиваться в узле', 'rubber', 'AMM 32-10 2., рис. 2')
     box(fl, V((s * xm, SPRING_Y, bot_s - 0.002)), (x1 - x0 - 0.01, SPRING_W, 0.004), Matrix.Identity(3), 0)
     fin(fl)
     ex(go, fl.name, (0, 0, -0.045))
-    rbar = P(f'Main gear outer mount retaining bar {tag}', 'Фиксирующая планка наружного узла под рессорой', 'saddle', 'AMM 32-10 2., рис. 1')
+    rbar = P(f'Main gear outer mount retaining bar {tag}', 'Фиксирующая планка наружного узла под рессорой', 'saddle', 'AMM 32-10 2., рис. 2')
     box(rbar, V((s * xm, SPRING_Y, bot_s - 0.010)), (x1 - x0, 0.118, 0.012), Matrix.Identity(3), 0, bevel=0.002)
     fin(rbar)
     ex(go, rbar.name, (0, 0, -0.085))
-    vb = P(f'Main gear outer mount bolts {tag}', 'Болты наружного узла с шайбами: стягивают верхнюю часть и фиксирующую планку',
-           'steel', 'AMM 32-10 рис. 1')
-    vn = P(f'Main gear outer mount nuts {tag}', 'Шайбы и гайки болтов наружного узла под фиксирующей планкой', 'steel', 'AMM 32-10 рис. 1')
+    vb = P(f'Main gear outer mount bolts {tag}', 'Болты наружного узла: у шасси Tundra вставлены снизу, головка с шайбой — под '
+           'фиксирующей планкой; стягивают планку и верхнюю часть узла', 'steel', 'AMM 32-10 рис. 2 (OÄM 40-334)')
+    vn = P(f'Main gear outer mount nuts {tag}', 'Шайбы и гайки болтов наружного узла — сверху, на верхней части узла (у шасси Tundra)',
+           'steel', 'AMM 32-10 рис. 2 (OÄM 40-334)')
+    z_bar = bot_s - 0.016                       # низ фиксирующей планки
+    z_top = top_s + 0.063                       # верх верхней части узла
     for dy in (-0.047, 0.047):
-        h = V((s * xm, SPRING_Y + dy, top_s + 0.069))
-        cyl(vb, h, h - dn * 0.0015, 0.0085, 0, segs=14)
-        bolt_head(vb, h + up * 0.0075, dn, 0.008, (top_s + 0.069) - (bot_s - 0.024) + 0.0075, 0, af=0.013)
-        nut(vn, V((s * xm, SPRING_Y + dy, bot_s - 0.016)), dn, 0.008, 0)
+        hb = V((s * xm, SPRING_Y + dy, z_bar))
+        cyl(vb, hb, hb - up * 0.0015, 0.0085, 0, segs=14)                                                   # шайба под планкой
+        bolt_head(vb, hb - up * 0.0015, up, 0.008, (z_top + 0.010) - (z_bar - 0.0015), 0, af=0.013)       # головка снизу
+        nut(vn, V((s * xm, SPRING_Y + dy, z_top)), up, 0.008, 0)                                           # шайба и гайка сверху
     fin(vb)
     fin(vn)
-    ex(go, vb.name, (0, 0, 0.21))
-    ex(go, vn.name, (0, 0, -0.13))
+    ex(go, vb.name, (0, 0, -0.21))
+    ex(go, vn.name, (0, 0, 0.16))
     rbo = P(f'Main gear outer mount rib bolts {tag}', 'Болты крепления наружного узла к нервюрам основного шасси (с гайками)',
             'steel', 'AMM 32-10 2.')
     for dx in (-0.045, 0.045):

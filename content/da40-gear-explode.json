@@ -3,7 +3,7 @@
  "groups": [
   {
    "id": "main-lh-inner",
-   "title": "Внутренний узел крепления левой рессоры (AMM 32-10 рис. 1)",
+   "title": "Внутренний узел крепления левой рессоры (AMM 32-10 рис. 2)",
    "parts": {
     "Main gear inner mount block LH": [
      0.0,
@@ -45,14 +45,19 @@
      -0.062,
      -0.0
     ],
+    "Main gear inner mount washer LH": [
+     0.0,
+     -0.08,
+     -0.0
+    ],
     "Main gear inner mount castle nut LH": [
      0.0,
-     -0.092,
+     -0.1,
      -0.0
     ],
     "Main gear inner mount cotter pin LH": [
      0.0,
-     -0.115,
+     -0.123,
      0.035
     ],
     "Main gear inner mount bonding strap LH": [
@@ -64,7 +69,7 @@
   },
   {
    "id": "main-lh-outer",
-   "title": "Наружный узел крепления левой рессоры (AMM 32-10 рис. 1)",
+   "title": "Наружный узел крепления левой рессоры (AMM 32-10 рис. 2)",
    "parts": {
     "Main gear outer mount upper part LH": [
      0.0,
@@ -88,12 +93,12 @@
     ],
     "Main gear outer mount bolts LH": [
      0.0,
-     0.21,
+     -0.21,
      -0.0
     ],
     "Main gear outer mount nuts LH": [
      0.0,
-     -0.13,
+     0.16,
      -0.0
     ],
     "Main gear outer mount rib bolts LH": [
@@ -233,7 +238,7 @@
   },
   {
    "id": "main-rh-inner",
-   "title": "Внутренний узел крепления правой рессоры (AMM 32-10 рис. 1)",
+   "title": "Внутренний узел крепления правой рессоры (AMM 32-10 рис. 2)",
    "parts": {
     "Main gear inner mount block RH": [
      0.0,
@@ -275,14 +280,19 @@
      -0.062,
      -0.0
     ],
+    "Main gear inner mount washer RH": [
+     0.0,
+     -0.08,
+     -0.0
+    ],
     "Main gear inner mount castle nut RH": [
      0.0,
-     -0.092,
+     -0.1,
      -0.0
     ],
     "Main gear inner mount cotter pin RH": [
      0.0,
-     -0.115,
+     -0.123,
      0.035
     ],
     "Main gear inner mount bonding strap RH": [
@@ -294,7 +304,7 @@
   },
   {
    "id": "main-rh-outer",
-   "title": "Наружный узел крепления правой рессоры (AMM 32-10 рис. 1)",
+   "title": "Наружный узел крепления правой рессоры (AMM 32-10 рис. 2)",
    "parts": {
     "Main gear outer mount upper part RH": [
      0.0,
@@ -318,12 +328,12 @@
     ],
     "Main gear outer mount bolts RH": [
      0.0,
-     0.21,
+     -0.21,
      -0.0
     ],
     "Main gear outer mount nuts RH": [
      0.0,
-     -0.13,
+     0.16,
      -0.0
     ],
     "Main gear outer mount rib bolts RH": [

@@ -353,7 +353,13 @@
   /* Практикум: вместо полосок спектра — вкладки с картинкой системы и подписью.
      Полоски без подписей не говорили, куда ведёт касание (на телефоне подсказки
      title нет вовсе). Лента листается вбок, текущая вкладка — в середине. */
-  var TABS_V = 1;
+  var TABS_V = 5;
+  /* фото на вкладках (временно, см. assets/img/tabs/CREDITS.md): авторы и лицензии — строкой под лентой */
+  function tabCredits(screens) {
+    var seen = [];
+    screens.forEach(function (s) { if (s.imgCredit && seen.indexOf(s.imgCredit) < 0) seen.push(s.imgCredit); });
+    return seen.length ? '<p class="st-credit">Фото: ' + seen.map(esc).join('; ') + '</p>' : '';
+  }
   function sysTabs(topic, curId) {
     var nav = el('nav', 'sys-tabs');
     nav.setAttribute('aria-label', 'Разделы практикума');
@@ -363,9 +369,10 @@
         ? '<img src="' + esc(s.img) + '?v=' + TABS_V + '" alt="" width="160" height="100" loading="lazy" decoding="async">'
         : '<b aria-hidden="true">?</b>';
       return '<li><a href="#' + s.id + '" data-tone="' + s.id + '"' + (cur ? ' class="is-cur" aria-current="page"' : '') +
-        (s.note ? ' title="' + esc(s.note) + '"' : '') + '><span class="st-pic">' + pic + '</span>' +
+        (s.note || s.imgCredit ? ' title="' + esc((s.note || '') + (s.imgCredit ? '\nФото: ' + s.imgCredit : '')) + '"' : '') +
+        '><span class="st-pic">' + pic + '</span>' +
         '<span class="st-t"><i>' + (i + 1) + '</i><span>' + esc(shy(s.short || s.title)) + '</span></span></a></li>';
-    }).join('') + '</ol>';
+    }).join('') + '</ol>' + tabCredits(topic.screens);
     /* после монтирования страницы: текущую вкладку — в середину ленты */
     setTimeout(function () {
       var ol = nav.firstChild, a = nav.querySelector('.is-cur');

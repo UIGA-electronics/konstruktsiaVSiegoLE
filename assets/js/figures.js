@@ -849,7 +849,7 @@ var Figures = (function () {
          выбранная деталь — противоположным по кругу оттенков, чтобы не
          сливаться с ним. У бесцветного тона (обзор самолёта) — прежние
          синий и оранжевый. */
-      var LIT = new THREE.Color(0x1f4ea8), PICK = new THREE.Color(0xff8f2e), PICK_EM = new THREE.Color(0xff6a00);
+      var LIT = new THREE.Color(0x1f4ea8), PICK = new THREE.Color(0xff8f2e), PICK_EM = new THREE.Color(0xff6a00), WHITE = new THREE.Color(0xffffff);
       var toneHex = (getComputedStyle(frame).getPropertyValue('--c3d') || '').trim();
       if (/^#[0-9a-f]{6}$/i.test(toneHex)) {
         var tone = new THREE.Color(toneHex), hsl = {};
@@ -1361,9 +1361,11 @@ var Figures = (function () {
           }
           if (o.material.emissive && !o.__sel) {
             if (lit) {
-              /* слабое свечение: сильное выбеливает цвет до пастели */
+              /* слабое свечение: сильное выбеливает цвет до пастели. Детали салона с текстурой (пульт ELT,
+                 клавиши, рамки дисплеев) тёмные: умножение текстуры на цвет подсветки их почти не меняет —
+                 им свечение сильнее, рисунок текстуры при этом остаётся виден */
               o.material.emissive.copy(LIT);
-              o.material.emissiveIntensity = 0.16;
+              o.material.emissiveIntensity = o.material.map ? 0.5 : 0.16;
             } else if (o.__em !== null) {
               o.material.emissive.setHex(o.__em);
               o.material.emissiveIntensity = o.__ei;
@@ -1372,7 +1374,7 @@ var Figures = (function () {
           /* Свечение поверх белой детали выбеливает светлые цвета (шафран
              топлива, небо вентиляции) — на время подсветки красим и саму деталь. */
           if (o.material.color && o.__col != null) {
-            if (lit) o.material.color.copy(LIT);
+            if (lit) o.material.color.copy(LIT).lerp(WHITE, o.material.map ? 0.45 : 0);
             else o.material.color.setHex(o.__col);
           }
           /* Полированный алюминий (баки, трубки) отражает небо
