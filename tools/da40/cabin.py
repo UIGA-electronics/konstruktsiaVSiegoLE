@@ -57,7 +57,8 @@ def systems_bvh(R, own, extra=(), skip=None):
         got = [o for o in bpy.data.objects if o not in before]
         new += got
         drop = (skip or {}).get(g)
-        keep += [o for o in got if o.type == 'MESH' and not (drop and drop(o))]
+        # условные стрелки потока воздуха (air.py) — не детали: трассам не мешают
+        keep += [o for o in got if o.type == 'MESH' and not (drop and drop(o)) and '(arrows)' not in o.name]
     # силовой набор (structure.py строится последним и вырезает в стенках проходы под трассы) — препятствие только
     # своими сплошными деталями: узлы навески, кронштейны, упоры, подшипники, швеллер, болты, вставки
     f = os.path.join(LAYERS, 'da40-structure-raw.glb')

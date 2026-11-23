@@ -894,6 +894,35 @@ def build_firewall_forward(fw_sup, fw_ret):
 GEA_FACE = (-0.065, -0.895, 0.302)
 
 
+def device_backs():
+    """Тыльные части органов на доске, к которым приходят кабели: корпуса автоматов FUEL PUMP A / B (в салоне MSFS — колпачки
+    CB_FUELA / CB_FUELB в верхнем ряду панели автоматов) с двумя клеммами и корпус клавишного выключателя FUEL TRANS
+    (FUEL_TRANSFER1) с тремя клеммами. Возвращает концы клемм: {имя органа салона: точка}."""
+    ends = {}
+    for k, src in (('A', 'CB_FUELA'), ('B', 'CB_FUELB')):
+        c = panel_back(src)
+        p = P(f'FUEL PUMP {k} circuit breaker (rear)', f'Автомат защиты FUEL PUMP {k} — его корпус за панелью автоматов (на доске виден '
+              f'только колпачок): сзади две клеммы, к нижней приходит кабель насоса {k}', 'plastic', 'AMM 28-20 3.F, AFM 7.9.4')
+        y0, y1 = -0.671, -0.722
+        cyl(p, V((c.x, y0, c.z)), V((c.x, y1, c.z)), 0.0062, 0, segs=16)
+        hexa(p, V((c.x, y0 - 0.0005, c.z)), V((c.x, y0 - 0.0045, c.z)), 0.0145, p.m(M['steel']))           # гайка крепления к панели
+        for dz in (-0.0035, 0.0035):
+            cyl(p, V((c.x, y1, c.z + dz)), V((c.x, y1 - 0.011, c.z + dz)), 0.0016, p.m(M['steel']), segs=8)
+            hexa(p, V((c.x, y1 - 0.004, c.z + dz)), V((c.x, y1 - 0.007, c.z + dz)), 0.005, p.m(M['steel']))
+        p.done()
+        ends[src] = V((c.x, y1 - 0.011, c.z - 0.0035))
+    c = panel_back('FUEL_TRANSFER1')
+    p = P('FUEL TRANS switch (rear)', 'Выключатель FUEL TRANS (насос перекачки) — его корпус за доской (на доске видна только клавиша): '
+          'сзади три клеммы, к средней приходит кабель насоса перекачки', 'plastic', 'AMM 28-20 3.E, AFM 7.9.4')
+    y0, y1 = -0.690, -0.726
+    box(p, V((c.x, (y0 + y1) / 2, c.z)), (0.016, y0 - y1, 0.030), Matrix.Identity(3), 0, bevel=0.0015)
+    for dz in (-0.009, 0.0, 0.009):
+        cyl(p, V((c.x, y1, c.z + dz)), V((c.x, y1 - 0.010, c.z + dz)), 0.0018, p.m(M['steel']), segs=8)
+    p.done()
+    ends['FUEL_TRANSFER1'] = V((c.x, y1 - 0.010, c.z))
+    return ends
+
+
 def panel_back(name, dz=0.0):
     """Точка за приборной доской против органа салона MSFS (автомат, выключатель): центр его габарита, y — за лицевой панелью."""
     o = bpy.data.objects[name]
@@ -965,18 +994,21 @@ def build_wiring(rt, trim):
               f'Кабель датчиков бака {tag}: количество топлива, температура, низкий уровень' + (' и верхний уровень' if s > 0 else '') +
               ' — от разъёма на корневой нервюре через центроплан и под полом к блоку GEA 71 на полке за приборной доской',
               pts, 0.0035, 'AMM 28-40 2.A, 31-40', plug=(b - V((0.012, 0, 0)), V((1, 0, 0))))
-    # насосы A и B → автоматы FUEL PUMP A / B (в салоне MSFS — CB_FUELA / CB_FUELB)
+    # насосы A и B → автоматы FUEL PUMP A / B (в салоне MSFS — CB_FUELA / CB_FUELB): к нижней клемме корпуса автомата
+    # за панелью — кабель подходит к ней из-за доски (раньше обрывался в 6 см за панелью и загибался крючком)
+    ends = device_backs()
+    rt.set_extra(ref._bvh([o for o in COL.all_objects if o.type == 'MESH']))
     for k, sx, cb in (('A', 0.035, 'CB_FUELA'), ('B', -0.035, 'CB_FUELB')):
         a = V((sx, -0.646, -0.134))                         # передняя грань разъёма питания на насосе
-        b = panel_back(cb)
-        pts = path(a, (0, -1, 0), b, (0, -1, 0), 0.0025, lo=(-0.56, -1.19, -0.27), hi=(0.56, -0.30, 0.60))
+        b = ends[cb]
+        pts = path(a, (0, -1, 0), b, (0, 1, 0), 0.0025, lo=(-0.56, -1.19, -0.27), hi=(0.56, -0.30, 0.60))
         cable(f'Electric fuel pump {k} cable (→ FUEL PUMP {k} circuit breaker)',
               f'Кабель питания электрического топливного насоса {k}: от разъёма на насосе под полом к автомату защиты FUEL PUMP {k} '
               f'на панели автоматов', pts, 0.0025, 'AMM 28-20 3.F, AFM 7.9.4')
     # насос перекачки → выключатель FUEL TRANS (в салоне MSFS — FUEL_TRANSFER1)
     a = V((0.80 - 0.006, 0.27, -0.058))
-    b = panel_back('FUEL_TRANSFER1')
-    pts = path(a, (-1, 0, 0), b, (0, -1, 0), 0.0025)
+    b = ends['FUEL_TRANSFER1']
+    pts = path(a, (-1, 0, 0), b, (0, 1, 0), 0.0025)
     cable('Fuel transfer pump cable (→ FUEL TRANS switch)', 'Кабель насоса перекачки: от разъёма на насосе в левом центроплане через '
           'центроплан и под полом к выключателю FUEL TRANS внизу слева на приборной доске (автомат 5 А — на панели автоматов)',
           pts, 0.0025, 'AMM 28-20 3.E')

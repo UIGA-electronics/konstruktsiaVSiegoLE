@@ -65,7 +65,7 @@
       "src": "models/da40/da40-cabin.glb",
       "title": "Салон",
       "hint": "Салон: кресла, приборная доска, педали — чтобы видеть, где система относительно кабины",
-      "skip": "handling rudderpedals|^(cylinder119|cylinder121|cube026|cube068|cube024|cube069|cube002|cube037|plane032|plane033|plane143|plane144)\\b|\\| empty0(02|05|47|50)\\b"
+      "skip": "handling rudderpedals|handling wheel elevatortrim|^(cylinder119|cylinder121|cube026|cube068|cube024|cube069|cube002|cube037|plane032|plane033|plane143|plane144)\\b|\\| empty0(02|05|47|50)\\b"
      }
     ],
     "elements": [

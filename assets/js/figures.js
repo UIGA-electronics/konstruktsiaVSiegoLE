@@ -1087,6 +1087,10 @@ var Figures = (function () {
             if (mm[i] && shellMat[mm[i].__baseName || mm[i].name]) return true;
           }
         }
+        /* Слои систем и контекста собраны по AMM, и в их именах «canopy», «fuselage», «wing» — это узлы
+           механизмов: «Canopy hinge frame», «Rudder fuselage cable», «Wing lighting harness». По имени они не
+           обшивка (иначе просвечивали вместе с ней, не выбирались и не подсвечивались) — только по материалу. */
+        if (o.__file && (o.__file.role === 'system' || o.__file.role === 'context')) return false;
         return isShell(o);
       }
       /* Имя узла вместе с именами родителей: сами меши часто безымянные

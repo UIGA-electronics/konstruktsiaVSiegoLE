@@ -75,6 +75,11 @@
             "title": "Перегородка",
             "match": "^firewall",
             "opacity": 0.3
+          },
+          {
+            "src": "models/da40/da40-instruments.glb",
+            "title": "Блок GEA 71 на полке за приборной доской",
+            "match": "^gea 71 (engine|mounting rack)"
           }
         ],
         "elements": [
@@ -110,8 +115,8 @@
           },
           {
             "title": "Проводка",
-            "match": "cable\\b|fuel transfer1|cb fuel",
-            "hint": "Кабели датчиков баков к блоку GEA 71, питание насосов A и B от автоматов FUEL PUMP, насос перекачки — от выключателя FUEL TRANS"
+            "match": "cable\\b|fuel transfer1|cb fuel|circuit breaker \\(rear\\)|trans switch \\(rear\\)",
+            "hint": "Кабели датчиков баков — к блоку GEA 71 на полке за приборной доской; питание насосов A и B — к клеммам автоматов FUEL PUMP A / B за панелью автоматов, насос перекачки — к клеммам выключателя FUEL TRANS"
           }
         ],
         "view": [
