@@ -1665,11 +1665,9 @@ var Figures = (function () {
         /* Приближение кнопками: на телефоне колеса нет, а щипок двумя
            пальцами попадает не всем. Кнопка работает одним касанием. */
         function dolly(k) {
-          var v = camera.position.clone().sub(ctrl.target);
-          var len = clamp(v.length() * k, ctrl.minDistance, ctrl.maxDistance);
-          camera.position.copy(ctrl.target).add(v.setLength(len));
-          ctrl.update();
-          render();
+          /* как колесо — к детали в середине кадра (zoomAt ниже, в той же функции) */
+          var b = renderer.domElement.getBoundingClientRect();
+          zoomAt(b.left + b.width / 2, b.top + b.height / 2, k < 1 ? 1.4 : -1.4);
         }
         [['M12 5v14M5 12h14', 'Приблизить', 0.74], ['M5 12h14', 'Отдалить', 1.35]].forEach(function (z) {
           var zb = iconBtn(z[0], z[1]);
@@ -2053,6 +2051,83 @@ var Figures = (function () {
         renderer.domElement.addEventListener('pointerdown', hideTip);
         renderer.domElement.addEventListener('wheel', hideTip, { passive: true });
         listen(document, 'fullscreenchange', hideTip);
+
+        /* ── Камера по курсору ─────────────────────────────────────────────
+           OrbitControls приближает к точке вращения и двигает сцену со скоростью, пропорциональной
+           расстоянию до неё: если эта точка случайно оказалась у самого объектива, приближение и сдвиг
+           почти замирают. Теперь колесо приближает к детали под курсором, и точка вращения едет вместе
+           с камерой — скорость не падает; при нажатии кнопки мыши точка вращения встаёт на глубину детали
+           под курсором — по оси взгляда, без поворота вида. Щипок на телефоне — как раньше. */
+        var navRay = new THREE.Raycaster(), navPt = new THREE.Vector2(), navAnchor = null;
+        function navHit(cx, cy) {
+          var b = renderer.domElement.getBoundingClientRect();
+          navPt.x = ((cx - b.left) / b.width) * 2 - 1;
+          navPt.y = -((cy - b.top) / b.height) * 2 + 1;
+          navRay.setFromCamera(navPt, camera);
+          var cand = parts.filter(function (o) { return !o.__dim && shown(o); });
+          var hit = navRay.intersectObjects(cand, false)[0];
+          return { dir: navRay.ray.direction.clone(), dist: hit ? hit.distance : null };
+        }
+        function viewDir() { var v = new THREE.Vector3(); camera.getWorldDirection(v); return v; }
+        /* под курсором пусто: глубина — до точки вращения, но не ближе середины пути к центру модели
+           (root отцентрован в нуле) и не ближе 5 % её размера */
+        function fallbackDepth(dir) {
+          var dc = new THREE.Vector3().sub(camera.position).dot(dir);
+          var dt = ctrl.target.clone().sub(camera.position).dot(dir);
+          return Math.max(dt, dc * 0.6, r * 0.05);
+        }
+        function pivotAt(cx, cy) {
+          var h = navHit(cx, cy), v = viewDir();
+          var depth = h.dist != null ? h.dist * h.dir.dot(v) : fallbackDepth(v);
+          depth = Math.max(depth, r * 0.02);
+          ctrl.target.copy(camera.position).addScaledVector(v, depth);
+          ctrl.update();
+        }
+        function zoomAt(cx, cy, steps) {
+          var now = performance.now();
+          if (!navAnchor || now - navAnchor.t > 400 || Math.abs(cx - navAnchor.x) + Math.abs(cy - navAnchor.y) > 6) {
+            var h = navHit(cx, cy);
+            navAnchor = { x: cx, y: cy, dir: h.dir, p: h.dist != null ? camera.position.clone().addScaledVector(h.dir, h.dist) : null };
+          }
+          navAnchor.t = now;
+          var to = navAnchor.p ? navAnchor.p.clone().sub(camera.position) : null;
+          var d = to ? to.length() : fallbackDepth(navAnchor.dir);
+          var dir = to && d > 1e-6 ? to.divideScalar(d) : navAnchor.dir.clone();
+          var step;
+          if (steps > 0) {
+            /* ближе: доля расстояния до детали под курсором, но не меньше 0,4 % модели — сквозь деталь тоже можно пройти */
+            step = Math.max(d * (1 - Math.pow(0.8, steps)), r * 0.004 * steps);
+          } else {
+            /* дальше: от общего удаления, а не от ближней детали — иначе у самой детали отдаление тоже ползло бы */
+            step = -Math.max(d, camera.position.distanceTo(ctrl.target), r * 0.15) * (Math.pow(1.25, -steps) - 1);
+          }
+          var mv = dir.multiplyScalar(step);
+          camera.position.add(mv);
+          ctrl.target.add(mv);
+          var lim = r * 9;
+          if (camera.position.length() > lim) {
+            var back = camera.position.clone().setLength(lim).sub(camera.position);
+            camera.position.add(back);
+            ctrl.target.add(back);
+          }
+          if (navAnchor.p && steps > 0 && camera.position.distanceTo(navAnchor.p) < r * 0.003) navAnchor.p = null;
+          ctrl.update();
+          render();
+        }
+        box.addEventListener('wheel', function (e) {
+          if (e.target !== renderer.domElement) return;
+          e.preventDefault();
+          e.stopPropagation();          /* до OrbitControls колесо не доходит */
+          hideTip();
+          var dy = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
+          var steps = Math.max(-4, Math.min(4, -dy / 100));
+          if (steps) zoomAt(e.clientX, e.clientY, steps);
+        }, { capture: true, passive: false });
+        box.addEventListener('pointerdown', function (e) {
+          if (e.target !== renderer.domElement || !e.isPrimary) return;
+          if (e.pointerType === 'mouse' && e.button !== 0 && e.button !== 2) return;
+          pivotAt(e.clientX, e.clientY);
+        }, true);
 
         info.textContent = opts.hint || M3_HINT;
         if (exData && exData.groups && exData.groups.length) exApi = setupExplode();

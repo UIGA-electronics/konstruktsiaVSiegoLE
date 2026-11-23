@@ -62,6 +62,81 @@ RT.solids = list(RT.solids) + cabin.layer_bvh(R, 'structure', ('Top hat profile'
     cabin.layer_bvh(R, 'bonding', ('Lightning conductor junction', 'Lightning conductor tube (firewall'))
 RT.solids += cabin.console_obstacles()   # секция управления двигателем в пульте (AMM 31-10 рис. 2): жгуты идут под ней
 CHECKS = []
+HEADS = [V(e) for e in ((0, 0.25, 0.78), (0.28, 0.15, 0.78), (-0.28, 0.15, 0.78), (0, 0.6, 0.85))]   # головы пилотов и пассажира
+
+
+def head_sees(q):
+    """Видна ли точка с места пилота, второго пилота или пассажира (сквозь обшивку и отделку — нет)."""
+    for e in HEADS:
+        d = q - e
+        L = d.length - 0.004
+        if L > 0 and all(b.ray_cast(e, d.normalized(), L)[0] is None for b in (R.shell, TRIM)):
+            return True
+    return False
+
+
+def in_solid(q):
+    """Внутри замкнутой детали соседних систем: нечётное число пересечений луча вверх."""
+    n, p0, d = 0, V(q), V((0.0, 0.0, 1.0))
+    for _ in range(30):
+        h = SYS.ray_cast(p0, d, 3.0)
+        if h[0] is None:
+            break
+        n += 1
+        p0 = h[0] + d * 0.0005
+    return n % 2 == 1
+
+
+def find_spot(name, pref, size, lo, hi, step=0.01, margin=0.006, under_trim=True):
+    """Ближайшее к pref место для коробки size в пределах lo…hi: все точки коробки (сетка 3×3×3) внутри планера и не внутри
+    соседних деталей, не ближе margin к ним, к обшивке и к отделке салона, ни одна не видна с мест пилотов и пассажира;
+    under_trim — над коробкой отделка (козырёк, пол), а не обшивка: блок за доской, а не над козырьком у стекла."""
+    hx, hy, hz = size[0] / 2, size[1] / 2, size[2] / 2
+    offs = [V((i * hx, j * hy, k * hz)) for i in (-1, 0, 1) for j in (-1, 0, 1) for k in (-1, 0, 1)]
+    n = [int(round((hi[i] - lo[i]) / step)) + 1 for i in range(3)]
+    cands = sorted(((V((lo[0] + i * step, lo[1] + j * step, lo[2] + k * step)) - V(pref)).length,
+                    V((lo[0] + i * step, lo[1] + j * step, lo[2] + k * step)))
+                   for i in range(n[0]) for j in range(n[1]) for k in range(n[2]))
+    for _, c in cands:
+        ok = True
+        for o in offs:
+            q = c + o
+            if not RT.inside(q) or RT.free(q) < margin:
+                ok = False
+                break
+            h = TRIM.find_nearest(q, margin)
+            if h[0] is not None or head_sees(q):
+                ok = False
+                break
+        if not ok or in_solid(c):
+            continue
+        if under_trim:
+            top = c + V((0, 0, hz))
+            ht = TRIM.ray_cast(top, V((0, 0, 1)), 1.0)
+            hh = RT.hull.ray_cast(top, V((0, 0, 1)), 1.0)
+            if ht[0] is None or (hh[0] is not None and hh[3] < ht[3]):
+                continue
+        print('SPOT', name, tuple(round(v, 3) for v in c), 'from pref', round((c - V(pref)).length, 3))
+        return c
+    raise SystemExit(f'нет места для {name}')
+
+
+def keepout_bvh(boxes):
+    """BVH коробок [(центр, размер)] — зоны запрета для одной трассы."""
+    import bmesh
+    from mathutils.bvhtree import BVHTree
+    bm = bmesh.new()
+    for c, sz in boxes:
+        t = bmesh.new()
+        bmesh.ops.create_cube(t, size=1.0)
+        for v in t.verts:
+            v.co = V((c.x + v.co.x * sz[0], c.y + v.co.y * sz[1], c.z + v.co.z * sz[2]))
+        tm = bpy.data.meshes.new('keepout')
+        t.to_mesh(tm)
+        bm.from_mesh(tm)
+        bpy.data.meshes.remove(tm)
+        t.free()
+    return BVHTree.FromBMesh(bm)
 
 M = dict(
     batt=lib.mat('DA40 sealed battery case (black)', (0.07, 0.07, 0.08), 0.0, 0.6, ru='корпус герметичной батареи'),
@@ -97,6 +172,7 @@ EXT_POWER = V((0.30, 1.860, 0.040))
 ECU_BATT = V((0.150, 2.390, 0.055))             # за кольцевым шпангоутом 1 (2,25) слева, под кронштейном GRS 77; два блока 12 В поперёк
 ECU_GROUND = V((0.060, 2.2555, 0.045))          # масса резервной батареи — на задней стороне шпангоута 1
 REGULATOR = V((0.31, -0.05, -0.02))             # под креслом пилота, за EECU
+REG_PLUGS = (0.022, -0.022)                     # разъёмы регулятора (сдвиг по y) на внутренней стороне, к стволу
 ECU_RELAY = V((0.0, -0.848, 0.316))            # на полке приборной доски (avionics.py: ECU_RELAY)
 # EECU — в отсеке фюзеляжа под креслом пилота, на двух кронштейнах, 4 болта, 3 разъёма (AMM 76-00 2.A, рис. 3):
 # между стенкой «шляпы» и влагоотстойниками ПВД, выше шлангов ПВД на полу и впереди регулятора генератора
@@ -201,10 +277,13 @@ def trunk_clamps(name, path, r, every=0.28):
         if best is None or best[3] < r + 0.004:
             continue
         tab = (best[0] - q)
-        p_clamp(c, q, t, r, tab, 0, c.m(M['cush']), c.m(M['steel']))
         a = q + tab.normalized() * (r + 0.015)
-        if (best[0] - a).dot(tab) > 0.004:                         # стойка до стенки
-            box(c, (a + best[0]) / 2, (0.010, 0.003, (best[0] - a).length), basis(tab, up=t), 0)
+        e = best[0] - tab.normalized() * 0.002                     # стойка до стенки (не насквозь: обшивка бывает гнутой)
+        if head_sees(a) or head_sees(e) or head_sees((a + e) / 2):
+            continue                                               # лапку видно сквозь щель в отделке салона — здесь хомута нет
+        p_clamp(c, q, t, r, tab, 0, c.m(M['cush']), c.m(M['steel']))
+        if (e - a).dot(tab) > 0.004:
+            box(c, (a + e) / 2, (0.010, 0.003, (e - a).length), basis(tab, up=t), 0)
         n += 1
     if n:
         c.done()
@@ -236,8 +315,10 @@ def batteries():
         for q0, q1 in zip(pts, pts[1:]):
             box(p, (q0 + q1) / 2, (max(abs(q1.x - q0.x), 0.004), 0.025, max(abs(q1.z - q0.z), 0.003)), Matrix.Identity(3), 0)
     p.done()
-    # резервная батарея EECU: два блока 12 В 7,2 А·ч последовательно
-    e = ECU_BATT
+    # резервная батарея EECU: два блока 12 В 7,2 А·ч последовательно (за первым кольцевым шпангоутом, AMM 24-30 2.B);
+    # прежде угол лотка выходил из низа хвостовой части — место по поиску, целиком внутри
+    e = find_spot('ECU backup battery', ECU_BATT + V((0, 0, 0.02)), (0.165, 0.170, 0.110), (0.02, 2.29, 0.0), (0.26, 2.56, 0.22),
+                  under_trim=False)
     p = P('ECU backup battery (2 × 12 V 7.2 Ah)', 'Резервная батарея EECU: два блока 12 В 7,2 А·ч последовательно на лотке за кольцевым шпангоутом 1; питает ECU B и её топливный насос, возбуждает генератор',
           'batt', 'AMM 24-31 3., 24-00 2.A(3)')
     for sx in (-0.036, 0.036):
@@ -246,6 +327,7 @@ def batteries():
     box(p, e + V((0, 0, 0.049)), (0.16, 0.025, 0.004), Matrix.Identity(3), p.m(M['strap']))
     cyl(p, e + V((-0.05, 0.06, 0.047)), e + V((0.05, 0.06, 0.047)), 0.004, p.m(M['power']), segs=8)   # перемычка между блоками
     p.done()
+    globals()['ECU_BATT_AT'] = e
     return term, e + V((0.05, -0.06, 0.052)), e + V((-0.05, -0.06, 0.052))
 
 
@@ -277,6 +359,8 @@ def regulator_and_relays():
     box(p, REGULATOR, (0.10, 0.08, 0.04), Matrix.Identity(3), 0, bevel=0.004)
     for k in range(6):
         box(p, REGULATOR + V((-0.04 + k * 0.016, 0, 0.022)), (0.004, 0.07, 0.006), Matrix.Identity(3), 0)   # рёбра радиатора
+    for dy in REG_PLUGS:                                   # разъёмы на стороне к стволу: управление (сзади) и возбуждение (спереди)
+        cyl(p, REGULATOR + V((-0.05, dy, 0)), REGULATOR + V((-0.064, dy, 0)), 0.007, p.m(M['conn']), segs=12)
     p.done()
     p = P('ECU backup relay (instrument panel shelf)', 'Реле резервной батареи EECU на полке приборной доски; цепь защищена предохранителем 32 А', 'black', 'AMM 24-31 3.')
     box(p, ECU_RELAY, (0.05, 0.04, 0.04), Matrix.Identity(3), 0, bevel=0.003)
@@ -396,24 +480,29 @@ FLOOD_Y = -0.619
 
 
 def emergency_and_flood():
+    # AMM 24-32 2.: «behind the instrument panel, on the co-pilot's side». Прежде верх батареи и преобразователя выходил над
+    # козырьком и был виден сквозь лобовое стекло — теперь место по поиску: целиком под козырьком, за доской, не на виду
+    eb = find_spot('Emergency battery', V((-0.38, -0.84, 0.47)), (0.142, 0.058, 0.080), (-0.50, -1.06, 0.30), (-0.26, -0.73, 0.60))
+    inv = find_spot('Flood light inverter', V((0.36, -0.80, 0.50)), (0.072, 0.042, 0.052), (0.22, -1.06, 0.30), (0.50, -0.73, 0.62))
     p = P('Emergency battery pack', 'Аварийная батарея: 10 литий-марганцевых элементов по 3 В, за приборной доской со стороны второго пилота; '
           'при отказе всех источников выключатель EMERGENCY подаёт от неё питание на резервный авиагоризонт и заливающую подсветку — не менее 1 ч',
           'black', 'AMM 24-32 2, AFM 7.10')
-    box(p, EMERG_BATT, (0.13, 0.05, 0.065), Matrix.Identity(3), 0, bevel=0.004)
-    box(p, EMERG_BATT + V((0, 0.0, 0.0355)), (0.14, 0.056, 0.006), Matrix.Identity(3), p.m(M['steel']), bevel=0.001)   # прижимная планка
+    box(p, eb, (0.13, 0.05, 0.065), Matrix.Identity(3), 0, bevel=0.004)
+    box(p, eb + V((0, 0.0, 0.0355)), (0.14, 0.056, 0.006), Matrix.Identity(3), p.m(M['steel']), bevel=0.001)   # прижимная планка
     for dx in (-0.066, 0.066):
-        box(p, EMERG_BATT + V((dx, 0.0, 0.004)), (0.004, 0.056, 0.072), Matrix.Identity(3), p.m(M['steel']), bevel=0.001)  # стойки планки
-    cyl(p, EMERG_BATT + V((0.045, 0.025, 0.012)), EMERG_BATT + V((0.045, 0.038, 0.012)), 0.006, p.m(M['conn']), segs=12)
+        box(p, eb + V((dx, 0.0, 0.004)), (0.004, 0.056, 0.072), Matrix.Identity(3), p.m(M['steel']), bevel=0.001)  # стойки планки
+    cyl(p, eb + V((0.045, 0.025, 0.012)), eb + V((0.045, 0.038, 0.012)), 0.006, p.m(M['conn']), segs=12)
     p.done()
-    a = EMERG_BATT + V((0.045, 0.044, 0.012))
-    pts = route(a, (0, 1, 0), EMERG_SWITCH, (0, 1, 0), 0.003, (-0.48, -0.86, 0.56), (0.30, -0.655, 0.69), step=0.008,
+    a = eb + V((0.045, 0.044, 0.012))
+    pts = route(a, (0, 1, 0), EMERG_SWITCH, (0, 1, 0), 0.003, (-0.50, -1.06, 0.30), (0.30, -0.655, 0.69), step=0.008,
                 relax=[(a, 0.03), (EMERG_SWITCH, 0.05)])
-    cable('Emergency battery cable (to EMERGENCY switch)', 'Провод аварийной батареи за верхней частью доски к выключателю EMERGENCY '
+    cable('Emergency battery cable (to EMERGENCY switch)', 'Провод аварийной батареи за доской к выключателю EMERGENCY '
           '(слева на доске) и от него — к шине резервного авиагоризонта и подсветки', pts, 0.003, 'thin', 'AMM 24-32', lugs=False)
     p = P('Flood light inverter', 'Статический преобразователь: вырабатывает переменный ток 115 В для плёночной полосы заливающей подсветки. '
-          'Место AMM не указывает — здесь он за доской слева вверху, рядом с регулятором FLOOD и концом полосы', 'black', 'AMM 33-10 2.B')
-    box(p, INVERTER, (0.07, 0.04, 0.05), Matrix.Identity(3), 0, bevel=0.003)
+          'Место AMM не указывает — здесь он за доской слева, рядом с регулятором FLOOD и концом полосы', 'black', 'AMM 33-10 2.B')
+    box(p, inv, (0.07, 0.04, 0.05), Matrix.Identity(3), 0, bevel=0.003)
     p.done()
+    globals()['INVERTER_AT'] = inv
     p = P('Instrument panel flood light strip', 'Плёночная светящаяся полоса заливающей подсветки: под противобликовым козырьком над '
           'приборной доской, на двустороннем скотче; светит вниз на доску, яркость — регулятор FLOOD', 'thin', 'AMM 33-10 2.B')
     band = [V((x, FLOOD_Y, z + 0.0015)) for x, z in FLOOD_PTS]
@@ -422,25 +511,45 @@ def emergency_and_flood():
         box(p, (q0 + q1) / 2, (d.length + 0.002, 0.034, 0.0012), basis(V((-d.z, 0, d.x)).normalized(), up=V((0, 1, 0))), 0)
     p.done()
     # провода: регулятор FLOOD → преобразователь → конец полосы (над верхней кромкой доски, под козырьком)
-    s0 = INVERTER + V((-0.02, 0.021, 0.0))
-    pts = route(FLOOD_KNOB, (0, -1, 0), s0, (0, 1, 0), 0.002, (0.24, -0.80, 0.585), (0.45, -0.648, 0.68), step=0.006,
+    inv = INVERTER_AT
+    s0 = inv + V((-0.02, 0.021, 0.0))
+    pts = route(FLOOD_KNOB, (0, -1, 0), s0, (0, 1, 0), 0.002, (0.20, -1.06, 0.30), (0.50, -0.648, 0.68), step=0.006,
                 relax=[(FLOOD_KNOB, 0.03), (s0, 0.03)])
     cable('Flood light dimmer lead', 'Провод от регулятора FLOOD к преобразователю заливающей подсветки', pts, 0.002, 'thin', 'AMM 33-10 2.B',
           lugs=False)
-    s1 = INVERTER + V((-0.02, 0.021, 0.018))
+    s1 = inv + V((-0.02, 0.021, 0.018))
     end = band[-1] + V((-0.004, -0.010, -0.0012))
-    over = V((0.252, -0.654, 0.674))                       # над верхней кромкой доски, под козырьком
-    pts = route(s1, (0, 1, 0), over, (0, 1, 0), 0.002, (0.22, -0.80, 0.585), (0.45, -0.648, 0.685), step=0.006,
-                relax=[(s1, 0.03), (over, 0.03)])
+    # над верхней кромкой доски, под козырьком: прежде точка стояла на самой поверхности козырька (z 0,674 при верхе козырька
+    # 0,673 у его левого края) и провод выходил наверх на 1–3 мм — теперь ниже, с зазором 6 мм до козырька и доски
+    over = None
+    for k in range(40):
+        q = V((0.252, -0.650, 0.668 - k * 0.001))
+        if RT.free(q) >= 0.006 and TRIM.ray_cast(q, V((0, 0, 1)), 0.05)[0] is not None:
+            over = q
+            break
+    if over is None:
+        raise SystemExit('нет места для провода над кромкой доски')
+    print('FLOOD LEAD over', tuple(round(c, 4) for c in over))
+    pts = route(s1, (0, 1, 0), over, (0, 1, 0), 0.002, (0.20, -1.06, 0.30), (0.50, -0.646, 0.672), step=0.006,
+                relax=[(s1, 0.03), (over, 0.008)])
     cable('Flood light inverter lead', 'Провод от преобразователя к полосе заливающей подсветки: за доской, над её верхней кромкой под '
           'козырёк', pts + [end], 0.002, 'thin', 'AMM 33-10', lugs=False, bend=0.012)
-    for nm, c, sz in (('battery', EMERG_BATT, (0.14, 0.056, 0.078)), ('inverter', INVERTER, (0.07, 0.04, 0.05))):
-        qs = [c + V((sx * sz[0] / 2, sy * sz[1] / 2, sz_ * sz[2] / 2)) for sx in (-1, 1) for sy in (-1, 1) for sz_ in (-1, 1)]
-        gaps = []
-        for tag, bvh in (('shell', R.shell), ('trim', TRIM), ('sys', SYS)):
-            h = [bvh.find_nearest(q, 0.3) for q in qs]
-            gaps.append((tag, round(min(x[3] for x in h if x[0] is not None) * 1000, 1) if any(x[0] is not None for x in h) else None))
-        print('BOX', nm, gaps, 'seen corners', sum(1 for q in qs if RT.seen(q, 0.0)))
+
+
+GS_IP = V((-0.282, -0.742, 0.385))               # точка массы приборной доски: шпилька на кронштейне за доской, под панелью автоматов
+GS_RP = V((0.130, 1.7515, 0.090))                # точка массы у релейной коробки — на задней стороне стенки шпангоута багажника
+
+
+def ground_stud():
+    p = P('Instrument panel ground stud (GS-IP)', 'Точка массы приборной доски GS-IP: шпилька на кронштейне за доской под панелью '
+          'автоматов; к ней сходятся минусовые провода потребителей доски, от неё кабель массы идёт в общем стволе к точке массы '
+          'у батареи', 'steel', 'AMM 92, схема D44-9224-30-01: GS-IP')
+    box(p, GS_IP + V((0, 0.006, 0)), (0.04, 0.003, 0.03), Matrix.Identity(3), p.m(M['alu']), bevel=0.0008)       # кронштейн
+    cyl(p, GS_IP - V((0, 0.002, 0)), GS_IP - V((0, 0.024, 0)), 0.0035, 0, segs=10)                            # шпилька
+    for k in range(3):
+        hexa(p, GS_IP - V((0, 0.004 + k * 0.006, 0)), GS_IP - V((0, 0.007 + k * 0.006, 0)), 0.010, 0)      # гайки с наконечниками
+    p.done()
+    return GS_IP - V((0, 0.012, 0))
 
 
 def build():
@@ -448,6 +557,7 @@ def build():
     ports, ext_in, ext_d = relay_box()
     conns = regulator_and_relays()
     cb_panel()
+    gs_ip = ground_stud()
     emergency_and_flood()
     rear = ((-0.30, 1.75, -0.14), (0.45, 2.15, 0.32))
     # короткие силовые кабели у батареи
@@ -464,97 +574,172 @@ def build():
     # от точки над батареей к клемме — тоже планировщиком: здесь же проходит кабель грозопеленгатора (avionics.py)
     pts = pts + route(wp, (0, 0, 1), p_ext + V((0, 0.026, 0)), (0, -1, 0), 0.005, *rear, stub=0.012, relax=[(p_ext, 0.03)], step=0.006)[1:] + [p_ext]
     cable('External power cable to external power relay', 'Кабель от разъёма наземного питания к реле внешнего питания', pts, 0.005, 'power', 'AMM 24-40')
-    # ── общий ствол от релейной коробки до развилки под доской (радиусом всего пучка), кабели в нём — со сдвигом
+    # ── общий ствол от релейной коробки до развилки под доской (радиусом всего пучка), кабели в нём — со сдвигом.
+    # Корпуса под креслом пилота (EECU, регулятор, разъёмы жгутов крыла) — с запасом: прежде ствол лёг прямо на рёбра EECU
     fwd = ((-0.50, -1.19, -0.27), (0.50, 2.40, 0.70))
     eng = ((-0.45, -1.80, -0.25), (0.45, -1.20, 0.60))
-    trunk = route(ports[3], (0, 1, 0), TRUNK_FORK, (0, -1, 0.2), TRUNK_R, *fwd, step=0.02, relax=[(ports[3], 0.05), (TRUNK_FORK, 0.04)])
+    ko = keepout_bvh([(EECU_C + V((0, 0, 0.035)), EECU_S + V((0.07, 0.07, 0.10))),
+                      (REGULATOR + V((0, 0, 0.02)), V((0.15, 0.13, 0.10))),
+                      (WING_CONN[1], V((0.08, 0.11, 0.07))), (WING_CONN[-1], V((0.08, 0.11, 0.07)))])
+    keep = RT.solids
+    RT.solids = list(keep) + [ko]
+    RT._free = {}
+    try:
+        # передний главный шпангоут (стенки y 0,015 и 0,115) ствол проходит поперёк, прямо, рядом с вырезом промежуточной качалки
+        # руля высоты (x 0,08…0,12, z −0,23…−0,10), но не сливаясь с ним (зазор между вырезами 6 мм). Прежде планировщик вёл
+        # ствол у стенки наискось прямо над вырезом качалки, и вырезы слились в один 18×17 см. Скрытый путь вперёд есть только в
+        # коридоре x 0,085…0,10 (между пультом и креслом ствол виден сверху): сразу за стенкой — короткий отвод в этот коридор,
+        # дальше — по точкам скрытой трассы, найденной планировщиком (под полом у пульта, под доской к развилке). Сзади к проходу
+        # ствол подводит планировщик — там скрыто
+        W1, W2 = V((0.045, 0.165, -0.095)), V((0.045, -0.010, -0.095))
+        FWD = [V(q) for q in ((0.095, -0.065, -0.068), (0.085, -0.266, -0.027), (0.065, -0.341, -0.02), (0.065, -0.561, -0.02))]
+        chain = [W1, W2] + FWD
+        for a_, b_ in zip(chain[:-1], chain[1:]):
+            n = max(2, int((b_ - a_).length / 0.005))
+            fr = min(RT.free(a_.lerp(b_, i / n)) for i in range(n + 1))
+            print('TRUNK SEG', tuple(round(c, 3) for c in a_), '→', tuple(round(c, 3) for c in b_), 'free', round(fr * 1000, 1), 'mm')
+            if fr < TRUNK_R + 0.002:
+                raise SystemExit(f'ствол задевает соседей: {tuple(round(c, 3) for c in a_)} → {tuple(round(c, 3) for c in b_)}')
+        # под доской к развилке — планировщиком, мелким шагом в небольшой области (точки скрытой трассы там шли впритирку)
+        trunk = (route(ports[3], (0, 1, 0), W1, (0, -1, 0), TRUNK_R, *fwd, step=0.02, relax=[(ports[3], 0.05)]) + chain[1:] +
+                 route(FWD[-1], (0, -1, 0), TRUNK_FORK, (0, -1, 0.2), TRUNK_R, (-0.20, -1.00, -0.12), (0.25, -0.50, 0.25), step=0.01,
+                       relax=[(TRUNK_FORK, 0.04)])[1:])
+    finally:
+        RT.solids = keep
+        RT._free = {}
+    print('TRUNK PTS', [tuple(round(c, 3) for c in q) for q in trunk])
     body = trunk[1:-1]                                     # без концов: у коробки и у развилки кабели расходятся
-    lanes = {'main': (0.0, 0.0), 'starter': (0.0140, 0.0), 'glow': (-0.0130, 0.0), 'ecu': (0.0, 0.0120),
-             'reg_ctl': (0.0085, -0.0105), 'reg_fld': (-0.0085, -0.0105)}
+    lanes = {'main': (0.0, 0.002), 'starter': (0.0145, -0.004), 'glow': (-0.0135, -0.005), 'ecu': (-0.003, -0.0135),
+             'reg_ctl': (0.0065, -0.0145), 'reg_fld': (-0.0105, -0.0130), 'gnd': (-0.012, 0.010)}
 
     def lane(key):
         return offset_path(body, *lanes[key])
-    # основной жгут: коробка → ствол → панель автоматов
-    tail = route(trunk[-1], (0, -1, 0.2), CB_BACK, (0, 1, 0), 0.010, *fwd, step=0.015, relax=[(trunk[-1], 0.05), (CB_BACK, 0.04)])
+    # ── пучок к панели автоматов: от развилки вверх за доской к низу панели автоматов — основной жгут, провода управления
+    # регулятора, кабель генератора, питание шины ECU к разъёму жгута EECU, кабель массы; прежде каждый шёл своей дорогой
+    PB_A = TRUNK_FORK + V((0.0, -0.02, 0.045))
+    PB_B = CB_BACK + V((0.04, -0.035, -0.09))
+    pbun = route(PB_A, (0, -0.2, 1), PB_B, (-0.3, 0, 1), 0.017, (-0.50, -1.19, 0.0), (0.30, -0.70, 0.62), step=0.015,
+                 relax=[(PB_A, 0.05), (PB_B, 0.05)])
+    pb = pbun[1:-1]
+    plane = {'main': (0.0, 0.0), 'reg_ctl': (0.0095, -0.0075), 'alt': (-0.0105, -0.004), 'gnd': (-0.003, 0.0125), 'ecubus': (0.0105, 0.007)}
+
+    def pl(key):
+        return offset_path(pb, *plane[key])
+    # ── пучок к перегородке: от развилки вниз-вперёд к проходам в перегородке — стартер, свечи, возбуждение генератора
+    FB_A = TRUNK_FORK + V((0.015, -0.03, -0.035))
+    FB_B = V((0.215, -1.135, -0.030))
+    fbun = route(FB_A, (0.2, -1, -0.4), FB_B, (0.15, -1, 0.0), 0.013, (-0.20, -1.19, -0.20), (0.40, -0.80, 0.30), step=0.012,
+                 relax=[(FB_A, 0.04), (FB_B, 0.04)])
+    fb = fbun[1:-1]
+    flan = {'starter': (0.0, 0.0), 'glow': (0.0115, 0.0), 'reg_fld': (-0.009, 0.0)}
+
+    def fl(key):
+        return offset_path(fb, *flan[key])
+    for nm, ru, path, r in (('Panel harness bundle ties', 'Стяжки пучка от развилки к панели автоматов: основной жгут, провода регулятора, '
+                             'кабель генератора, питание шины ECU, кабель массы', pb, 0.017),
+                            ('Firewall harness bundle ties', 'Стяжки пучка от развилки к проходам в перегородке: кабели стартера и свечей '
+                             'накаливания, провода возбуждения генератора', fb, 0.013)):
+        tie = P(nm, ru, 'black', 'AMM 20-00, 24-60')
+        pf = fillet(path, 0.03)
+        L = lib.path_len(pf)
+        for k in range(1, max(2, int(L / 0.10))):
+            q, t = lib.along(pf, L * k / max(2, int(L / 0.10)))
+            ring_tube(tie, q, t, r + 0.0018, r + 0.0002, 0.004, 0, segs=18)
+        tie.done()
+    # основной жгут: коробка → ствол → пучок → панель автоматов
+    end = pl('main')[-1]
     cable('Main wiring harness (relay junction box → circuit-breaker panel)', 'Основной жгут: шина релейной коробки — в общем стволе под полом — '
-          'шина батареи и автоматы защиты справа на приборной доске', [ports[3]] + lane('main') + tail[1:], 0.010, 'harness', 'AMM 24-00 2.B(4), 24-60')
-    # стартер: коробка → ствол → проход в перегородке → тяговое реле стартера
+          'пучком за доской — шина батареи и автоматы защиты справа на приборной доске',
+          [ports[3]] + lane('main') + pl('main') + [V((CB_BACK.x + 0.03, CB_BACK.y - 0.01, end.z + 0.03)), CB_BACK], 0.010, 'harness',
+          'AMM 24-00 2.B(4), 24-60')
+    # стартер: коробка → ствол → пучок к перегородке → проход в перегородке → тяговое реле стартера
     g = STARTER_GROMMET
-    st = lane('starter')
-    pts = route(st[-1], (0, -1, -0.3), g + V((0, 0.03, 0)), (0, -1, 0), 0.007, *fwd, step=0.015, relax=[(st[-1], 0.05)])
+    st = lane('starter') + fl('starter')
+    pts = route(st[-1], (0.1, -1, 0), g + V((0, 0.03, 0)), (0, -1, 0), 0.007, (-0.10, -1.19, -0.20), (0.40, -0.90, 0.30), step=0.01,
+                relax=[(st[-1], 0.04), (g, 0.05)])
     pts2 = route(g - V((0, 0.03, 0)), (0, -1, 0), STARTER_TERM, (0, -1, 0), 0.007, *eng, step=0.012, hidden=False,
                  relax=[(STARTER_TERM, 0.03)])
     cable('Starter cable (relay junction box → starter relay)', 'Кабель стартера: от реле стартера в релейной коробке — в общем стволе под '
-          'полом — огнестойкий проход в перегородке — тяговое реле стартера', [ports[2]] + st + pts[1:] + pts2, 0.007, 'power', 'AMM 24-00 2.B(4), 80-10')
-    # свечи накаливания: третий выход шины коробки (AMM 24-00 2.B(4)) — рядом со стартером, сквозь тот же проход
-    gl = lane('glow')
-    pts = route(gl[-1], (0, -1, -0.3), g + V((-0.012, 0.03, 0.012)), (0, -1, 0), 0.005, *fwd, step=0.015, relax=[(gl[-1], 0.05), (g, 0.05)])
+          'полом и пучком к перегородке — огнестойкий проход в перегородке — тяговое реле стартера', [ports[2]] + st + pts[1:] + pts2, 0.007,
+          'power', 'AMM 24-00 2.B(4), 80-10')
+    # свечи накаливания: рядом со стартерным кабелем, сквозь тот же проход
+    gl = lane('glow') + fl('glow')
+    pts = route(gl[-1], (0.1, -1, 0), g + V((-0.012, 0.03, 0.012)), (0, -1, 0), 0.005, (-0.10, -1.19, -0.20), (0.40, -0.90, 0.30), step=0.01,
+                relax=[(gl[-1], 0.04), (g, 0.05)])
     pts2 = route(g - V((-0.012, 0.03, -0.012)), (0, -1, 0), GLOW_END, (0, -1, 0), 0.005, *eng, step=0.012, hidden=False,
                  relax=[(GLOW_END, 0.04), (g, 0.05)])
-    cable('Glow plug supply cable (relay junction box → glow plugs)', 'Кабель свечей накаливания: от шины релейной коробки — в общем стволе со стартерным '
-          'кабелем — сквозь проход в перегородке к жгуту свечей на двигателе (GLOW ON — свечи греются перед запуском)',
+    cable('Glow plug supply cable (relay junction box → glow plugs)', 'Кабель свечей накаливания: от шины релейной коробки — в общем стволе со '
+          'стартерным кабелем — сквозь проход в перегородке к жгуту свечей на двигателе (GLOW ON — свечи греются перед запуском)',
           [ports[1]] + gl + pts[1:] + pts2, 0.005, 'glow', 'AMM 24-00 2.B(4), 80-00')
     # резервная батарея EECU → ствол → реле на полке доски
     ec = lane('ecu')
-    head = route(ecu_p, (0, 0, 1), ec[0], (0, -1, 0), 0.004, (-0.10, 1.70, -0.14), (0.45, 2.50, 0.40), step=0.008,
+    head = route(ecu_p, (0, 0, 1), ec[0], (0, -1, 0), 0.004, (-0.10, 1.70, -0.14), (0.45, 2.60, 0.40), step=0.008,
                  relax=[(ecu_p, 0.04), (ec[0], 0.04)])
     pts = route(ec[-1], (0, -1, 0.3), ECU_RELAY + V((0, 0.02, 0)), (0, -1, 0), 0.004, (-0.45, -1.19, -0.10), (0.45, -0.70, 0.62), step=0.012,
                 relax=[(ec[-1], 0.05), (ECU_RELAY, 0.05)])
     cable('ECU backup battery cable → ECU backup relay', 'Кабель резервной батареи EECU: в общем стволе под полом — к реле на полке приборной доски',
           head[:-1] + ec + pts[1:], 0.004, 'power', 'AMM 24-31 3.')
+    # кабель массы: точка массы у релейной коробки — ствол — пучок — точка массы приборной доски GS-IP
+    gn = lane('gnd') + pl('gnd')
+    head = route(GS_RP + V((0, 0.02, 0)), (0, 1, 0), gn[0], (body[1] - body[0]).normalized(), 0.0045, *rear, step=0.008,
+                 relax=[(GS_RP, 0.03), (gn[0], 0.04)])
+    cable('Ground cable (GS-RP → instrument panel ground stud GS-IP)', 'Кабель массы: от точки массы у батареи на шпангоуте багажника — в общем '
+          'стволе и пучком за доской — к точке массы приборной доски GS-IP', head[:-1] + gn + [gs_ip + V((0, 0.0, -0.02)), gs_ip],
+          0.0045, 'ground', 'AMM 92, схема D44-9224-30-01: GS-RP, GS-IP')
     nclamp = trunk_clamps('Main cable trunk clamps', fillet(body, 0.05), 0.0215)
-    print('TRUNK', len(body), 'points', round(lib.path_len(body), 2), 'm, clamps', nclamp)
-    # генератор → предохранитель 100 А → проход → шина EECU
+    print('TRUNK', len(body), 'points', round(lib.path_len(body), 2), 'm, clamps', nclamp, 'panel bundle', round(lib.path_len(pb), 2),
+          'firewall bundle', round(lib.path_len(fb), 2))
+    # генератор → предохранитель 100 А → проход → пучок → шина EECU
     gL = GROMMET[1]
     alt1 = route(ALT_TERM, (0, -1, 0), FUSE100 + V((-0.045, 0, 0)), (1, 0, 0), 0.005, *eng, step=0.012, hidden=False,
                  relax=[(ALT_TERM, 0.03), (FUSE100, 0.06)])
     cable('Alternator output cable → 100 A fuse', 'Кабель генератора к предохранителю 100 А', alt1, 0.005, 'power', 'AMM 24-30')
     alt2 = route(FUSE100 + V((0.065, 0, 0)), (1, 0, 0), gL - V((0, 0.03, 0)), (0, 1, 0), 0.005, *eng, step=0.012, hidden=False,
                  relax=[(FUSE100, 0.07), (gL, 0.04)])
-    pts2 = route(gL + V((0, 0.03, 0)), (0, 1, 0), CB_BACK + V((0.02, 0, -0.02)), (0, 1, 0), 0.005, *fwd, step=0.015,
-                 relax=[(CB_BACK, 0.05)])
-    cable('Alternator cable → ECU bus (instrument panel)', 'Кабель от предохранителя 100 А сквозь перегородку к шине EECU за панелью автоматов', alt2 + pts2, 0.005, 'power', 'AMM 24-00, 24-30')
-    # регулятор под креслом пилота: обе пары проводов — в общий ствол под полом (у ствола ближайшая к регулятору точка), к
-    # развилке под доской; провода управления — к панели автоматов (ENGINE MASTER, предохранитель 10 А), провода
-    # возбуждения и контроля — к проходу генератора в перегородке и дальше вдоль силового кабеля генератора одним пучком
+    al = pl('alt')
+    pa = route(gL + V((0, 0.03, 0)), (0, 1, 0), al[0], (pb[1] - pb[0]).normalized(), 0.005, (-0.10, -1.19, -0.20), (0.40, -0.80, 0.40),
+               step=0.012, relax=[(gL, 0.05), (al[0], 0.04)])
+    cable('Alternator cable → ECU bus (instrument panel)', 'Кабель от предохранителя 100 А сквозь перегородку и пучком за доской к шине EECU '
+          'за панелью автоматов', alt2 + pa[:-1] + al + [CB_BACK + V((0.02, -0.01, -0.035)), CB_BACK + V((0.02, 0, -0.02))], 0.005, 'power',
+          'AMM 24-00, 24-30')
+    # регулятор под креслом пилота: обе пары проводов — в общем стволе под полом; провода управления — пучком к панели
+    # автоматов (ENGINE MASTER, предохранитель 10 А), провода возбуждения и контроля — пучком к проходу генератора и дальше
+    # вдоль силового кабеля генератора одним пучком
     k0 = min(range(len(body)), key=lambda k: (body[k] - REGULATOR).length)
     k0 = min(max(k0, 1), len(body) - 4)
 
     def reg_lane(key):
         return offset_path(body, *lanes[key])[k0:]
     rc = reg_lane('reg_ctl')
-    head = route(REGULATOR + V((0.05, 0, 0)), (1, 0, 0), rc[0], (body[k0 + 1] - body[k0]).normalized(), 0.0025, *fwd, step=0.010,
-                 relax=[(REGULATOR, 0.06), (rc[0], 0.05)])
-    tail = route(rc[-1], (0, -1, 0.2), CB_BACK + V((0.04, 0, 0.02)), (0, 1, 0), 0.0025, *fwd, step=0.015,
-                 relax=[(rc[-1], 0.05), (CB_BACK, 0.05)])
+    # от разъёма на внутренней стороне регулятора — прямо к стволу (прежде провода выходили наружу и петлёй огибали корпус)
+    head = route(REGULATOR + V((-0.064, REG_PLUGS[0], 0)), (-1, 0, 0), rc[0], (body[k0 + 1] - body[k0]).normalized(), 0.0025, *fwd,
+                 step=0.010, relax=[(REGULATOR, 0.075), (rc[0], 0.05)])
     cable('Alternator regulator control wires (ENGINE MASTER)', 'Провода регулятора к выключателю ENGINE MASTER и предохранителю 10 А: '
-          'от регулятора под креслом пилота — в общем стволе под полом — к панели автоматов', head[:-1] + rc + tail[1:], 0.0025, 'thin',
+          'от регулятора под креслом пилота — в общем стволе под полом и пучком за доской — к панели автоматов',
+          head[:-1] + rc + pl('reg_ctl') + [CB_BACK + V((0.04, -0.01, 0.0)), CB_BACK + V((0.04, 0, 0.02))], 0.0025, 'thin',
           'AMM 24-30, 24-31 3.', lugs=False)
-    rf = reg_lane('reg_fld')
-    head = route(REGULATOR + V((0, -0.04, 0)), (0, -1, 0), rf[0], (body[k0 + 1] - body[k0]).normalized(), 0.0025, *fwd, step=0.010,
-                 relax=[(REGULATOR, 0.06), (rf[0], 0.05)])
-    tail = route(rf[-1], (0, -1, -0.3), gL + V((0.012, 0.03, 0.01)), (0, -1, 0), 0.0025, *fwd, step=0.015,
+    rf = reg_lane('reg_fld') + fl('reg_fld')
+    head = route(REGULATOR + V((-0.064, REG_PLUGS[1], 0)), (-1, 0, 0), rf[0], (body[k0 + 1] - body[k0]).normalized(), 0.0025, *fwd,
+                 step=0.010, relax=[(REGULATOR, 0.075), (rf[0], 0.05)])
+    tail = route(rf[-1], (0.1, -1, 0), gL + V((0.012, 0.03, 0.01)), (0, -1, 0), 0.0025, (-0.10, -1.19, -0.20), (0.40, -0.90, 0.30), step=0.01,
                  relax=[(rf[-1], 0.05), (gL, 0.05)])
-    # в моторном отсеке — вдоль кабеля генератора (проход → предохранитель → клемма), сбоку от него в одном пучке
     bay = list(reversed(alt2)) + list(reversed(alt1))
     along_alt = offset_path(fillet(bay, 0.02), 0.0085, 0.0)[2:-2]
     end = ALT_TERM + V((0, 0.0, 0.04))
     cable('Alternator field and sense wires (regulator)', 'Провода регулятора: возбуждение генератора и контроль напряжения — в общем '
-          'стволе под полом, сквозь проход в перегородке и вдоль силового кабеля генератора к генератору', head[:-1] + rf + tail[1:] +
+          'стволе под полом, пучком к перегородке, сквозь проход в ней и вдоль силового кабеля генератора к генератору', head[:-1] + rf + tail[1:] +
           [gL - V((-0.012, 0.03, -0.01))] + along_alt + [end], 0.0025, 'thin', 'AMM 24-30 2.E', lugs=False)
-    # стяжки пучка в моторном отсеке: силовой кабель и провода регулятора
     tie = P('Alternator cable bundle ties', 'Стяжки пучка в моторном отсеке: силовой кабель генератора и провода регулятора', 'steel', 'AMM 20-00, 24-30')
     Lb = lib.path_len(fillet(bay, 0.02))
     for f in (0.25, 0.5, 0.75):
         q, t = lib.along(fillet(bay, 0.02), f * Lb)
         ring_tube(tie, q + offset_path([q - t * 0.01, q, q + t * 0.01], 0.0042, 0.0)[1] - q, t, 0.011, 0.0095, 0.006, 0, segs=18)
     tie.done()
-    pts = route(ecu_n, (0, 0, 1), ECU_GROUND, (0, -1, 0), 0.004, (-0.1, 2.25, -0.06), (0.3, 2.6, 0.25), step=0.008,
+    pts = route(ecu_n, (0, 0, 1), ECU_GROUND, (0, -1, 0), 0.004, (-0.1, 2.20, -0.06), (0.32, 2.62, 0.30), step=0.008,
                 relax=[(ecu_n, 0.04), (ECU_GROUND, 0.02)])
     cable('ECU backup battery ground', 'Масса резервной батареи EECU на кольцевой шпангоут 1', pts, 0.004, 'ground', 'AMM 24-31 3.')
     # жгут EECU (AMM 76-00 2.B): от трёх разъёмов блока под креслом пилота — к двигателю сквозь перегородку,
-    # к датчикам рычага POWER и к двум разъёмам в кабине за приборной доской; провода самолёта (шина ECU,
-    # реле резервной батареи, GEA 71) подходят к этим разъёмам спереди
+    # к датчикам рычага POWER и к двум разъёмам в кабине за приборной доской
     seat = ((-0.45, -1.19, -0.27), (0.45, -0.10, 0.40))
     hg = HARNESS_GROMMET
     pts = route(conns[0], (0, -1, 0), hg + V((0, 0.03, 0)), (0, -1, 0), 0.008, *seat, stub=0.006, stub_b=0.03, step=0.012,
@@ -575,11 +760,12 @@ def build():
     q, t = lib.along(path, lib.path_len(path) - 0.09)
     pts = route(q, t, A[1], (-1, 0, 0), 0.0045, (0.0, -1.19, 0.10), (0.35, -0.90, 0.40), stub=0.004, step=0.006, relax=[(q, 0.03), (A[1], 0.03)])
     cable('EECU harness: cockpit branch, second connector', 'Отвод ветви жгута EECU ко второму разъёму в кабине', pts, 0.0045, 'harness', 'AMM 76-00 2.B', lugs=False)
-    pts = route(CB_BACK + V((0.07, 0, -0.03)), (0, -1, 0), F[0], (1, 0, 0), 0.004, (-0.50, -1.19, 0.12), (0.30, -0.70, 0.60), step=0.01,
-                relax=[(CB_BACK, 0.08), (F[0], 0.03)])
-    cable('ECU bus → EECU cockpit connector (ECU A, ECU B)', 'Питание ECU A и ECU B от шины ECU через автоматы EECU A и EECU B — к разъёму жгута EECU в кабине',
-          pts, 0.004, 'power', 'AMM 24-00 2.B(5), 24-60')
-    # рядом с реле проходит кабель датчика температуры наружного воздуха (x 0,05): зона послабления — только у самого реле
+    eb_ = list(reversed(pl('ecubus')))
+    pts = route(eb_[-1], (pb[0] - pb[1]).normalized(), F[0], (1, 0, 0), 0.004, (-0.10, -1.19, -0.10), (0.35, -0.80, 0.45), step=0.01,
+                relax=[(eb_[-1], 0.04), (F[0], 0.03)])
+    cable('ECU bus → EECU cockpit connector (ECU A, ECU B)', 'Питание ECU A и ECU B от шины ECU через автоматы EECU A и EECU B — пучком за доской '
+          'к разъёму жгута EECU в кабине', [CB_BACK + V((0.07, 0, -0.03)), CB_BACK + V((0.07, -0.01, -0.06))] + eb_ + pts[1:], 0.004, 'power',
+          'AMM 24-00 2.B(5), 24-60')
     pts = route(ECU_RELAY + V((0.03, 0, 0)), (0.4, -1, 0), F[1] + V((0, -0.004, -0.004)), (1, 0, 0), 0.004, (-0.50, -1.19, 0.12), (0.30, -0.70, 0.60), step=0.01,
                 relax=[(ECU_RELAY, 0.035), (F[1], 0.03)])
     cable('ECU backup relay → EECU cockpit connector (ECU B)', 'Питание ECU B от реле резервной батареи — через разъём жгута EECU в кабине', pts, 0.004, 'power', 'AMM 24-31 3.')
@@ -590,12 +776,14 @@ def build():
     p = P('Cabin light connector (canopy hinge)', 'Разъём освещения кабины у петли фонаря', 'black', 'AMM 33-10')
     box(p, CABIN_LIGHT, (0.02, 0.02, 0.016), Matrix.Identity(3), 0, bevel=0.002)
     p.done()
-    # жгуты крыльев: от шин за доской в носок центроплана, под креслом — разъём P2400 / P2401
-    # (его разъединяют при снятии крыла, AMM 57-10 2.B(8)), дальше сквозь нервюры центроплана по носку крыла
+    # жгуты крыльев: от шин за доской в носок центроплана, под креслом — разъём P2400 / P2401 (его разъединяют при снятии
+    # крыла, AMM 57-10 2.B(8)), дальше сквозь нервюры центроплана — в трубу молниеотвода и в ней по носку крыла до концевой
+    # нервюры (AMM 51-80 2.: трубы молниеотвода служат и кабелепроводами), сквозь втулку в ней — к огням законцовки
     for s in (1, -1):
         tag = 'LH' if s > 0 else 'RH'
+        gen = 'левой' if s > 0 else 'правой'
         root = V((s * 0.60, -0.26, -0.03))
-        lo, hi = (min(-0.50, s * 0.62), -1.0, -0.25), (max(-0.25, s * 0.62), -0.10, 0.60)   # от панели автоматов (справа) к носку центроплана
+        lo, hi = (min(-0.50, s * 0.62), -1.0, -0.25), (max(-0.25, s * 0.62), -0.10, 0.60)
         pts = route(CB_BACK + V((0, 0, -0.03)), (0, 1, 0), root, (s, 0, 0), 0.005, lo, hi, step=0.015, relax=[(CB_BACK, 0.07)])
         con = WING_CONN[s]
         front, rear = con - V((0, 0.028, 0)), con + V((0, 0.028, 0))
@@ -607,50 +795,82 @@ def build():
         cyl(p, con + V((0, 0.003, 0)), rear, 0.0105, 0, segs=20)
         ring_tube(p, con, (0, 1, 0), 0.0135, 0.0105, 0.008, 0, segs=20)             # накидная гайка
         p.done()
-        nav = LIGHTS['NAV_L' if s > 0 else 'NAV_R']
-        pts2 = wing_run(s, rear, nav)
-        cable(f'Wing lighting harness {tag}', f'Жгут {"левого" if s > 0 else "правого"} крыла: за доской — носок центроплана — разъём {num} под креслом — сквозь нервюры центроплана — носок крыла — АНО и строб на законцовке',
+        cable(f'Wing lighting harness {tag}', f'Жгут {"левого" if s > 0 else "правого"} крыла: за доской — носок центроплана — разъём {num} под креслом',
               pts, 0.005, 'harness', 'AMM 33-40, 24-60, 57-10 2.B(8)', lugs=False)
-        pts2 = [rear, rear + V((0, 0.03, 0)), V((s * 0.56, -0.05, -0.068))] + pts2[1:]
-        cable(f'Wing lighting harness {tag} (wing side)', f'Жгут {"левого" if s > 0 else "правого"} крыла от разъёма {num}: сквозь внутреннюю замыкающую, переднюю наружную и корневую нервюры центроплана во втулках, по носку крыла к огням законцовки',
-              pts2, 0.005, 'harness', 'AMM 33-40, 24-60, 57-10 2.B(8)', lugs=False)
-        # AMM 33-00: блок питания строба в каждой законцовке (без OÄM 40-369), у огня
-        a, b = pts2[-2], pts2[-1]
-        c = a + (b - a) * 0.55 + V((0, 0.035, -0.006))
-        p = P(f'Strobe power unit {tag}', f'Блок питания проблескового огня в {"левой" if s > 0 else "правой"} законцовке: от него — высоковольтный провод к лампе-вспышке',
-              'black', 'AMM 33-00 2, 33-40')
-        d = (b - a).normalized()
-        box(p, c, (0.032, 0.085, 0.024), lib.basis(V((0, 0, 1)), up=d), 0, bevel=0.003)
-        for k in (-1, 1):
-            screw(p, c + d * (k * 0.036) + V((0, 0, 0.012)), V((0, 0, 1)), 0.004, p.m(M['steel']))
-        p.done()
-        cable(f'Strobe power unit lead {tag}', 'Провод от блока питания к лампе-вспышке в огне законцовки',
-              [c + d * 0.044, c + d * 0.06 + V((0, -0.01, 0)), b - V((0, 0.012, 0))], 0.0025, 'thin', 'AMM 33-40', lugs=False, bend=0.008)
+        pts2 = [rear, rear + V((0, 0.03, 0)), V((s * 0.56, -0.05, -0.068))] + wing_run(s, rear)[1:]
+        cable(f'Wing lighting harness {tag} (wing side)', f'Жгут {"левого" if s > 0 else "правого"} крыла от разъёма {num}: сквозь нервюры центроплана '
+              'во втулках — в трубе молниеотвода по носку крыла до концевой нервюры — сквозь втулку в ней в законцовку',
+              pts2, 0.005, 'harness', 'AMM 33-40, 51-80 2., 57-10 2.B(8)', lugs=False)
+        wing_tip(s, pts2[-1], tag, gen)
         if s > 0:
-            for key, ru in (('LDG', 'посадочной фары'), ('TAXI', 'рулёжной фары')):
-                q = LIGHTS[key] + V((0, 0.05, 0))
-                best = min(range(len(pts2)), key=lambda i: (pts2[i] - q).length)
-                pl = route(pts2[best], (0, 1, 0), q, (0, -1, 0), 0.0025, (4.3, -0.25, 0.0), (5.2, 0.2, 0.35), step=0.01, hidden=False,
-                           relax=[(pts2[best], 0.03), (q, 0.03)])
-                cable(f'Light feed → {key}', f'Отвод жгута к {ru} в носке левого крыла', pl, 0.0025, 'thin', 'AMM 33-40', lugs=False)
+            # фары в носке левого крыла (AMM 33-40 рис. 4): провода выходят из трубы к задней стороне кронштейна фар
+            for key, ru, ru_to, x, zc in (('LDG', 'посадочной фары', 'посадочной фаре', 4.732, 0.195),
+                                          ('TAXI', 'рулёжной фары', 'рулёжной фаре', 4.903, 0.208)):
+                lo_, hi_ = R.wing_section(x, stub.LIGHT_JOG[2])
+                zt = (lo_ + hi_) / 2 + 0.01
+                a_ = V((x, stub.LIGHT_JOG[2] - 0.004, zt))
+                b_ = V((x, -0.038, zc))
+                cable(f'Light feed → {key}', f'Отвод жгута к {ru_to}: из трубы молниеотвода к разъёму на задней стороне фары в носке левого крыла',
+                      [a_, a_ - V((0, 0.018, 0)), b_ + V((0, 0.014, 0)), b_], 0.0025, 'thin', 'AMM 33-40 рис. 4', lugs=False, bend=0.008)
+                c = P(f'Light connector ({key})', f'Разъём {ru} на задней стороне кронштейна фар', 'conn', 'AMM 33-40 рис. 4')
+                box(c, b_ - V((0, 0.004, 0)), (0.016, 0.008, 0.012), Matrix.Identity(3), 0, bevel=0.0015)
+                c.done()
 
 
-def wing_run(s, root, nav):
-    """Жгут по носку крыла: сквозь внутреннюю замыкающую, переднюю наружную и корневую нервюры
-    центроплана во втулках (stub.py; над передним главным болтом крыла), дальше перед передним
-    лонжероном (y ≈ 0) по середине высоты профиля до концевой нервюры и назад к огням на законцовке."""
-    pts = [root] + stub.run('harness', s) + [V((s * 1.33, -0.075, -0.045))]    # мимо болта A корневой нервюры
-    for x in [1.6 + 0.4 * k for k in range(10)]:
-        if x > 5.35:
-            break
-        lo, hi = R.wing_section(s * x, -0.005)
-        if lo is None or hi is None:
-            continue
-        z = (lo + hi) / 2 + 0.01
-        pts.append(V((s * x, -0.005, z)))
-    lo, hi = R.wing_section(s * 5.45, 0.25)
-    pts += [V((s * 5.45, 0.25, (lo + hi) / 2)), nav - V((s * 0.04, 0, 0))]
-    return pts
+def wing_run(s, root):
+    """Жгут крыла: сквозь нервюры центроплана во втулках, у корня — в трубу молниеотвода и в ней по носку крыла (stub.wing_stations —
+    те же точки, что у трубы в bonding.py) до концевой нервюры, сквозь втулку в ней — в законцовку."""
+    st = stub.wing_stations(R, s)
+    e = st[-1]
+    return [root] + stub.run('harness', s) + [V((s * 1.33, -0.075, -0.045))] + st + [V((s * (stub.END_RIB_X + 0.010), e.y, e.z))]
+
+
+def wing_tip(s, start, tag, gen):
+    """Законцовка (AMM 33-40 рис. 1): втулка жгута в концевой нервюре, основание блока огней с разъёмом в линии на проводах жгута,
+    блок питания строба на наружной стороне концевой нервюры — от него высоковольтный кабель к лампе-вспышке."""
+    I3 = Matrix.Identity(3)
+    xr = s * stub.END_RIB_X
+    g = P(f'Wing tip harness grommet {tag}', f'Резиновая втулка жгута в концевой нервюре {gen} законцовки: здесь жгут выходит из трубы '
+          'молниеотвода в законцовку', 'blk', 'AMM 33-40, 57-10')
+    ring_tube(g, V((xr, start.y, start.z)), V((1, 0, 0)), 0.011, 0.0055, 0.010, 0, segs=18)
+    g.done()
+    base, conn, su = stub.TIP_LIGHT_BASE[s], stub.TIP_CONN[s], stub.STROBE_UNIT[s]
+    p = P(f'Wing-tip light unit base {tag}', f'Основание блока огней {gen} законцовки: рамка за стёклами — лампы переднего (цветного) и '
+          'заднего (белого) огней и лампа-вспышка строба посередине; основание соединено перемычкой с трубой молниеотвода',
+          'alu', 'AMM 33-40 рис. 1; 51-80')
+    box(p, base, (0.010, 0.11, 0.034), I3, 0, bevel=0.004)
+    for dy in (-0.035, 0.0, 0.035):
+        cyl(p, base + V((s * 0.005, dy, 0)), base + V((s * 0.013, dy, 0)), 0.008, p.m(M['black']), segs=14)    # гнёзда ламп
+    p.done()
+    p = P(f'Wing-tip light unit in-line connector {tag}', 'Разъём в линии на проводах жгута у блока огней законцовки: питание переднего и '
+          'заднего огней, масса', 'conn', 'AMM 33-40 рис. 1')
+    box(p, conn, (0.018, 0.012, 0.010), basis(V((s * 0.5, 0.86, 0)), up=V((0, 0, 1))), 0, bevel=0.0015)
+    p.done()
+    p = P(f'Strobe power unit {tag}', f'Блок питания проблескового огня в {gen} законцовке, на наружной стороне концевой нервюры: вырабатывает '
+          'импульс около 600 В — по высоковольтному кабелю на лампу-вспышку', 'black', 'AMM 33-40 2.B, рис. 1')
+    box(p, su, (0.034, 0.085, 0.048), I3, 0, bevel=0.003)
+    fx = s * (stub.END_RIB_X + 0.0055)
+    box(p, V((fx, su.y, su.z)), (0.003, 0.100, 0.060), I3, p.m(M['alu']), bevel=0.001)          # фланец на нервюре
+    for dy in (-0.044, 0.044):
+        for dz in (-0.024, 0.024):
+            screw(p, V((fx + s * 0.0015, su.y + dy, su.z + dz)), V((s, 0, 0)), 0.004, p.m(M['steel']))
+    p.done()
+    z0 = start.z
+    a = V((xr + s * 0.008, start.y, z0))
+    tipline = [a, V((s * 5.585, 0.045, z0)), V((s * 5.630, 0.150, z0 + 0.004)), V((s * 5.680, 0.240, 0.276)),
+               conn - V((s * 0.009, 0.016, 0))]
+    cable(f'Wing lighting harness {tag} (wing tip)', f'Жгут в {gen} законцовке: от втулки в концевой нервюре к разъёму блока огней; '
+          'отвод — к блоку питания строба', tipline, 0.004, 'harness', 'AMM 33-40', lugs=False, bend=0.02)
+    q = V((s * 5.630, 0.150, z0 + 0.004))
+    cable(f'Strobe power unit supply {tag}', 'Питание блока строба от жгута законцовки (выключатель STROBE, свой автомат защиты)',
+          [q, V((s * 5.600, 0.172, z0 + 0.003)), V((s * (5.548 + 0.017 + 0.004), 0.178, su.z + 0.010))], 0.0022, 'thin', 'AMM 33-40 2.B',
+          lugs=False, bend=0.01)
+    cable(f'Strobe high-voltage cable {tag}', 'Высоковольтный кабель от блока питания к лампе-вспышке в блоке огней законцовки',
+          [V((s * (5.548 + 0.017 + 0.004), 0.228, su.z)), V((s * 5.640, 0.272, su.z + 0.012)), V((s * 5.715, 0.335, 0.290)),
+           V((s * (base.x * s - 0.007), base.y + 0.004, base.z - 0.004))], 0.0028, 'power', 'AMM 33-40 2.B, рис. 1', lugs=False, bend=0.015)
+    cable(f'Wing-tip light unit leads {tag}', 'Провода от разъёма в линии к лампам переднего и заднего огней в основании блока',
+          [conn + V((s * 0.009, 0.006, 0)), V((s * (base.x * s - 0.008), base.y - 0.030, base.z))], 0.0022, 'thin', 'AMM 33-40 рис. 1',
+          lugs=False, bend=0.008)
 
 
 def check():

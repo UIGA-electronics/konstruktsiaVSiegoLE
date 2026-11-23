@@ -1134,29 +1134,35 @@ def fin():
             left.append(V((xc + h, y, FIN_LOW_Z)))
             right.append(V((xc - h, y, FIN_LOW_Z)))
         outer = left + list(reversed(right))
-        inner = None
+        ylo, yhi = min(q.y for q in outer), max(q.y for q in outer)
+
+        def half_at(y):
+            hw = fin_half(y, FIN_LOW_Z)
+            return hw if hw else (0.0, 0.0)
+
+        def room(q):
+            h, xc = half_at(q.y)
+            return min(h - abs(q.x - xc), q.y - ylo, yhi - q.y)
+        cy = ELEV_VROD_Y_LOW_RIB
+
+        def inside(q):
+            h, xc = half_at(q.y)
+            # тяга руля высоты проходит в большом пазу задней части — для неё отдельного выреза нет
+            in_slot = slot and (q.x / 0.030) ** 2 + ((q.y - cy) / 0.062) ** 2 < 1.0
+            return ylo + 0.008 < q.y < yhi - 0.008 and abs(q.x - xc) < h - 0.006 and not in_slot
+        # отверстия под трассы, идущие вверх по килю: в передней части — гибкий трос триммера, в задней — вертикальная
+        # труба молниеотвода вдоль передней стенки
+        rc = wall_cuts(2, FIN_LOW_Z, inside, room)
+        loops = [cut_shape(c_, 2) for c_ in rc]
         if slot:
-            cy = ELEV_VROD_Y_LOW_RIB
             inner = [V((0.018 * math.cos(a), cy + 0.05 * math.sin(a), FIN_LOW_Z)) for a in
                      [-math.pi / 4 + 2 * math.pi * i / len(outer) for i in range(len(outer))]]
-            plate_with_hole(p, outer, inner, (0, 0, 1), 0.005, 0)
+            loops = [inner] + loops
+        print('FIN LOW RIB', nm, len(rc), 'cuts', [c_[2] for c_ in rc])
+        if len(loops) == 1 and slot:
+            plate_with_hole(p, outer, loops[0], (0, 0, 1), 0.005, 0)
         else:
-            # отверстие под гибкий трос триммера (и другие трассы, идущие вверх по передней стенке)
-            ylo, yhi = min(q.y for q in outer), max(q.y for q in outer)
-
-            def half_at(y):
-                hw = fin_half(y, FIN_LOW_Z)
-                return hw if hw else (0.0, 0.0)
-
-            def inside(q):
-                h, xc = half_at(q.y)
-                return ylo + 0.008 < q.y < yhi - 0.008 and abs(q.x - xc) < h - 0.006
-
-            def room(q):
-                h, xc = half_at(q.y)
-                return min(h - abs(q.x - xc), q.y - ylo, yhi - q.y)
-            rc = wall_cuts(2, FIN_LOW_Z, inside, room)
-            plate_with_holes(p, outer, [cut_shape(c_, 2) for c_ in rc], (0, 0, 1), 0.005, 0)
+            plate_with_holes(p, outer, loops, (0, 0, 1), 0.005, 0)
         p.done()
     # верхняя опора руля: втулка с подшипником на задней стенке, снизу входит палец из передней кромки руля
     z = FIN_TOP_Z - 0.06
