@@ -204,7 +204,7 @@
       n.classList.toggle('is-active', n.dataset.route === id);
     });
     var t = topicOf(id);
-    var cur = id === 'home' ? 'home' : /quiz/.test(id) ? 'quiz' : isLab(t) ? 'lab' : t ? 'ch' : '';
+    var cur = id === 'home' ? 'home' : /^(exam|staff)/.test(id) ? 'exam' : /quiz/.test(id) ? 'quiz' : isLab(t) ? 'lab' : t ? 'ch' : '';
     nav.querySelectorAll('[data-nav]').forEach(function (a) {
       a.classList.toggle('is-cur', a.dataset.nav === cur);
       if (a.dataset.nav === cur) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
@@ -918,6 +918,11 @@
 
     if (id === 'home') { show(viewHome(), MENU.title1 + ' ' + MENU.title2, 'is-home'); return; }
     if (id === 'lab' || id === 't3d-map') { location.replace('#home'); return; }
+    /* зачёт и кабинет преподавателя — exam.js (Supabase) */
+    if (window.Exam && Exam.handles(id)) {
+      Exam.mount(id, function (node, title) { show(node, title, 'is-doc', 'home'); });
+      return;
+    }
 
     var topic = findTopic(id);
     if (topic && topic.status !== 'ready') {

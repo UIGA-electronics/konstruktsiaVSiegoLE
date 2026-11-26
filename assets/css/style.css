@@ -1212,3 +1212,71 @@ tbody th{ font-weight:500; }
 @keyframes g1k-press{ from{ background:rgba(255,255,255,.38); } to{ background:transparent; } }
 .g1k-hint{ margin:0; font-size:13px; line-height:1.45; color:var(--ink-2); }
 @media (prefers-reduced-motion: reduce){ .g1k-key, .g1k-key.is-press{ transition:none; animation:none; } }
+
+/* ── Зачёт и кабинет преподавателя (exam.js) ───────────── */
+.exam .ex-col{ max-width:900px; padding-top:28px; }
+.ex-user{ display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; margin:0 0 24px; padding:12px 0; border-bottom:1px solid var(--line); font-size:15px; color:var(--ink-2); }
+.ex-user span{ margin-right:auto; }
+.ex-user i{ font-style:normal; color:var(--ink-3); }
+.ex-tabs{ display:flex; flex-wrap:wrap; gap:0; margin:0 0 22px; border-bottom:1px solid var(--line); }
+.ex-tabs button{ min-height:44px; padding:0 16px; border:0; border-bottom:2px solid transparent; margin-bottom:-1px; background:none; color:var(--ink-2); font:inherit; font-size:15.5px; cursor:pointer; }
+.ex-tabs button.is-on{ color:var(--ink); border-bottom-color:var(--ink); }
+.ex-form{ display:grid; gap:14px; max-width:440px; margin:0 0 20px; }
+.ex-form.ex-wide{ max-width:none; }
+.ex-form [hidden]{ display:none !important; }
+.ex-form label{ display:grid; gap:5px; }
+.ex-form label > span{ font-size:13.5px; color:var(--ink-3); }
+.ex-form input:not([type=checkbox]),.ex-form textarea,.ex-form select,.ex-filter select{ width:100%; min-height:44px; padding:9px 12px; border:1px solid var(--line-2); border-radius:0;
+  background:var(--surface); color:var(--ink); font:inherit; font-size:16px; box-sizing:border-box; }
+.ex-form textarea{ resize:vertical; line-height:1.45; }
+.ex-form input:focus,.ex-form textarea:focus,.ex-form select:focus{ outline:2px solid var(--ink); outline-offset:-1px; }
+.ex-form .btn{ justify-self:start; }
+.ex-row{ display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:12px; align-items:end; }
+.ex-form.ex-row{ max-width:none; }
+.ex-check{ display:flex !important; align-items:center; gap:10px !important; }
+.ex-check span{ font-size:15px !important; color:var(--ink) !important; }
+.ex-check input{ width:18px; height:18px; }
+.ex-msg{ margin:4px 0 0; font-size:15px; color:var(--ok); }
+.ex-msg:empty{ display:none; }
+.ex-msg.is-bad{ color:var(--bad); }
+.ex-ok{ padding:14px 18px; background:color-mix(in oklab, var(--ok) 12%, var(--bg)); }
+.ex-empty{ display:grid; gap:6px; padding:28px; background:var(--surface-2); }
+.ex-empty span{ color:var(--ink-2); }
+.ex-card{ display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px 24px; padding:20px 0; border-bottom:1px solid var(--line); }
+.ex-card > div{ flex:1 1 360px; }
+.ex-card h3{ margin:0 0 4px; font-size:20px; font-weight:500; }
+.ex-card p{ margin:4px 0 0; }
+.ex-best b{ color:var(--deep); }
+.ex-take-bar{ position:sticky; top:var(--top-h); z-index:5; display:flex; justify-content:space-between; gap:12px; margin:0 0 28px; padding:12px 0;
+  background:var(--bg); border-bottom:1px solid var(--line); font-size:15px; color:var(--ink-2); font-variant-numeric:tabular-nums; }
+.ex-clock.is-low{ color:var(--bad); font-weight:500; }
+.ex-fig{ display:inline-block; margin:-6px 0 12px; font-size:14.5px; }
+.q-opt.is-pick{ background:var(--tint-2); box-shadow:inset 3px 0 0 var(--ink); }
+.q-opt.is-pick .q-mark{ background:var(--ink); color:var(--bg); }
+div.q-opt{ cursor:default; }
+.q-opt.is-dim{ opacity:.55; }
+.ex-foot{ display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin:20px 0; }
+.ex-danger{ color:var(--bad); border-color:color-mix(in oklab, var(--bad) 45%, transparent); }
+.ex-trow{ display:grid; grid-template-columns:150px 1fr auto; gap:16px; align-items:center; padding:16px 0; border-bottom:1px solid var(--line); }
+.ex-tinfo{ display:grid; gap:3px; }
+.ex-switch{ display:flex; align-items:center; gap:10px; cursor:pointer; font-size:15px; }
+.ex-switch input{ position:absolute; opacity:0; width:1px; height:1px; }
+.ex-switch i{ position:relative; flex:none; width:46px; height:26px; border-radius:13px; background:var(--line-2); transition:background .15s; }
+.ex-switch i::after{ content:''; position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; background:#fff; transition:transform .15s; }
+.ex-switch input:checked + i{ background:var(--ok); }
+.ex-switch input:checked + i::after{ transform:translateX(20px); }
+.ex-switch input:focus-visible + i{ outline:2px solid var(--ink); outline-offset:2px; }
+.ex-trow.is-open .ex-switch span{ color:var(--ok); font-weight:500; }
+.ex-q{ max-width:none; padding:18px 0; border-bottom:1px solid var(--line); }
+.ex-qr{ display:grid; gap:8px; justify-items:start; margin:12px 0 18px; }
+.ex-qr img{ width:200px; height:200px; padding:10px; background:#fff; }
+.ex-table{ overflow-x:auto; margin:16px 0; }
+.ex-table table{ width:100%; border-collapse:collapse; font-size:15px; }
+.ex-table th,.ex-table td{ padding:9px 10px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+.ex-table th{ font-weight:400; font-size:13px; color:var(--ink-3); }
+.ex-table td.ok b{ color:var(--ok); }
+.ex-table td.bad b{ color:var(--bad); }
+.ex-link{ padding:0; border:0; background:none; color:inherit; font:inherit; text-decoration:underline; cursor:pointer; }
+.ex-filter{ margin-bottom:6px; }
+.is-busy{ opacity:.6; pointer-events:none; }
+@media (max-width:640px){ .ex-trow{ grid-template-columns:1fr; gap:8px; } }
