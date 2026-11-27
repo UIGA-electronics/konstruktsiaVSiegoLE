@@ -173,7 +173,7 @@
           "num": "3D",
           "status": "ready",
           "title": "DA 40 NG по системам",
-          "sub": "Конструкция и системы учебного самолёта: фюзеляж и оперение, кабина, управление, крыло, топливная система, силовая установка, электросистема, приборное и радиооборудование, шасси, обогрев и вентиляция",
+          "sub": "Конструкция и системы учебного самолёта в порядке тем методички: крыло, фюзеляж и оперение, кабина, электросистема, управление, шасси и тормоза, топливная система, обогрев и вентиляция, силовая установка; в конце — приборное и радиооборудование",
           "readyLabel": "Открыть практикум",
           "readyHint": "13 разделов",
           "screens": [
@@ -186,6 +186,16 @@
               "short": "Самолёт целиком",
               "ata": "",
               "note": "Основные данные, планер, состав систем"
+            },
+            {
+              "id": "da40-wing",
+              "img": "assets/img/tabs/da40-wing.webp",
+              "imgCredit": "Gary Danvers, CC BY-NC-SA 2.0, Flickr/Openverse",
+              "min": 6,
+              "title": "Крыло: силовой набор",
+              "short": "Крыло",
+              "ata": "57",
+              "note": "Лонжероны с поясами из углепластика, нервюры, навески"
             },
             {
               "id": "da40-fuselage",
@@ -208,6 +218,16 @@
               "note": "Фонарь, пассажирская дверь, кресла и привязные ремни"
             },
             {
+              "id": "da40-electrical",
+              "img": "assets/img/tabs/da40-electrical.webp",
+              "imgCredit": "CDN Aviator, CC BY-SA 2.0, Flickr/Openverse",
+              "min": 8,
+              "title": "Электросистема",
+              "short": "Электросистема",
+              "ata": "24, 33, 51",
+              "note": "Сеть 28 В, три батареи, резервное питание EECU, освещение"
+            },
+            {
               "id": "da40-controls",
               "img": "assets/img/tabs/da40-controls.webp",
               "imgCredit": "© Diamond Aircraft Industries, diamondaircraft.com",
@@ -218,14 +238,14 @@
               "note": "Тяги элеронов и руля высоты, тросы руля направления, закрылки"
             },
             {
-              "id": "da40-wing",
-              "img": "assets/img/tabs/da40-wing.webp",
-              "imgCredit": "Gary Danvers, CC BY-NC-SA 2.0, Flickr/Openverse",
-              "min": 6,
-              "title": "Крыло: силовой набор",
-              "short": "Крыло",
-              "ata": "57",
-              "note": "Лонжероны с поясами из углепластика, нервюры, навески"
+              "id": "da40-gear",
+              "img": "assets/img/tabs/da40-gear.webp",
+              "imgCredit": "Martin Pettitt, CC BY 2.0, Flickr/Openverse",
+              "min": 7,
+              "title": "Шасси и тормоза",
+              "short": "Шасси и тормоза",
+              "ata": "32",
+              "note": "Рессорные основные опоры, носовая опора, дисковые тормоза"
             },
             {
               "id": "da40-fuel",
@@ -238,6 +258,16 @@
               "note": "Два бака в крыльях, перекачка из правого бака в левый"
             },
             {
+              "id": "da40-air",
+              "img": "assets/img/tabs/da40-air.webp",
+              "imgCredit": "caribb, CC BY-NC-ND 2.0, Flickr/Openverse",
+              "min": 6,
+              "title": "Обогрев и вентиляция",
+              "short": "Обогрев и вентиляция",
+              "ata": "21",
+              "note": "NACA-заборники, теплообменник, обдув остекления"
+            },
+            {
               "id": "da40-powerplant",
               "img": "assets/img/tabs/da40-powerplant.webp",
               "imgCredit": "© Austro Engine / Diamond Aircraft Industries, diamondaircraft.com",
@@ -246,16 +276,6 @@
               "short": "Силовая установка",
               "ata": "61, 71–81",
               "note": "Дизель Austro Engine E4-A, винт, охлаждение, впуск, масло"
-            },
-            {
-              "id": "da40-electrical",
-              "img": "assets/img/tabs/da40-electrical.webp",
-              "imgCredit": "CDN Aviator, CC BY-SA 2.0, Flickr/Openverse",
-              "min": 8,
-              "title": "Электросистема",
-              "short": "Электросистема",
-              "ata": "24, 33, 51",
-              "note": "Сеть 28 В, три батареи, резервное питание EECU, освещение"
             },
             {
               "id": "da40-instruments",
@@ -276,26 +296,6 @@
               "short": "Радиооборудование",
               "ata": "23, 34",
               "note": "Радиостанции, навигационные приёмники, ответчик, ELT"
-            },
-            {
-              "id": "da40-gear",
-              "img": "assets/img/tabs/da40-gear.webp",
-              "imgCredit": "Martin Pettitt, CC BY 2.0, Flickr/Openverse",
-              "min": 7,
-              "title": "Шасси и тормоза",
-              "short": "Шасси и тормоза",
-              "ata": "32",
-              "note": "Рессорные основные опоры, носовая опора, дисковые тормоза"
-            },
-            {
-              "id": "da40-air",
-              "img": "assets/img/tabs/da40-air.webp",
-              "imgCredit": "caribb, CC BY-NC-ND 2.0, Flickr/Openverse",
-              "min": 6,
-              "title": "Обогрев и вентиляция",
-              "short": "Обогрев и вентиляция",
-              "ata": "21",
-              "note": "NACA-заборники, теплообменник, обдув остекления"
             },
             {
               "id": "da40-quiz",

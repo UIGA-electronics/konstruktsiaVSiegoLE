@@ -920,7 +920,7 @@
     if (id === 'lab' || id === 't3d-map') { location.replace('#home'); return; }
     /* зачёт и кабинет преподавателя — exam.js (Supabase) */
     if (window.Exam && Exam.handles(id)) {
-      Exam.mount(id, function (node, title) { show(node, title, 'is-doc', 'home'); });
+      Exam.mount(id, function (node, title) { show(node, title, 'is-doc', 'exam'); });
       return;
     }
 

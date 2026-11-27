@@ -206,9 +206,23 @@ var Figures = (function () {
   var THREE_BASE = 'https://cdn.jsdelivr.net/npm/three@0.128.0/';
   var threeReady = null;
 
+  /* Хеши файлов Three.js (SRI): подменённый на CDN файл браузер не выполнит.
+     Сайт одностраничный — чужой код со страницы с моделью дожил бы до кабинета
+     преподавателя и мог бы прочитать вход. Пересчитать: curl -s URL | openssl dgst -sha384 -binary | openssl base64 -A */
+  var THREE_SRI = {
+    'build/three.min.js': 'sha384-CI3ELBVUz9XQO+97x6nwMDPosPR5XvsxW2ua7N1Xeygeh1IxtgqtCkGfQY9WWdHu',
+    'examples/js/loaders/GLTFLoader.js': 'sha384-fljlqkjWlmSFjkESkQvm77heIZpoWmXEOzlCA7kOpGUH+95Zk0yGfQieWM2q136E',
+    'examples/js/libs/meshopt_decoder.js': 'sha384-Ua4+miEfAhtQpWvzgEohUG5UfbDPgyuYVVT+sgb2QvRC3fjACMsy7LV3Zoxnv2xf',
+    'examples/js/controls/OrbitControls.js': 'sha384-wagZhIFgY4hD+7awjQjR4e2E294y6J2HSnd8eTNc15ZubTeQeVRZwhQJ+W6hnBsf',
+    'examples/js/environments/RoomEnvironment.js': 'sha384-UpJYDNQ/8wDmBlzh4lZ9VMbunag9yRAOGFiBWYVaf6/FCnrwc9qlto25EZVLhpph',
+    'examples/js/loaders/RGBELoader.js': 'sha384-brr1wFCScwAi+SbB5QEzZ6kd5yjKCrFmRuUqxbw0XQSElYZz7XPg9+lVO8jdV0yX'
+  };
+
   function loadScript(src) {
     return new Promise(function (res, rej) {
       var s = document.createElement('script');
+      var sri = src.indexOf(THREE_BASE) === 0 ? THREE_SRI[src.slice(THREE_BASE.length)] : null;
+      if (sri) { s.integrity = sri; s.crossOrigin = 'anonymous'; }
       s.src = src;
       s.onload = res;
       s.onerror = function () { rej(new Error('не загрузился ' + src)); };
